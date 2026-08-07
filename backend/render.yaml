@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: django-resolver
+    runtime: python
+    buildCommand: "chmod +x build.sh && ./build.sh"
+    startCommand: "daphne -b 0.0.0.0 -p $PORT resolver.asgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: resolver_db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: DJANGO_SETTINGS_MODULE
+        value: resolver.settings
+      # Comma-separated list of allowed hostnames — add your Render URL and any custom domain
+      - key: ALLOWED_HOSTS
+        value: django-resolver.onrender.com
+      # Comma-separated list of allowed CORS origins (frontend URLs)
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://resolver-zeta.vercel.app
+      # Comma-separated list of trusted origins for Django's CSRF Origin check —
+      # must include the scheme (https://) and this Render URL, or POSTs to
+      # /admin/login/ fail with "Origin checking failed".
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://django-resolver.onrender.com,https://resolver-zeta.vercel.app
+      # Bootstrap Django admin superuser — build.sh runs `createsuperuser --no-input`,
+      # which silently fails (swallowed by `|| echo`) if these three aren't all set.
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      # Redis URL — required for Channels/WebSocket support
+      - key: REDIS_URL
+        sync: false
+      # VAPID keys for PWA push notifications — generate with py-vapid
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_ADMIN_EMAIL
+        sync: false
+
+databases:
+  - name: resolver_db
+    databaseName: neondb
+    user: neondb_owner

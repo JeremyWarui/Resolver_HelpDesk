@@ -1,0 +1,33 @@
+# Secrets — never commit
+.env
+*.env
+.env.*
+!.env.example
+# Vercel reads build-time VITE_* config from this file; it holds no secrets
+# (the real production API URL is set as a Render/Vercel env var, not here).
+!.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+staticfiles/
+db.sqlite3
+
+# Node
+node_modules/
+dist/
+.vite/
+test-results/
+playwright-report/
+
+# Editors / OS
+.idea/
+.DS_Store
+*.swp

@@ -1,0 +1,74 @@
+# ------------------------------------
+# Project Ignored Files and Directories
+# ------------------------------------
+
+# Python artifacts
+__pycache__/
+.pytest_cache/
+api/__pycache__/
+views/__pycache__/
+tests/__pycache__/
+services/__pycache__/
+analytics/__pycache__/
+*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Django
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/
+staticfiles/
+
+# Django migrations cache
+*/migrations/__pycache__/
+*/migrations/*.pyc
+
+# ➡️ IGNORE ALL MIGRATIONS FILES
+# This excludes migration history from all apps, which can be regenerated.
+*/migrations/
+!*/migrations/__init__.py
+# The line above ensures the __init__.py files remain, which are required for imports.
+
+# 🔑 IGNORE DOCUMENTATION WITH SENSITIVE DATA (PASSWORDS)
+# Excludes credentials documentation from version control
+docs/DEFAULT_CREDENTIALS.md
+
+
+# 🔑 IGNORE FIXTURE JSON FILES WITH SENSITIVE DATA (PASSWORDS)
+# Excludes JSON fixtures within the 'tickets' app's fixtures directory.
+tickets/fixtures/tickets_initial_data.json
+tickets/fixtures/tickets_additional_data.json
+tickets/fixtures/tickets_initial_data_org.json
+tickets/fixtures/*
+
+# Environment
+venv/
+.env
+*.env
+
+# 🔑 API Test Files with Secrets
+# Local copies of test request files may contain tokens
+docs/api/test-requests.http
+.venv
+
+# Claude Code local settings (project settings.json is tracked)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+.coverage

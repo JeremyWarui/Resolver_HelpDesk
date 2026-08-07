@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="40" fill="#0f172a"/>
+  <rect x="24" y="24" width="144" height="144" rx="28" fill="#1e293b"/>
+  <!-- Ticket icon -->
+  <path d="M56 72 L136 72 L136 88 Q128 88 128 96 Q128 104 136 104 L136 120 L56 120 L56 104 Q64 104 64 96 Q64 88 56 88 Z" fill="none" stroke="#3b82f6" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Dashed perforations -->
+  <line x1="88" y1="72" x2="88" y2="80" stroke="#3b82f6" stroke-width="4" stroke-dasharray="4 4"/>
+  <line x1="88" y1="88" x2="88" y2="104" stroke="#3b82f6" stroke-width="4" stroke-dasharray="4 4"/>
+  <line x1="88" y1="112" x2="88" y2="120" stroke="#3b82f6" stroke-width="4" stroke-dasharray="4 4"/>
+  <!-- Text lines -->
+  <rect x="96" y="83" width="28" height="5" rx="2.5" fill="#3b82f6" opacity="0.8"/>
+  <rect x="96" y="92" width="20" height="5" rx="2.5" fill="#3b82f6" opacity="0.5"/>
+  <rect x="96" y="101" width="24" height="5" rx="2.5" fill="#3b82f6" opacity="0.6"/>
+</svg>

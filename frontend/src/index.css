@@ -1,0 +1,266 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Define your custom properties */
+:root {
+  --radius: 0.5rem;
+
+  /* ── Status badge colours (exact Tailwind equivalents from main branch) ──────
+     Each status has three tokens: -bg (light tint), -text (dark readable), -border.
+     These are used directly in StatusBadge, PriorityBadge, and FilterPills.        */
+
+  /* open = FluentUI blue */
+  --status-open-bg:     #eff6fc;   /* FluentUI blue tint40 */
+  --status-open-text:   #004578;   /* FluentUI blue shade30 */
+  --status-open-border: #c7e0f4;   /* FluentUI blue tint30 */
+
+  /* assigned = FluentUI blue (same family as open) */
+  --status-assigned-bg:     #eff6fc;   /* FluentUI blue tint40 */
+  --status-assigned-text:   #004578;   /* FluentUI blue shade30 */
+  --status-assigned-border: #c7e0f4;   /* FluentUI blue tint30 */
+
+  /* in_progress = FluentUI orange */
+  --status-progress-bg:     #fff4ce;   /* FluentUI warning tint40 */
+  --status-progress-text:   #835a00;   /* FluentUI warning shade30 */
+  --status-progress-border: #fde7a0;   /* FluentUI warning tint30 */
+
+  /* pending = FluentUI purple (awaiting parts/approval) */
+  --status-pending-bg:     #f9f3ff;   /* FluentUI purple tint40 */
+  --status-pending-text:   #3b1a6b;   /* FluentUI purple shade30 */
+  --status-pending-border: #d9b8ff;   /* FluentUI purple tint30 */
+
+  /* resolved = FluentUI green */
+  --status-resolved-bg:     #dff6dd;   /* FluentUI success tint40 */
+  --status-resolved-text:   #054b05;   /* FluentUI success shade30 */
+  --status-resolved-border: #a8e5a8;   /* FluentUI success tint30 */
+
+  /* escalated / rejected = FluentUI red */
+  --status-escalated-bg:     #fde7e9;   /* FluentUI danger tint40 */
+  --status-escalated-text:   #a4000b;   /* FluentUI danger shade30 */
+  --status-escalated-border: #f4b9bc;   /* FluentUI danger tint30 */
+
+  /* closed = gray (slightly darker text than pending) */
+  --status-closed-bg:     #f3f4f6;   /* gray-100 */
+  --status-closed-text:   #374151;   /* gray-700 */
+  --status-closed-border: #e5e7eb;   /* gray-200 */
+
+  /* pending_approval = amber  /  approved = emerald */
+  --status-approval-bg:     #fef3c7;   /* amber-100   */
+  --status-approval-text:   #92400e;   /* amber-800   */
+  --status-approval-border: #fde68a;   /* amber-200   */
+  --status-approved-bg:     #d1fae5;   /* emerald-100 */
+  --status-approved-text:   #065f46;   /* emerald-800 */
+  --status-approved-border: #a7f3d0;   /* emerald-200 */
+
+  /* ── Priority badge colours ───────────────────────────────────────────────── */
+
+  /* critical = red */
+  --priority-critical-bg:     #fee2e2;   /* red-100   */
+  --priority-critical-text:   #b91c1c;   /* red-700   */
+  --priority-critical-border: #fecaca;   /* red-200   */
+
+  /* high = orange */
+  --priority-high-bg:     #ffedd5;   /* orange-100 */
+  --priority-high-text:   #c2410c;   /* orange-700 */
+  --priority-high-border: #fed7aa;   /* orange-200 */
+
+  /* medium = yellow */
+  --priority-medium-bg:     #fef9c3;   /* yellow-100 */
+  --priority-medium-text:   #854d0e;   /* yellow-800 */
+  --priority-medium-border: #fef08a;   /* yellow-200 */
+
+  /* low = slate */
+  --priority-low-bg:     #f1f5f9;   /* slate-100 */
+  --priority-low-text:   #334155;   /* slate-700 */
+  --priority-low-border: #e2e8f0;   /* slate-200 */
+
+  /* ── OKLCH base tokens (kept for SLA countdown, charts, toast colours) ────── */
+  --status-open:      oklch(0.52 0.19 261);   /* #0078d4 FluentUI blue */
+  --status-assigned:  oklch(0.52 0.19 261);   /* #0078d4 FluentUI blue (same as open) */
+  --status-progress:  oklch(0.52 0.19 40);    /* #ffaa44 FluentUI orange */
+  --status-pending:   oklch(0.42 0.19 302);   /* #5c2d91 FluentUI purple */
+  --status-resolved:  oklch(0.47 0.17 142);   /* #107c10 FluentUI green */
+  --status-escalated: oklch(0.50 0.24 28);    /* #d13438 FluentUI red */
+  --status-closed:    oklch(0.42 0.02 264);   /* unchanged */
+
+  --priority-critical: oklch(0.45 0.26 27);
+  --priority-high:     oklch(0.50 0.20 33);
+  --priority-medium:   oklch(0.60 0.18 75);
+  --priority-low:      oklch(0.50 0.18 148);
+
+  /* SLA colours */
+  --sla-ok:      oklch(0.50 0.18 148);
+  --sla-warning: oklch(0.60 0.18 75);
+  --sla-breach:  oklch(0.50 0.24 27);
+
+  /* ── Chart colours — unified FluentUI palette ────────────────────────────── */
+  /* Direct hex values for predictable, consistent chart rendering */
+  --chart-1: #0078d4;  /* Blue (Primary) */
+  --chart-2: #107c10;  /* Green (Success) */
+  --chart-3: #ffaa44;  /* Orange (Warning) */
+  --chart-4: #d13438;  /* Red (Danger) */
+  --chart-5: #5c2d91;  /* Purple (Secondary) */
+
+  /* Toast semantic colours */
+  --toast-success-bg:     oklch(0.50 0.18 148 / 0.08);
+  --toast-success-text:   oklch(0.45 0.18 148);
+  --toast-success-border: oklch(0.50 0.18 148 / 0.4);
+  --toast-error-bg:       oklch(0.50 0.24 27 / 0.08);
+  --toast-error-text:     oklch(0.45 0.24 27);
+  --toast-error-border:   oklch(0.50 0.24 27 / 0.4);
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.623 0.214 259.815);
+  --primary-foreground: oklch(0.97 0.014 254.604);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.623 0.214 259.815);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar-primary: oklch(0.623 0.214 259.815);
+  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
+  --sidebar-accent: oklch(0.967 0.001 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.92 0.004 286.32);
+  --sidebar-ring: oklch(0.623 0.214 259.815);
+}
+
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.546 0.245 262.881);
+  --primary-foreground: oklch(0.379 0.146 265.522);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.488 0.243 264.376);
+  /* Chart colours use same FluentUI palette in dark mode */
+  --chart-1: #0078d4;  /* Blue (Primary) */
+  --chart-2: #107c10;  /* Green (Success) */
+  --chart-3: #ffaa44;  /* Orange (Warning) */
+  --chart-4: #d13438;  /* Red (Danger) */
+  --chart-5: #5c2d91;  /* Purple (Secondary) */
+  --sidebar: oklch(0.21 0.006 285.885);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.546 0.245 262.881);
+  --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
+  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.488 0.243 264.376);
+}
+
+@theme inline {
+  /* Status colour tokens */
+  --color-status-open:      var(--status-open);
+  --color-status-assigned:  var(--status-assigned);
+  --color-status-progress:  var(--status-progress);
+  --color-status-pending:   var(--status-pending);
+  --color-status-resolved:  var(--status-resolved);
+  --color-status-escalated: var(--status-escalated);
+  --color-status-closed:    var(--status-closed);
+
+  /* Priority colour tokens */
+  --color-priority-critical: var(--priority-critical);
+  --color-priority-high:     var(--priority-high);
+  --color-priority-medium:   var(--priority-medium);
+  --color-priority-low:      var(--priority-low);
+
+  /* SLA colour tokens */
+  --color-sla-ok:      var(--sla-ok);
+  --color-sla-warning: var(--sla-warning);
+  --color-sla-breach:  var(--sla-breach);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+
+
+/* Base styles using the new arbitrary value syntax */
+/* @layer base {
+  * {
+    @apply border-(--border);
+  }
+  body {
+    @apply bg-(--background) text-(--foreground);
+    font-family: 'Inter', sans-serif;
+  }
+} */
+
+/* Optional: Register a custom container utility if needed */
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+}
