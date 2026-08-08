@@ -397,7 +397,7 @@ class TicketListCreateView(generics.ListCreateAPIView):
     GET  ?mine=1  → raised_by == user (any authenticated user, R15 universal requester).
     GET  (no ?mine) → role-scoped queryset; users with no role get an empty result.
     POST → create a new ticket (same as TicketCreateView).
-    Filters: status, priority (id), section (id), current_level.
+    Filters: status, priority (id), section (id), sub_section (id), current_level.
     Pagination: PageNumber ordered -updated_at (D6 / §3.7).
     """
 
@@ -453,6 +453,8 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(priority_id=params["priority"])
         if params.get("section"):
             qs = qs.filter(section_id=params["section"])
+        if params.get("sub_section"):
+            qs = qs.filter(sub_section_id=params["sub_section"])
         if params.get("assigned_to"):
             qs = qs.filter(assigned_to_id=params["assigned_to"])
         if params.get("raised_by"):
@@ -466,10 +468,11 @@ class TicketListCreateView(generics.ListCreateAPIView):
 class TicketFilterOptionsView(APIView):
     """Scoped option lists for the tickets-table filters.
 
-    Returns the sections, technicians (assignees) and requesters that actually
-    appear in the caller's role-scoped tickets, so the filter dropdowns only
-    offer values that can return results. Scope is derived server-side from the
-    JWT role (never from client params) via ``scoped_ticket_qs`` — fail-closed.
+    Returns the sections, trades, technicians (assignees) and requesters that
+    actually appear in the caller's role-scoped tickets, so the filter dropdowns
+    only offer values that can return results. Scope is derived server-side from
+    the JWT role (never from client params) via ``scoped_ticket_qs`` —
+    fail-closed.
     """
 
     permission_classes = [IsAuthenticated]
@@ -507,6 +510,20 @@ class TicketFilterOptionsView(APIView):
                     ),
                 }
                 for r in section_rows
+            ),
+            key=lambda s: s["name"].lower(),
+        )
+
+        trade_rows = (
+            scoped.exclude(sub_section__isnull=True)
+            .values("sub_section_id", "sub_section__name")
+            .order_by()
+            .distinct()
+        )
+        sub_sections = sorted(
+            (
+                {"id": r["sub_section_id"], "name": r["sub_section__name"]}
+                for r in trade_rows
             ),
             key=lambda s: s["name"].lower(),
         )
@@ -563,7 +580,12 @@ class TicketFilterOptionsView(APIView):
         )
 
         return Response(
-            {"sections": sections, "technicians": technicians, "requesters": requesters}
+            {
+                "sections": sections,
+                "sub_sections": sub_sections,
+                "technicians": technicians,
+                "requesters": requesters,
+            }
         )
 
 

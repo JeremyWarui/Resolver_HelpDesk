@@ -118,12 +118,12 @@ def test_catalogue_exposes_no_priority(
 
 
 def test_creating_a_ticket_derives_section_trade_and_campus(
-    api, requester, nrb_section, electrical, socket, priorities
+    api, requester, nrb_section, electrical, socket, priorities, somewhere
 ):
     api.force_authenticate(requester)
     response = api.post(
         reverse("ticket-list"),
-        {"service_item": socket.pk, "description": "no power"},
+        {"service_item": socket.pk, "description": "no power", "location": somewhere},
         format="json",
     )
     assert response.status_code == 201, response.json()
@@ -147,12 +147,11 @@ def test_a_user_without_a_campus_cannot_raise_a_ticket(
     assert response.status_code == 400
 
 
-def test_location_is_required_when_the_trade_asks_for_it(
+def test_every_ticket_must_say_where_it_is(
     api, requester, nrb_section, electrical, socket, priorities
 ):
-    electrical.location_details = True
-    electrical.save(update_fields=["location_details"])
-
+    """Maintenance work happens somewhere. A ticket the technician cannot find
+    is not a ticket, so there is no service for which the question is skipped."""
     api.force_authenticate(requester)
     response = api.post(
         reverse("ticket-list"), {"service_item": socket.pk}, format="json"

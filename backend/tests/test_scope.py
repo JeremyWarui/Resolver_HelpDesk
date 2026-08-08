@@ -157,3 +157,58 @@ def test_unknown_role_sees_nothing(role, requester, nrb_electrical_ticket):
     """Fail closed — an unrecognised role claim must not fall through to a
     permissive branch."""
     assert visible(requester, role) == set()
+
+
+# ── Narrowing filters ─────────────────────────────────────────────────────────
+#
+# `?sub_section=` lets an HOS look at one trade at a time. A filter must only
+# ever narrow: the scope has already been decided by then, so the interesting
+# case is not that it filters but that it cannot be turned into a way to reach
+# past the caller's own rows.
+
+
+def _listed(api, user, **params):
+    from django.urls import reverse
+
+    api.force_authenticate(user)
+    response = api.get(reverse("ticket-list"), params)
+    assert response.status_code == 200, response.json()
+    return {row["id"] for row in response.json()["results"]}
+
+
+def test_trade_filter_narrows_the_list(
+    api, nrb_hos, electrical, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    assert _listed(api, nrb_hos, sub_section=electrical.pk) == {
+        nrb_electrical_ticket.id
+    }
+
+
+def test_trade_filter_cannot_reach_another_campus(
+    api, nrb_hos, electrical, nrb_electrical_ticket, msa_electrical_ticket
+):
+    """Same trade, wrong campus — the filter narrows within scope, it does not
+    re-open it."""
+    assert _listed(api, nrb_hos, sub_section=electrical.pk) == {
+        nrb_electrical_ticket.id
+    }
+
+
+def test_trade_filter_outside_scope_returns_nothing_not_everything(
+    api, nrb_electrician, plumbing, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """An electrician asking for plumbing gets an empty list — never the
+    unfiltered set, which is what a filter applied before scoping would give."""
+    assert _listed(api, nrb_electrician, sub_section=plumbing.pk) == set()
+
+
+def test_filter_options_offer_only_trades_the_caller_can_see(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """The dropdown is built from the caller's own rows, so it cannot advertise
+    a trade whose tickets they would then be refused."""
+    from django.urls import reverse
+
+    api.force_authenticate(nrb_electrician)
+    options = api.get(reverse("ticket-filter-options")).json()
+    assert [row["name"] for row in options["sub_sections"]] == ["Electrical"]

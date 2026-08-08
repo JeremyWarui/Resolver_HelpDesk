@@ -81,7 +81,6 @@ class SubSectionSerializer(serializers.ModelSerializer):
             "code",
             "description",
             "is_active",
-            "location_details",
             "items",
         ]
         read_only_fields = ["items", "section_type_name"]
@@ -117,7 +116,6 @@ class SectionTypeWithSubSectionsSerializer(serializers.ModelSerializer):
                 "code": sub.code,
                 "section_type_name": obj.name,
                 "is_active": sub.is_active,
-                "location_details": sub.location_details,
                 "service_items": [
                     {
                         "id": item.id,

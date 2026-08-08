@@ -211,7 +211,7 @@ class TicketSequence(models.Model):
 
 
 class TicketLocation(models.Model):
-    """Location detail for a ticket — present iff category.location_details (R13)."""
+    """Where the ticket is. Every ticket has one — see TicketCreateSerializer."""
 
     ticket = models.OneToOneField(
         Ticket,

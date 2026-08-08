@@ -255,21 +255,21 @@ class TicketCreateSerializer(serializers.Serializer):
         #    catalogue has not.
         priority = Priority.default()
 
-        # 4. Handle location.
+        # 4. Where it is. Always required: maintenance work happens somewhere,
+        #    and a ticket a technician cannot find is not a ticket. The facility
+        #    type decides what "somewhere" means — a room for a hostel, an asset
+        #    name for a generator, a zone for a field.
         location_input = attrs.get("location")
-        if service_item.sub_section.location_details:
-            if not location_input:
-                raise serializers.ValidationError(
-                    {"location": "Location is required for this service."}
-                )
-            location_data = validate_location(
-                location_input["facility_type"],
-                location_input.get("facility"),
-                location_input.get("values", {}),
-                campus.id,
+        if not location_input:
+            raise serializers.ValidationError(
+                {"location": "Location is required — the technician has to find it."}
             )
-        else:
-            location_data = None
+        location_data = validate_location(
+            location_input["facility_type"],
+            location_input.get("facility"),
+            location_input.get("values", {}),
+            campus.id,
+        )
 
         # Store private attrs for use in create().
         attrs["_section"] = section

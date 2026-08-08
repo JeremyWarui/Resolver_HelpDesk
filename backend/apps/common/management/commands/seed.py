@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.accounts.models import RoleAssignment, UserProfile
 from apps.facilities.models import Facility, FacilityType
+from apps.facilities.validators import TYPE_SPECS
 from apps.org.models import (
     Campus,
     CampusDepartment,
@@ -42,14 +43,14 @@ User = get_user_model()
 # ── Reference data ────────────────────────────────────────────────────────────
 
 # (name, code) — code must have a matching entry in facilities.validators.TYPE_SPECS
+# Six, matching apps.facilities.validators.TYPE_SPECS. Conference facilities,
+# dining halls and recreational blocks are all `building`: the register names
+# them, and none of them has an interior form of its own.
 FACILITY_TYPES = [
     ("Office Block", "office_block"),
-    ("Conference Facility", "conference_facility"),
     ("Hostel", "hostel"),
-    ("Staff Quarters", "residential"),
-    ("Dining", "dining"),
-    ("Recreational", "recreational"),
     ("Building", "building"),
+    ("Staff Quarters", "residential"),
     ("Equipment", "equipment"),
     ("Grounds / Field", "grounds"),
 ]
@@ -149,16 +150,16 @@ FACILITIES = {
         ("Administration Block", "office_block", "NRB-ADMIN"),
         ("Convention Center", "office_block", "NRB-CC"),
         ("eLITI", "office_block", "NRB-ELITI"),
-        ("Conference Center", "conference_facility", "NRB-CONF"),
-        ("Maasai Mara", "conference_facility", "NRB-MM"),
+        ("Conference Center", "building", "NRB-CONF"),
+        ("Maasai Mara", "building", "NRB-MM"),
         ("Gate House", "building", "NRB-GH"),
         ("Margaret Kobia", "hostel", "NRB-MK"),
         ("Gateere", "hostel", "NRB-GTR"),
         ("Wamalwa", "hostel", "NRB-WMW"),
         ("Sawe", "hostel", "NRB-SAWE"),
         ("Mekatilili", "hostel", "NRB-MEK"),
-        ("Kamoche", "recreational", "NRB-KAM"),
-        ("Maandalizi", "dining", "NRB-MAAN"),
+        ("Kamoche", "building", "NRB-KAM"),
+        ("Maandalizi", "building", "NRB-MAAN"),
         ("Gas Point", "grounds", "NRB-GAS"),
         # Office block cum recreational — typed as an office block because
         # floor + room is the more specific ask and still fits the social areas.
@@ -177,7 +178,7 @@ FACILITIES = {
     "MTG": [
         ("Mwalughanje", "hostel", "MTG-MWA"),
         ("Administration Block", "office_block", "MTG-ADMIN"),
-        ("Dining Hall", "dining", "MTG-DIN"),
+        ("Dining Hall", "building", "MTG-DIN"),
         ("Kitchen", "building", "MTG-KIT"),
         ("Customer Care", "office_block", "MTG-CARE"),
     ],
@@ -193,8 +194,8 @@ FACILITIES = {
         ("Gate House", "building", "BAR-GH"),
         ("Administration Block", "office_block", "BAR-ADMIN"),
         ("Library", "office_block", "BAR-LIB"),
-        ("Kipsunya", "conference_facility", "BAR-KIP"),
-        ("Koilagen", "conference_facility", "BAR-KOI"),
+        ("Kipsunya", "building", "BAR-KIP"),
+        ("Koilagen", "building", "BAR-KOI"),
     ],
 }
 
@@ -242,12 +243,12 @@ REQUESTER_NAMES = [
 # tickets carry location data the wizard would actually have produced.
 LOCATION_VALUES = {
     "office_block": lambda r: {"floor": str(r.randint(0, 3)), "room": f"{r.randint(1, 4)}{r.randint(10, 40)}"},
-    "conference_facility": lambda r: {"area": r.choice(["Main hall", "Breakout room", "Foyer", "AV booth"])},
     "hostel": lambda r: {"room_number": f"{r.choice('ABC')}-{r.randint(101, 320)}"},
-    "residential": lambda r: {"unit_number": f"Q{r.randint(1, 24)}"},
-    "dining": lambda r: {"area": r.choice(["Servery", "Seating area", "Wash-up", "Store"])},
-    "recreational": lambda r: {"area": r.choice(["Gym", "Common room", "Games room", "Terrace"])},
-    "building": lambda r: {"area": r.choice(["Ground floor", "First floor", "Rear wing", "Entrance"])},
+    "building": lambda r: {"area": r.choice(["Main hall", "Servery", "Ground floor", "Rear wing", "Entrance"])},
+    "residential": lambda r: {
+        "tenant_name": r.choice(["J. Mwangi", "A. Chepkoech", "S. Omondi", "M. Wairimu"]),
+        "unit_number": f"Q{r.randint(1, 24)}",
+    },
     "grounds": lambda r: {"zone": r.choice(["North lawn", "Car park", "Perimeter", "Service yard"])},
     "equipment": lambda r: {"asset_name": r.choice(["Standby generator", "Water pump", "Boiler"])},
 }
@@ -354,13 +355,7 @@ class Command(BaseCommand):
             sub_sections[code] = SubSection.objects.get_or_create(
                 section_type=section_type,
                 name=name,
-                defaults={
-                    "code": code,
-                    # Every maintenance job has a place, so all five collect a
-                    # location. The flag earns its keep for future section
-                    # types where that is not true.
-                    "location_details": True,
-                },
+                defaults={"code": code},
             )[0]
         self.stdout.write(f"  SubSection: {len(sub_sections)}")
         return sub_sections
@@ -625,14 +620,30 @@ class Command(BaseCommand):
         self.stdout.write(f"  Demo tickets: {created} over the last 14 days")
 
     def _attach_location(self, ticket, facilities, rng):
-        if not facilities:
-            return
-        facility = rng.choice(facilities)
-        type_code = facility.facility_type.code
+        """Every ticket says where it is — there is no branch that leaves one
+        without a location.
+
+        Most of the time that is a named facility off the register. Every
+        fourth ticket instead uses one of the types the register does not name
+        — a staff house or a piece of equipment — so the demo data exercises
+        both shapes of location rather than only the dropdown one.
+        """
+        # Grounds is left out: it has facility rows on the register (Field, Gas
+        # Point) and so already turns up through the branch below. These two
+        # have none, and would otherwise never appear in the demo data at all.
+        unnamed = ["residential", "equipment"]
+        if facilities and rng.random() > 0.25:
+            facility = rng.choice(facilities)
+            facility_type, type_code = facility.facility_type, facility.facility_type.code
+        else:
+            facility = None
+            type_code = rng.choice(unnamed)
+            facility_type = FacilityType.objects.get(code=type_code)
+
         builder = LOCATION_VALUES.get(type_code)
         TicketLocation.objects.create(
             ticket=ticket,
-            facility_type=facility.facility_type,
+            facility_type=facility_type,
             facility=facility,
             values=builder(rng) if builder else {},
         )

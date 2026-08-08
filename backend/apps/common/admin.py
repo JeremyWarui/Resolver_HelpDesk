@@ -155,7 +155,7 @@ class EscalationRuleAdmin(ModelAdmin):
 
 @admin.register(SubSection)
 class SubSectionAdmin(ModelAdmin):
-    list_display = ("name", "code", "section_type", "is_active", "location_details")
+    list_display = ("name", "code", "section_type", "is_active")
     list_filter = ("is_active", "section_type")
     search_fields = ("name", "code")
 

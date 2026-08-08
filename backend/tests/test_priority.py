@@ -27,13 +27,13 @@ def test_catalogue_carries_no_priority():
 
 
 def test_new_ticket_opens_at_the_lowest_priority(
-    api, requester, nrb_section, electrical, priorities, low_priority
+    api, requester, nrb_section, electrical, priorities, low_priority, somewhere
 ):
     item = ServiceItem.objects.create(sub_section=electrical, name="Dead socket")
     api.force_authenticate(requester)
     response = api.post(
         reverse("ticket-list"),
-        {"service_item": item.pk, "description": "no power"},
+        {"service_item": item.pk, "description": "no power", "location": somewhere},
         format="json",
     )
     assert response.status_code == 201, response.json()

@@ -125,9 +125,8 @@ class SubSection(models.Model):
     `Section`, so `(Section, SubSection)` is the pair that identifies a trade at
     a campus — see `SectionTechnician`.
 
-    `location_details` gates the location step of the ticket wizard. Priority is
-    deliberately absent: it is not a property of the service, it is a judgement
-    the HOS makes about a specific ticket when they assign it.
+    Priority is deliberately absent: it is not a property of the service, it is
+    a judgement the HOS makes about a specific ticket when they assign it.
     """
 
     section_type = models.ForeignKey(
@@ -139,10 +138,6 @@ class SubSection(models.Model):
     code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
-    location_details = models.BooleanField(
-        default=False,
-        help_text="Whether the ticket creation wizard should collect location information.",
-    )
 
     class Meta:
         app_label = "org"

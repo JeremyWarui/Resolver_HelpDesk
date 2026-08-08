@@ -5,56 +5,44 @@ from rest_framework import serializers
 # against anything else being posted, and `building_dropdown` says whether the
 # form offers a named-facility picker.
 #
-# Several types share an identical spec (area + room). They stay distinct
-# anyway: the type is also the reporting dimension, and "how much of our work
-# is in hostels vs conference facilities" is a question this system should be
-# able to answer.
+# Six types, because "where is it" only has six genuinely different answers
+# here. `building` is the catch-all for everything the register names but that
+# has no standard interior form — conference centres, dining halls, gate
+# houses, recreational blocks. For those the facility itself is the answer, so
+# nothing else is required; room and area are there to narrow it down when the
+# requester can.
 TYPE_SPECS = {
     "office_block": {
+        # Offices are addressed the same way everywhere: which floor, which room.
         "required": {"floor", "room"},
         "optional": {"area"},
         "known": {"floor", "room", "area"},
-        "building_dropdown": True,
-    },
-    "conference_facility": {
-        "required": {"area"},
-        "optional": {"room"},
-        "known": {"area", "room"},
         "building_dropdown": True,
     },
     "hostel": {
         # Participant accommodation — occupants rotate per course, so the room
         # identifies the fault, not the person in it.
         "required": {"room_number"},
-        "optional": {"wing"},
-        "known": {"room_number", "wing"},
-        "building_dropdown": True,
-    },
-    "residential": {
-        # Staff quarters — a standing household, so the tenant is worth knowing:
-        # a plumber needs someone to let them in.
-        "required": {"unit_number"},
-        "optional": {"tenant_name"},
-        "known": {"unit_number", "tenant_name"},
-        "building_dropdown": False,
-    },
-    "dining": {
-        "required": {"area"},
-        "optional": {"room"},
-        "known": {"area", "room"},
-        "building_dropdown": True,
-    },
-    "recreational": {
-        "required": {"area"},
-        "optional": {"room"},
-        "known": {"area", "room"},
+        "optional": {"area"},
+        "known": {"room_number", "area"},
         "building_dropdown": True,
     },
     "building": {
-        "required": {"area"},
-        "optional": {"room"},
-        "known": {"area", "room"},
+        # Named on the register but with no standard interior: the facility is
+        # the location. Room and area refine it when there is something to say.
+        "required": set(),
+        "optional": {"room", "area"},
+        "known": {"room", "area"},
         "building_dropdown": True,
+    },
+    "residential": {
+        # Staff quarters — a standing household rather than a rotating room.
+        # The tenant is who the technician arranges access with, so that is the
+        # part worth insisting on; the unit number helps them find the door.
+        "required": {"tenant_name"},
+        "optional": {"unit_number"},
+        "known": {"tenant_name", "unit_number"},
+        "building_dropdown": False,
     },
     "equipment": {
         "required": {"asset_name"},

@@ -13,6 +13,10 @@ class FacilityTypeSerializer(serializers.ModelSerializer):
 
 class FacilitySerializer(serializers.ModelSerializer):
     type = serializers.SerializerMethodField()
+    # Carrying the type's name means one `?campus=` call gives the ticket
+    # wizard everything it needs to draw both the type tiles and the facility
+    # dropdown — it never has to fetch the type list separately.
+    facility_type_name = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     campus_name = serializers.SerializerMethodField()
     openTickets = serializers.SerializerMethodField()
@@ -28,6 +32,7 @@ class FacilitySerializer(serializers.ModelSerializer):
             "campus",
             "campus_name",
             "facility_type",
+            "facility_type_name",
             "type",
             "status",
             "openTickets",
@@ -37,6 +42,9 @@ class FacilitySerializer(serializers.ModelSerializer):
 
     def get_type(self, obj):
         return obj.facility_type.code if obj.facility_type_id else None
+
+    def get_facility_type_name(self, obj):
+        return obj.facility_type.name if obj.facility_type_id else None
 
     def get_status(self, obj):
         # Derive status from open ticket count if annotated; default to operational

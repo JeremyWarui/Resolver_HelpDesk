@@ -168,6 +168,38 @@ def msa_requester(msa):
     return factories.make_user("msa_requester", campus=msa, role="user")
 
 
+# ── Places ────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def facility_types(db):
+    """One row per type the validator knows. Every ticket carries a location,
+    so nearly every creation test needs at least one of these to exist."""
+    from apps.facilities.models import FacilityType
+    from apps.facilities.validators import TYPE_SPECS
+
+    return {
+        code: FacilityType.objects.create(
+            name=code.replace("_", " ").title(), code=code
+        )
+        for code in TYPE_SPECS
+    }
+
+
+@pytest.fixture
+def somewhere(facility_types):
+    """The least a ticket can say about where it is.
+
+    Grounds needs no facility row, so this is the payload for tests that must
+    supply a location but are not about locations. Tests that care about the
+    place build their own.
+    """
+    return {
+        "facility_type": facility_types["grounds"].pk,
+        "values": {"zone": "North lawn"},
+    }
+
+
 # ── Tickets ───────────────────────────────────────────────────────────────────
 
 
