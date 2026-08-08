@@ -13,8 +13,8 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { CHART_COLORS as COLORS } from '@/constants/colors';
 
-const COLORS = ['#0078d4', '#107c10', '#ffaa44', '#d13438', '#5c2d91', '#00b4d8'];
 
 export interface DistributionDatum {
   name: string;

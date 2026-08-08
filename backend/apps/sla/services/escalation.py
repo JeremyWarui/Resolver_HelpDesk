@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.tickets.statuses import ACTIVE_STATUSES
+
 LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 
 
@@ -78,7 +80,7 @@ def run_escalations():
 
     tickets = (
         Ticket.objects.filter(
-            status__in=("open", "assigned", "in_progress", "pending"),
+            status__in=ACTIVE_STATUSES,
         )
         .exclude(current_level="hod")
         .select_related(

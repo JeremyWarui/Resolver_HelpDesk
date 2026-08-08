@@ -69,13 +69,6 @@ export const departmentsService = {
     return data;
   },
 
-  getCampusDepartments: async (campusId: number): Promise<Department[]> => {
-    const { data } = await apiClient.get('/departments/', {
-      params: { campus: campusId },
-    });
-    return toArray<Department>(data);
-  },
-
   createDepartment: async (payload: {
     name: string;
     code: string;

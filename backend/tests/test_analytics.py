@@ -268,3 +268,57 @@ def test_a_running_overdue_ticket_is_flagged_on_the_ticket_too(
     api.force_authenticate(nrb_hos)
     detail = api.get(reverse("ticket-detail", args=[nrb_electrical_ticket.pk])).json()
     assert detail["is_breaching"] is True
+
+
+# ── One status vocabulary ─────────────────────────────────────────────────────
+
+
+def test_every_module_reads_the_same_status_sets():
+    """These were literals in six places and locally-named constants in two
+    more, and they had already drifted — `common.admin` counted a different set
+    than everything else. The R9 bug was this exact shape: four places computing
+    "is this late?" and disagreeing, so a ticket's badge contradicted the
+    dashboard it sat on."""
+    from apps.analytics import services
+    from apps.tickets import statuses
+
+    assert services.ACTIVE_STATUSES is statuses.ACTIVE_STATUSES
+    assert services.RUNNING_STATUSES is statuses.RUNNING_STATUSES
+
+
+def test_pending_is_active_but_not_running():
+    """The whole distinction in one assertion: a paused ticket is still open
+    work, and its clock is not moving."""
+    from apps.tickets import statuses
+
+    assert "pending" in statuses.ACTIVE_STATUSES
+    assert "pending" not in statuses.RUNNING_STATUSES
+    assert set(statuses.RUNNING_STATUSES) < set(statuses.ACTIVE_STATUSES)
+
+
+def test_the_status_sets_cover_the_model_choices_exactly():
+    """A status added to the model but not to these sets would be invisible to
+    every count in the system."""
+    from apps.tickets.models import Ticket
+    from apps.tickets import statuses
+
+    assert set(statuses.ALL_STATUSES) == {value for value, _ in Ticket.STATUS}
+    assert not set(statuses.ACTIVE_STATUSES) & set(statuses.TERMINAL_STATUSES)
+
+
+def test_no_module_writes_the_status_list_out_by_hand():
+    """The guard that keeps this from creeping back. If you are adding a status
+    set, import it — do not paste the tuple."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "apps"
+    literal = re.compile(r'["\']open["\']\s*,\s*["\']assigned["\']')
+    offenders = [
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "migrations" not in path.parts
+        and path.name != "statuses.py"
+        and literal.search(path.read_text())
+    ]
+    assert offenders == [], f"status list written out by hand in: {offenders}"

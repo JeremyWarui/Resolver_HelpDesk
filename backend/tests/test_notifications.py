@@ -191,3 +191,68 @@ def test_another_users_notification_cannot_be_marked_read(api, requester, nrb_ho
 
 def test_the_feed_requires_authentication(api):
     assert api.get(reverse("notifications-list")).status_code == 401
+
+
+# ── SLA breach ────────────────────────────────────────────────────────────────
+
+
+def test_the_sla_check_command_still_imports(api):
+    """It broke once: the WebSocket strip removed `emit_ws_event` and left the
+    import behind, so the command raised ImportError the moment cron ran it and
+    the whole breach audit trail silently stopped. Nothing else covers a
+    management command, so this does."""
+    import importlib
+
+    importlib.import_module("apps.sla.management.commands.check_sla")
+
+
+def test_a_breach_is_recorded_once_and_tells_the_supervisors(
+    nrb_electrical_ticket, nrb_hos, nrb_hod
+):
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from apps.tickets.models import TicketLog
+
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    nrb_electrical_ticket.save(update_fields=["status", "resolution_due_at"])
+
+    call_command("check_sla")
+    call_command("check_sla")  # idempotent — a second pass must not re-log
+
+    assert (
+        TicketLog.objects.filter(
+            ticket=nrb_electrical_ticket, event_type="sla_breach"
+        ).count()
+        == 1
+    )
+    assert _for(nrb_hos, "sla_breach").count() == 1
+    assert _for(nrb_hod, "sla_breach").count() == 1
+
+
+def test_a_paused_ticket_is_not_breached_by_the_command(
+    nrb_electrical_ticket, nrb_hos
+):
+    """R9 again, from the cron side: the deadline drifts into the past while a
+    ticket waits, and that must not be recorded as a failure."""
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    from apps.tickets.models import TicketLog
+
+    nrb_electrical_ticket.status = "pending"
+    nrb_electrical_ticket.paused_at = timezone.now() - timedelta(days=2)
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    nrb_electrical_ticket.save(
+        update_fields=["status", "paused_at", "resolution_due_at"]
+    )
+
+    call_command("check_sla")
+
+    assert not TicketLog.objects.filter(event_type="sla_breach").exists()
+    assert not _for(nrb_hos, "sla_breach").exists()

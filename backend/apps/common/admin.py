@@ -6,6 +6,8 @@ Unfold callback stubs are defined here and referenced in settings.UNFOLD.
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+
+from apps.tickets.statuses import ACTIVE_STATUSES
 from unfold.admin import ModelAdmin
 
 from apps.accounts.models import CustomUser, UserProfile, RoleAssignment
@@ -50,7 +52,10 @@ def dashboard_callback(request, context):
 
 
 def ticket_count_badge(request):
-    return Ticket.objects.filter(status__in=["open", "assigned", "in_progress"]).count()
+    # Open work, which includes paused tickets — somebody still has to come
+    # back to them. This read RUNNING_STATUSES before, so the badge quietly
+    # undercounted by however many tickets were waiting on parts.
+    return Ticket.objects.filter(status__in=ACTIVE_STATUSES).count()
 
 
 def user_count_badge(request):

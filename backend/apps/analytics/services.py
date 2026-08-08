@@ -23,14 +23,14 @@ from django.utils import timezone
 
 from apps.tickets.models import Ticket, TicketLog, TicketFeedback, TicketLocation
 
-ACTIVE_STATUSES = ("open", "assigned", "in_progress", "pending")
-# Active *and* running: `pending` freezes the SLA timer (R9), so a paused
-# ticket is still open work but its deadline is not moving. Anything that asks
-# "is this late?" must use this, not ACTIVE_STATUSES — otherwise a ticket
-# waiting on parts nobody can order turns red for a delay the section was told
-# to take, and the breach count stops meaning anything.
-RUNNING_STATUSES = ("open", "assigned", "in_progress")
-TERMINAL_STATUSES = ("resolved", "closed")
+# Re-exported so existing importers keep working; defined in tickets.statuses,
+# which is where the vocabulary belongs — see the note there on why one home.
+from apps.tickets.statuses import (  # noqa: E402,F401
+    ACTIVE_STATUSES,
+    RUNNING_STATUSES,
+    TERMINAL_STATUSES,
+)
+
 AT_RISK_WINDOW = timedelta(hours=4)
 
 

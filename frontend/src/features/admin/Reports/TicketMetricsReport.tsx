@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/chart';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 import type { AnalyticsParams } from '@/types';
+import { CHART_COLORS as COLORS } from '@/constants/colors';
 
 interface FacilityDemandRow {
   facility_type_id: number;
@@ -40,7 +41,6 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold:     '#ef4444',
 };
 
-const COLORS = ['#0078d4', '#107c10', '#ffaa44', '#d13438', '#5c2d91', '#00b4d8'];
 
 interface TooltipPayload {
   name: string;

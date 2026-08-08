@@ -29,6 +29,7 @@ import {
 import { Clock, Star, RefreshCw, Activity, ShieldCheck, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 import type { AnalyticsParams } from '@/types';
 import { GranularitySelector, type Granularity } from '@/components/shared/GranularitySelector';
+import { formatSeconds } from '@/utils/date';
 
 export type AnalyticsRole = 'admin' | 'manager' | 'hod' | 'hos';
 
@@ -67,14 +68,6 @@ const ROLE_CONFIG: Record<AnalyticsRole, RoleAnalyticsConfig> = {
     subtitle: 'Your section(s) and technicians',
   },
 };
-
-function formatSeconds(s: number | null): string {
-  if (s == null) return '—';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
 
 function SectionSkeleton() {
   return (

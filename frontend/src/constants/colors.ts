@@ -10,12 +10,17 @@ export const FLUENT_UI_COLORS = {
   orange: '#ffaa44',  // Warning, in_progress status
   red: '#d13438',     // Danger, escalated status
   purple: '#5c2d91',  // Secondary, pending status
+  cyan: '#00b4d8',    // Sixth series — charts cycle, so this delays a repeat
 } as const;
 
 /**
- * Chart color palette - 5 colors cycling through datasets.
- * Ordered: blue → green → orange → red → purple
- * Maps directly to status family colors for visual consistency.
+ * Chart color palette — six colors, cycled with `COLORS[i % COLORS.length]`.
+ * Ordered blue → green → orange → red → purple → cyan, matching the status
+ * family colors so a chart and a badge for the same thing agree.
+ *
+ * Five files each kept a private copy of this array. They were byte-identical,
+ * which is the good case: the bad case is the day one of them gains a color and
+ * the same section is drawn in two different shades on two different pages.
  */
 export const CHART_COLORS = [
   FLUENT_UI_COLORS.blue,
@@ -23,6 +28,7 @@ export const CHART_COLORS = [
   FLUENT_UI_COLORS.orange,
   FLUENT_UI_COLORS.red,
   FLUENT_UI_COLORS.purple,
+  FLUENT_UI_COLORS.cyan,
 ] as const;
 
 /**

@@ -1,10 +1,11 @@
 def transfer_open_tickets(departing_user, section) -> int:
     from apps.tickets.models import Ticket, TicketLog
+    from apps.tickets.statuses import ACTIVE_STATUSES
 
     tickets = Ticket.objects.filter(
         section=section,
         assigned_to=departing_user,
-        status__in=("open", "assigned", "in_progress", "pending"),
+        status__in=ACTIVE_STATUSES,
     )
 
     count = 0

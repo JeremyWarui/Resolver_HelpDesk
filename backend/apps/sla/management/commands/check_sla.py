@@ -16,14 +16,13 @@ intentionally not persisted here.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from apps.notifications.notify import emit_ws_event
+from apps.analytics.services import ACTIVE_STATUSES
+from apps.notifications.notify import emit_sla_breach
 from apps.tickets.models import Ticket, TicketLog
-
-ACTIVE_STATUSES = ("open", "assigned", "in_progress", "pending")
 
 
 class Command(BaseCommand):
-    help = "Record SLA resolution breaches (TicketLog) and emit sla_breach events."
+    help = "Record SLA resolution breaches and notify the supervisors."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -84,21 +83,7 @@ class Command(BaseCommand):
                 reason="Resolution SLA breached",
             )
 
-            cd = ticket.section.campus_department if ticket.section_id else None
-            campus_id = cd.campus_id if cd else None
-            dept_id = cd.department_id if cd else None
-            section_id = ticket.section_id
-            payload = {
-                "ticketId": ticket.id,
-                "ticket_no": ticket.ticket_no,
-                "breachedAt": now.isoformat(),
-            }
-            if section_id and campus_id:
-                emit_ws_event(
-                    f"section_{section_id}_{campus_id}", "sla_breach", payload
-                )
-            if dept_id and campus_id:
-                emit_ws_event(f"dept_{dept_id}_{campus_id}", "sla_breach", payload)
+            emit_sla_breach(ticket)
 
             count += 1
 

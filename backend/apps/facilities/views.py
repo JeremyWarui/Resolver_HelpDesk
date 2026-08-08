@@ -9,7 +9,7 @@ from apps.common.permissions import IsAdminGroup
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
 
-_OPEN_STATUSES = ["open", "assigned", "in_progress", "pending"]
+from apps.tickets.statuses import ACTIVE_STATUSES as _OPEN_STATUSES  # noqa: E402
 
 
 def _ticket_count_subq(status_filter: Q):

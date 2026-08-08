@@ -17,8 +17,8 @@ import {
 import { AlertCircle, MapPin, TrendingUp, BarChart3 } from 'lucide-react';
 import MetricCard from '@/components/shared/data/MetricCard';
 import type { AnalyticsParams } from '@/types';
+import { CHART_COLORS as COLORS } from '@/constants/colors';
 
-const COLORS = ['#0078d4', '#107c10', '#ffaa44', '#d13438', '#5c2d91', '#00b4d8'];
 
 interface TooltipPayload {
   name: string;

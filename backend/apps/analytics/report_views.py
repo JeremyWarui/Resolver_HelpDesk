@@ -22,7 +22,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.analytics.services import ACTIVE_STATUSES, aggregate, resolve_date_range
+from apps.analytics.services import aggregate, resolve_date_range
+from apps.tickets.statuses import ACTIVE_STATUSES, TERMINAL_STATUSES
 from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.services.scope import scoped_ticket_qs
@@ -415,8 +416,8 @@ def _sheet_facility_health(ws, qs) -> None:
     _style_headers(ws, len(headers))
     ws.freeze_panes = "A2"
 
-    ACTIVE = ["open", "assigned", "in_progress", "pending"]
-    DONE = ["resolved", "closed"]
+    ACTIVE = ACTIVE_STATUSES
+    DONE = TERMINAL_STATUSES
 
     # Group by sub_section and facility_type from location (if present)
     rows = (

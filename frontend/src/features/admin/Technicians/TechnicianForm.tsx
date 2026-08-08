@@ -16,7 +16,7 @@ import { FormDialog } from '@/components/shared/forms/FormDialog';
 import { MultiSelectCheckboxGroup } from '@/components/shared/forms/MultiSelectCheckboxGroup';
 import useCreateUser from '@/hooks/users/useCreateUser';
 import { useSections } from '@/hooks/sections/useSections';
-import { useDepartments } from '@/hooks/useDepartments';
+import { useDepartments } from '@/hooks/departments/useDepartments';
 import useUpdateUser from '@/hooks/users/useUpdateUser';
 import { createTechnicianSchema, type CreateTechnicianFormValues } from '@/utils/entityValidation';
 import { sectionsService } from '@/lib/api/organizations';
@@ -46,8 +46,7 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
   const { updateUser } = useUpdateUser();
   const { sections } = useSections();
   const selectedCampusId = campusFilter !== '__all__' ? Number(campusFilter) : undefined;
-  const { data: departments } = useDepartments(selectedCampusId);
-  const departmentOptions = Array.isArray(departments) ? departments : [];
+  const { departments: departmentOptions } = useDepartments(selectedCampusId);
 
   // Unique campuses derived from sections
   const campuses = useMemo(() => {

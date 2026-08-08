@@ -16,14 +16,7 @@ import { useTechnicianDashboard } from '@/hooks/dashboard';
 import { useResolutionTimes, useQuality } from '@/hooks/analytics';
 import { useAuth } from '@/hooks/useAuth';
 import type { AnalyticsParams, TechnicianOverviewResponse } from '@/types';
-
-function formatSeconds(s: number | null): string {
-  if (s == null) return '—';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
+import { formatSeconds } from '@/utils/date';
 
 const TechReport = () => {
   const [isDownloading, setIsDownloading] = useState(false);

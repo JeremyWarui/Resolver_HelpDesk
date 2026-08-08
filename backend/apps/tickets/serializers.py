@@ -21,6 +21,7 @@ from apps.tickets.models import (
     TicketLog,
 )
 from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
+from apps.tickets.statuses import ALL_STATUSES
 
 User = get_user_model()
 
@@ -344,7 +345,7 @@ class TicketCreateSerializer(serializers.Serializer):
 
 class TicketStatusUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(
-        choices=["open", "assigned", "in_progress", "pending", "resolved", "closed"]
+        choices=list(ALL_STATUSES)
     )
     reason = serializers.CharField(required=False, allow_blank=True, default="")
 

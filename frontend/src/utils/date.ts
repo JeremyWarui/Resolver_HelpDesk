@@ -45,3 +45,20 @@ export function getRelativeTime(dateString: string): string {
   
   return formatDate(dateString);
 }
+
+/**
+ * A duration in seconds, as "2h 15m" — the shape analytics returns for
+ * average response and resolution times.
+ *
+ * Distinct from `fmtMins` in SLARulesPage (minutes in, rolls up to days, for
+ * SLA thresholds) and `formatDuration` in SLACountdown (milliseconds in, for a
+ * live countdown). Three formats because they answer three questions; this one
+ * was the only genuine duplicate, defined identically in two report views.
+ */
+export function formatSeconds(s: number | null): string {
+  if (s == null) return '—';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}

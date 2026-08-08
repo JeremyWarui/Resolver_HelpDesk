@@ -216,6 +216,26 @@ def emit_comment_added(ticket, comment) -> None:
 
 
 @_never_fails
+def emit_sla_breach(ticket) -> None:
+    """A ticket has passed its resolution deadline.
+
+    Goes to the supervisors, not the technician: by the time this fires the
+    deadline is already gone, and the decision it calls for — reassign, chase,
+    reprioritise — is theirs. The assignee already sees the ticket turn red.
+    """
+    cd_id = _campus_department_id(ticket)
+
+    recipients = _hos_user_ids(ticket.section_id) + _hod_user_ids(cd_id)
+    _notify_users(
+        recipients,
+        "sla_breach",
+        "SLA breached",
+        f"Ticket #{ticket.ticket_no} has passed its resolution deadline.",
+        ticket,
+    )
+
+
+@_never_fails
 def emit_ticket_escalated(ticket) -> None:
     cd_id = _campus_department_id(ticket)
 
