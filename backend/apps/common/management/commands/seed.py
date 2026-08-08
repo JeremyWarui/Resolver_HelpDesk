@@ -408,9 +408,9 @@ class Command(BaseCommand):
     _phone_counter = 0
 
     def _next_phone(self):
-        """A distinct, obviously-fake Kenyan mobile per seeded account."""
+        """A distinct, obviously-fake Kenyan mobile per seeded account, in E.164."""
         self._phone_counter += 1
-        return f"07{self._phone_counter:08d}"
+        return f"+2547{self._phone_counter:08d}"
 
     def _make_user(self, username, first, last, password, campus=None):
         user, created = User.objects.get_or_create(

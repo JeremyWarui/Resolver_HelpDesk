@@ -137,13 +137,19 @@ The requester picks a **service item**; everything else is derived server-side.
 3   review + submit
 ```
 
-`contact_phone` is optional and stored on the ticket, not read from the
-profile at display time. Two reasons: the useful number is often not the
+`contact_phone` is optional, Kenyan-only, and stored on the ticket in E.164
+(`+254712345678`) — not read from the profile at display time. Two reasons: the useful number is often not the
 requester's (a caretaker, whoever is actually in the room), and a profile edit
 must not rewrite the history of a job that closed months ago. Blank falls back
 to the profile number; a user with no number anywhere can still raise a ticket.
 It appears on the ticket **detail** only — one number is a technician doing
 their job, a page of them is a contact-list export.
+
+Normalisation lives in `apps/common/phone.py`, the single definition of what a
+number is. Mobiles are 9 national digits beginning 7 or 1; landlines 8-9
+beginning 2-6. Everything else — a foreign number, a wrong prefix, a wrong
+length, or text with no digits in it — is rejected rather than stored, because
+a number that cannot be dialled costs the technician a wasted trip.
 
 Derived at submit: `requester_campus` (from profile — never asked), `section`
 (routing), `sub_section` (from the item), `ticket_no` (sequence). Priority is

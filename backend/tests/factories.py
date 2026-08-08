@@ -94,7 +94,7 @@ def make_user(username, campus=None, role=None, **scope):
         username=username,
         password="pw",
         email=f"{username}@example.test",
-        phone_number=f"07{abs(hash(username)) % 100_000_000:08d}",
+        phone_number=f"+2547{abs(hash(username)) % 100_000_000:08d}",
     )
     UserProfile.objects.create(user=user, campus=campus)
     if role is not None:

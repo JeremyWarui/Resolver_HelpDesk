@@ -48,18 +48,22 @@ def test_requester_can_give_a_different_number(
     response = raise_ticket(api, item, contact_phone="0722 111 222")
     assert response.status_code == 201
     ticket = Ticket.objects.get(pk=response.json()["id"])
-    assert ticket.contact_phone == "0722111222"
+    assert ticket.contact_phone == "+254722111222"
 
 
 @pytest.mark.parametrize(
     "given,stored",
     [
-        ("0712 345 678", "0712345678"),
+        ("0712 345 678", "+254712345678"),   # the way most people type it
         ("+254-712-345678", "+254712345678"),
-        ("(020) 2711000", "0202711000"),
+        ("254712345678", "+254712345678"),
+        ("712345678", "+254712345678"),      # trunk zero omitted
+        ("+254 (0) 712 345 678", "+254712345678"),
+        ("0110 123 456", "+254110123456"),   # the newer 01 mobile range
+        ("(020) 2711000", "+254202711000"),  # Nairobi landline
     ],
 )
-def test_formatting_is_stripped_so_the_number_is_dialable(
+def test_numbers_are_stored_in_one_dialable_form(
     api, requester, nrb_section, item, priorities, given, stored
 ):
     api.force_authenticate(requester)
@@ -68,7 +72,17 @@ def test_formatting_is_stripped_so_the_number_is_dialable(
     assert Ticket.objects.get(pk=response.json()["id"]).contact_phone == stored
 
 
-@pytest.mark.parametrize("given", ["07123", "not-a-number", "12"])
+@pytest.mark.parametrize(
+    "given",
+    [
+        "07123",              # too short for a Kenyan mobile
+        "071234567890",       # too long
+        "not-a-number",
+        "12",
+        "+447700900000",      # a UK number — almost always a typo here
+        "0912345678",         # 09 is not an allocated Kenyan prefix
+    ],
+)
 def test_unusable_numbers_are_rejected(
     api, requester, nrb_section, item, priorities, given
 ):

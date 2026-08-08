@@ -1,10 +1,13 @@
-import re
-
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.org.models import SectionTechnician, ServiceItem
+from apps.common.phone import (
+    CONTACT_PHONE_HELP,
+    InvalidPhoneNumber,
+    normalise_phone,
+)
 from apps.sla.models import Priority
 from apps.sla.services.due_dates import compute_due_dates
 from apps.facilities.models import Facility, FacilityType
@@ -185,31 +188,6 @@ class LocationInputSerializer(serializers.Serializer):
     )
 
 
-# Shown beside the field in the ticket wizard. Lives here so the API's own
-# help_text and the UI copy cannot drift apart.
-CONTACT_PHONE_HELP = "Optional — just in case the technician needs to call you."
-
-
-def normalise_phone(value):
-    """Strip formatting so two spellings of one number compare and dial alike.
-
-    Deliberately permissive about *form* and strict only about substance: a
-    technician needs something dialable, and rejecting a valid number because
-    it was typed with spaces would be worse than accepting an odd one. Kenyan
-    mobiles are 10 digits locally (07…/01…) or 12 with the country code, but
-    landlines and short extensions are shorter, so the floor is 7 digits.
-    """
-    cleaned = re.sub(r"[\s\-().]", "", value or "")
-    if not cleaned:
-        return ""
-    if not re.fullmatch(r"\+?\d{7,15}", cleaned):
-        raise serializers.ValidationError(
-            "Enter a phone number the technician can dial — digits only, "
-            "optionally starting with +."
-        )
-    return cleaned
-
-
 class TicketCreateSerializer(serializers.Serializer):
     service_item = serializers.PrimaryKeyRelatedField(
         queryset=ServiceItem.objects.select_related("sub_section__section_type")
@@ -228,7 +206,10 @@ class TicketCreateSerializer(serializers.Serializer):
     )
 
     def validate_contact_phone(self, value):
-        return normalise_phone(value)
+        try:
+            return normalise_phone(value)
+        except InvalidPhoneNumber as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -247,9 +228,15 @@ class TicketCreateSerializer(serializers.Serializer):
         # 1b. A number for the technician to call, if there is one. Optional
         #     throughout: a missing phone number is not a reason to refuse
         #     someone a repair, and the ticket itself carries the detail.
-        attrs["contact_phone"] = attrs.get("contact_phone") or normalise_phone(
-            getattr(user, "phone_number", "")
-        )
+        contact_phone = attrs.get("contact_phone")
+        if not contact_phone:
+            # Fall back to the profile, tolerating whatever is stored there —
+            # an unusable profile number must not block raising a ticket.
+            try:
+                contact_phone = normalise_phone(getattr(user, "phone_number", ""))
+            except InvalidPhoneNumber:
+                contact_phone = ""
+        attrs["contact_phone"] = contact_phone
 
         # 2. Resolve the routing section.
         try:
