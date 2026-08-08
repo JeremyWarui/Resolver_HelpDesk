@@ -36,6 +36,10 @@ export interface OverviewMetrics {
   at_risk: number;
   breached: number;
   escalation_rate: number | null;
+  /** Blocked right now — the SLA clock is frozen for these (R9). */
+  currently_paused?: number;
+  /** Age of currently-open work. Counts, not percentages. */
+  aging_buckets?: { lt_1d: number; d1_3d: number; d3_7d: number; gt_7d: number };
   delta: OverviewDelta;
 }
 

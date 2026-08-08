@@ -322,3 +322,63 @@ def test_no_module_writes_the_status_list_out_by_hand():
         and literal.search(path.read_text())
     ]
     assert offenders == [], f"status list written out by hand in: {offenders}"
+
+
+# ── The technician's own report ───────────────────────────────────────────────
+
+
+def test_a_technician_gets_their_own_numbers_and_the_sections_separately(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """`individual` is work assigned to them; `sectional` is context. They must
+    never be merged — a technician's CSAT is not their section's."""
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+
+    api.force_authenticate(nrb_electrician)
+    body = api.get(reverse("analytics:overview")).json()
+
+    assert set(body) >= {"individual", "sectional"}
+    assert body["individual"]["open_backlog"] == 1
+
+
+def test_the_overview_says_what_is_blocked_and_what_is_ageing(
+    api, nrb_hos, nrb_electrical_ticket
+):
+    """Both are already computed by aggregate() and were simply not sliced. A
+    technician needs `currently_paused` to tell "I am blocked" from "I am late",
+    and the buckets to see which of the backlog has gone stale."""
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("analytics:overview")).json()
+
+    assert "currently_paused" in body
+    assert set(body["aging_buckets"]) == {"lt_1d", "d1_3d", "d3_7d", "gt_7d"}
+
+
+def test_a_paused_ticket_shows_as_blocked_not_breached(
+    api, nrb_hos, nrb_electrical_ticket
+):
+    from datetime import timedelta
+
+    nrb_electrical_ticket.status = "pending"
+    nrb_electrical_ticket.paused_at = timezone.now() - timedelta(days=2)
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    nrb_electrical_ticket.save(
+        update_fields=["status", "paused_at", "resolution_due_at"]
+    )
+
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("analytics:overview")).json()
+
+    assert body["currently_paused"] == 1
+    assert body["breached"] == 0
+
+
+def test_a_technician_is_never_served_a_peer_ranking(api, nrb_electrician):
+    """The report must not imply a league table, because the backend refuses to
+    build one: `comparison` is False and `technician` is not an allowed
+    group_by for them."""
+    from apps.analytics.role_config import ROLE_VIEWS, resolve_group_by
+
+    assert ROLE_VIEWS["technician"]["comparison"] is False
+    assert resolve_group_by("technician", "technician") != "technician"

@@ -73,6 +73,12 @@ def _overview_slice(data: dict) -> dict:
         "at_risk": data["at_risk"],
         "breached": data["breached"],
         "escalation_rate": data["escalation_rate"],
+        # Blocked is not the same as behind. A technician looking at their own
+        # numbers needs to tell "I am late" from "I am waiting on a part nobody
+        # can order", and the aging buckets say which of the backlog is old.
+        # Both are already computed by aggregate(); they were just not sliced.
+        "currently_paused": data.get("currently_paused", 0),
+        "aging_buckets": data.get("aging_buckets", {}),
         "delta": data["delta"],
     }
 

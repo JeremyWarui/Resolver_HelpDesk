@@ -29,22 +29,70 @@ import TechnicianPerformanceReport from '@/features/admin/Reports/TechnicianPerf
 import SectionPerformanceReport from '@/features/admin/Reports/SectionPerformanceReport';
 import CampusPerformanceReport from '@/features/admin/Reports/CampusPerformanceReport';
 import GenerateReports from '@/features/admin/Reports/GenerateReports';
+import TechnicianPerformance from '@/features/shared/TechnicianPerformance';
 import type { AnalyticsParams } from '@/types';
 
-type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos';
+type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos' | 'technician';
+
+type TabId = 'overview' | 'tickets' | 'technicians' | 'sections' | 'campus' | 'export';
 
 interface RoleCopy {
   /** Heading on the Overview tab's key-metrics block. */
   overviewHeading: string;
+  /** Which tabs this role gets, in order. */
+  tabs: TabId[];
 }
 
-// Only the wording changes between roles — the underlying data is JWT-scoped
-// server-side, so admin's copy stays identical to its original text.
+// Data, not conditionals. Adding a role is a row here; the previous shape had
+// the tab list hardcoded as JSX with an `isManager &&` in the middle of it,
+// which is why the technician ended up with a whole parallel page rather than
+// a sixth entry in this table.
+//
+// The underlying numbers are JWT-scoped server-side, so the same tab shows
+// each role only what they may see — admin's copy stays exactly as it was.
 const ROLE_COPY: Record<ReportsRole, RoleCopy> = {
-  admin: { overviewHeading: 'System Overview' },
-  manager: { overviewHeading: 'Department Overview' },
-  hod: { overviewHeading: 'Campus Department Overview' },
-  hos: { overviewHeading: 'Section Overview' },
+  admin: {
+    overviewHeading: 'System Overview',
+    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+  },
+  manager: {
+    overviewHeading: 'Department Overview',
+    tabs: ['overview', 'tickets', 'technicians', 'sections', 'campus', 'export'],
+  },
+  hod: {
+    overviewHeading: 'Campus Department Overview',
+    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+  },
+  hos: {
+    overviewHeading: 'Section Overview',
+    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+  },
+  // A technician gets their own numbers and the exporter. The other tabs are
+  // supervisory views of other people's work — and `role_config.py` refuses to
+  // serve a technician a peer breakdown anyway, so offering the tab would only
+  // produce an empty one.
+  technician: {
+    overviewHeading: 'My Performance',
+    tabs: ['overview', 'export'],
+  },
+};
+
+const TAB_LABEL: Record<TabId, string> = {
+  overview: 'Overview',
+  tickets: 'Ticket Analytics',
+  technicians: 'Technician Performance',
+  sections: 'Section Analysis',
+  campus: 'Campus Performance',
+  export: 'Export Reports',
+};
+
+const TAB_ICON: Record<TabId, typeof Activity> = {
+  overview: Activity,
+  tickets: FileText,
+  technicians: Users,
+  sections: Building2,
+  campus: MapPin,
+  export: Download,
 };
 
 interface RoleReportsPageProps {
@@ -54,7 +102,8 @@ interface RoleReportsPageProps {
 export default function RoleReportsPage({ role }: RoleReportsPageProps) {
   const copy = ROLE_COPY[role];
   const isManager = role === 'manager';
-  const [activeView, setActiveView] = useState<'overview' | 'tickets' | 'technicians' | 'sections' | 'campus' | 'export'>('overview');
+  const isTechnician = role === 'technician';
+  const [activeView, setActiveView] = useState<TabId>('overview');
   const [params, setParams] = useState<AnalyticsParams>({ days: 30 });
 
   // Fetch analytics for overview
@@ -74,64 +123,23 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
       <div className="bg-card border-b sticky top-0 z-10">
         <div className="px-4 md:px-6 py-3">
           <div className="flex items-center justify-between gap-4">
-            {/* Navigation Tabs - Left */}
+            {/* Navigation Tabs — driven by ROLE_COPY[role].tabs */}
             <div className="flex gap-2 overflow-x-auto">
-              <Button
-                variant={activeView === 'overview' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setActiveView('overview')}
-                className="gap-2"
-              >
-                <Activity className="h-4 w-4" />
-                Overview
-              </Button>
-              <Button
-                variant={activeView === 'tickets' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setActiveView('tickets')}
-                className="gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                Ticket Analytics
-              </Button>
-              <Button
-                variant={activeView === 'technicians' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setActiveView('technicians')}
-                className="gap-2"
-              >
-                <Users className="h-4 w-4" />
-                Technician Performance
-              </Button>
-              <Button
-                variant={activeView === 'sections' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setActiveView('sections')}
-                className="gap-2"
-              >
-                <Building2 className="h-4 w-4" />
-                Section Analysis
-              </Button>
-              {isManager && (
-                <Button
-                  variant={activeView === 'campus' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveView('campus')}
-                  className="gap-2"
-                >
-                  <MapPin className="h-4 w-4" />
-                  Campus Performance
-                </Button>
-              )}
-              <Button
-                variant={activeView === 'export' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setActiveView('export')}
-                className="gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Export Reports
-              </Button>
+              {copy.tabs.map((tab) => {
+                const Icon = TAB_ICON[tab];
+                return (
+                  <Button
+                    key={tab}
+                    variant={activeView === tab ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setActiveView(tab)}
+                    className="gap-2"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {TAB_LABEL[tab]}
+                  </Button>
+                );
+              })}
             </div>
 
             {/* Action Buttons - Right */}
@@ -152,8 +160,14 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
 
       {/* Content Area */}
       <div className="p-4 md:p-6 space-y-6">
-        {/* Overview Dashboard */}
-        {activeView === 'overview' && (
+        {/* A technician's overview is their own performance, not an inventory
+            of the estate — see TechnicianPerformance for the ordering. */}
+        {activeView === 'overview' && isTechnician && (
+          <TechnicianPerformance params={params} />
+        )}
+
+        {/* Overview Dashboard — supervisory roles */}
+        {activeView === 'overview' && !isTechnician && (
           <>
             {/* Key Metrics Cards */}
             <div>
