@@ -1,8 +1,6 @@
 import { usePerformanceTechnicians } from '@/hooks/analytics';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   BarChart,
   Bar,
@@ -17,6 +15,7 @@ import { AlertCircle, CheckCircle, AlertTriangle, Users } from 'lucide-react';
 import MetricCard from '@/components/shared/data/MetricCard';
 import type { AnalyticsParams } from '@/types';
 import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
+import { TechnicianBreakdownTable } from '@/components/shared/data/TechnicianPerformanceTable';
 
 
 
@@ -149,67 +148,19 @@ export default function TeamPerformanceReport({ params }: Props) {
         </CardContent>
       </Card>
 
-      {/* Detailed Performance Table */}
+      {/* Detailed Performance Table — the shared sortable one.
+          This was a hand-rolled <Table> over the same rows from the same
+          endpoint as TechnicianBreakdownTable, minus the sorting, and with a
+          column headed "Pending" that rendered `escalated_count` — there is no
+          pending_count on the row at all. Two tables of one thing meant the
+          mislabelled one was never read next to the correct one. */}
       <Card className="py-7 px-2">
         <CardHeader className="pb-5">
           <CardTitle className="pb-2">Detailed Performance Metrics</CardTitle>
           <CardDescription>Comprehensive view of all technician metrics</CardDescription>
         </CardHeader>
         <CardContent className="p-5 pt-1">
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50 hover:bg-muted/50">
-                  <TableHead className="font-semibold">Technician</TableHead>
-                  <TableHead className="text-center font-semibold">Open</TableHead>
-                  <TableHead className="text-center font-semibold">Resolved</TableHead>
-                  <TableHead className="text-center font-semibold">Pending</TableHead>
-                  <TableHead className="text-center font-semibold">Total Assigned</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedTechnicians.length > 0 ? (
-                  sortedTechnicians.map((tech, i) => (
-                    <TableRow key={tech.technician_id ?? `tech-${i}`} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">
-                        <div>
-                          <div>{getTechName(tech)}</div>
-                          <div className="text-xs text-muted-foreground">@{tech.username}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 text-[#0078d4]">
-                          <AlertTriangle className="h-4 w-4" />
-                          {tech.open_count ?? 0}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 text-[#107c10]">
-                          <CheckCircle className="h-4 w-4" />
-                          {tech.resolved_count ?? 0}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 text-[#ffaa44]">
-                          <AlertTriangle className="h-4 w-4" />
-                          {tech.escalated_count ?? 0}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="outline">{tech.total_assigned ?? 0}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No technician data available
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          <TechnicianBreakdownTable data={data} loading={loading} bare />
         </CardContent>
       </Card>
     </div>
