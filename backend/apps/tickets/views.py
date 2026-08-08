@@ -9,6 +9,7 @@ from rest_framework.generics import get_object_or_404
 import os
 
 from django.core.files.base import ContentFile
+from django.db.models import Exists, OuterRef
 
 from apps.tickets.models import (
     Ticket,
@@ -426,11 +427,20 @@ class TicketListCreateView(generics.ListCreateAPIView):
         if params.get("mine") == "1":
             qs = (
                 Ticket.objects.filter(raised_by=user)
+                .annotate(
+                    # The requester's own view is where this matters most: it
+                    # is what surfaces "you have resolved tickets still waiting
+                    # for your rating".
+                    has_feedback=Exists(
+                        TicketFeedback.objects.filter(ticket=OuterRef("pk"))
+                    ),
+                )
                 .select_related(
                     "section__campus_department__department",
                     "section__campus_department__campus",
                     "section__section_type",
                     "section__hos",
+                    "sub_section",
                     "priority",
                     "service_item__sub_section",
                     "assigned_to",

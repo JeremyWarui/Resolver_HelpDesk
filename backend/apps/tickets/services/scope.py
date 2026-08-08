@@ -7,10 +7,16 @@ def scoped_ticket_qs(user, role):
     Returns an empty queryset for users with no role or an unknown role.
     Does NOT apply ?mine=1 — that is handled separately in the view (R15).
     """
-    from apps.tickets.models import Ticket
+    from apps.tickets.models import Ticket, TicketFeedback
     from apps.org.models import SectionTechnician
 
-    base = Ticket.objects.select_related(
+    base = Ticket.objects.annotate(
+        # A flag, not a join: the rating itself is detail-only, but a list has
+        # to be able to say which resolved tickets are still waiting on their
+        # requester. Exists() keeps this a subquery, so it cannot fan the rows
+        # out the way a join to a related table would.
+        has_feedback=Exists(TicketFeedback.objects.filter(ticket=OuterRef("pk"))),
+    ).select_related(
         "section__campus_department__department",
         "section__campus_department__campus",
         "section__section_type",

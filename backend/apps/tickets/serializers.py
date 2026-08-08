@@ -112,6 +112,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
     requester_campus = _CampusMinSerializer(read_only=True)
     location = _TicketLocationSerializer(read_only=True, allow_null=True)
     is_breaching = serializers.SerializerMethodField()
+    has_feedback = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -134,6 +135,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "paused_at",
             "accumulated_pause",
             "is_breaching",
+            "has_feedback",
             "created_at",
             "updated_at",
             "resolved_at",
@@ -154,6 +156,20 @@ class TicketReadSerializer(serializers.ModelSerializer):
         if ticket.resolution_due_at is None:
             return False
         return timezone.now() > ticket.resolution_due_at
+
+    def get_has_feedback(self, ticket):
+        """Whether the requester has rated this yet — a flag, not the rating.
+
+        The dashboard needs to find resolved tickets still waiting on their
+        requester, which it cannot do from the detail-only `feedback` object.
+        Reads the `has_feedback` annotation the queryset supplies; the
+        attribute fallback is for the odd unannotated instance (e.g. a
+        serializer called on a freshly saved object).
+        """
+        annotated = getattr(ticket, "has_feedback", None)
+        if annotated is not None:
+            return bool(annotated)
+        return TicketFeedback.objects.filter(ticket=ticket).exists()
 
 
 class TicketDetailReadSerializer(TicketReadSerializer):

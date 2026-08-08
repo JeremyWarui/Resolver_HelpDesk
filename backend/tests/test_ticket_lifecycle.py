@@ -272,3 +272,78 @@ def test_requester_sees_only_public_comments(
     assert response.status_code == 200
     bodies = {row["body"] for row in response.json()["results"]}
     assert bodies == {"on my way"}
+
+
+# ── Waiting on the requester ──────────────────────────────────────────────────
+#
+# A resolved ticket nobody rates leaves the satisfaction figure built from
+# whoever happened to reopen the ticket. `has_feedback` is what lets the
+# requester's own dashboard say "these are still waiting for you".
+
+
+def test_a_resolved_ticket_starts_unrated(api, requester, nrb_electrical_ticket):
+    nrb_electrical_ticket.status = "resolved"
+    nrb_electrical_ticket.save(update_fields=["status"])
+
+    api.force_authenticate(requester)
+    rows = api.get(reverse("ticket-list"), {"mine": 1}).json()["results"]
+    assert [row["has_feedback"] for row in rows] == [False]
+
+
+def test_rating_a_ticket_flips_the_flag(api, requester, nrb_electrical_ticket):
+    from apps.tickets.models import TicketFeedback
+
+    nrb_electrical_ticket.status = "resolved"
+    nrb_electrical_ticket.save(update_fields=["status"])
+    TicketFeedback.objects.create(ticket=nrb_electrical_ticket, rating=4)
+
+    api.force_authenticate(requester)
+    rows = api.get(reverse("ticket-list"), {"mine": 1}).json()["results"]
+    assert [row["has_feedback"] for row in rows] == [True]
+
+
+def test_the_flag_says_nothing_about_the_rating_itself(
+    api, requester, nrb_electrical_ticket
+):
+    """A list of everyone's scores is a different thing from a nudge to rate.
+    The list carries the flag; the rating stays on the detail view."""
+    from apps.tickets.models import TicketFeedback
+
+    TicketFeedback.objects.create(ticket=nrb_electrical_ticket, rating=1, comment="bad")
+
+    api.force_authenticate(requester)
+    row = api.get(reverse("ticket-list"), {"mine": 1}).json()["results"][0]
+    assert row["has_feedback"] is True
+    assert "feedback" not in row
+
+
+def test_the_flag_costs_no_query_per_row(
+    api, requester, nrb_section, electrical, priorities, django_assert_num_queries
+):
+    """Exists() as an annotation, not a per-row lookup.
+
+    Asserted as "the same number of queries for one ticket as for six" rather
+    than a fixed count, so the test survives unrelated changes to pagination
+    but still fails the moment the flag starts costing a query per row.
+    """
+    from django.db import connection, reset_queries
+    from django.test.utils import CaptureQueriesContext
+    from tests import factories
+
+    api.force_authenticate(requester)
+
+    factories.make_ticket(requester, nrb_section, electrical)
+    with CaptureQueriesContext(connection) as first:
+        assert api.get(reverse("ticket-list"), {"mine": 1}).status_code == 200
+
+    for _ in range(5):
+        factories.make_ticket(requester, nrb_section, electrical)
+    reset_queries()
+    with CaptureQueriesContext(connection) as second:
+        response = api.get(reverse("ticket-list"), {"mine": 1})
+
+    assert len(response.json()["results"]) == 6
+    assert len(second) == len(first), (
+        f"{len(first)} queries for 1 ticket, {len(second)} for 6 — the flag is "
+        "being evaluated per row"
+    )
