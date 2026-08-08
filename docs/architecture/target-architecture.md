@@ -1,7 +1,10 @@
-# Target Architecture — Resolver HelpDesk
+# Architecture — Resolver HelpDesk
 
-Status: agreed, pre-implementation. Supersedes the enterprise Service Desk design
-inherited from `django_resolver`.
+Status: **as built**. Supersedes the enterprise Service Desk design inherited
+from `django_resolver`.
+
+Where this document and the code disagree, the code is right and this is a bug
+— say so in the same commit that fixes it.
 
 ## 1. Organisational hierarchy
 
@@ -38,8 +41,12 @@ no schema change.**
 
 ## 2. Catalogue
 
-`catalog.ServiceCategory` is deleted. Its `location_details` field moves to
-`org.SubSection`; `ServiceItem.category` becomes `ServiceItem.sub_section`.
+`catalog.ServiceCategory` is deleted; `ServiceItem.category` becomes
+`ServiceItem.sub_section`.
+
+`location_details` went too. It moved to `SubSection` first, then out
+altogether: every trade needed it, so it was a switch with one position — see
+§5b.
 
 **Priority leaves the catalogue entirely.** `ServiceCategory.default_priority`
 and `ServiceItem.default_priority` are both gone. A ticket opens at the lowest
@@ -130,18 +137,26 @@ or a HOS can assign work to someone who then gets a 403 on their own ticket:
 The requester picks a **service item**; everything else is derived server-side.
 
 ```
-1a  sub-section   Electrical │ Plumbing │ Carpentry │ Masonry │ Painting
+1a  trade         Electrical │ Plumbing │ Carpentry │ Masonry │ Painting
 1b  service item  Faulty socket │ Replace bulb │ Generator issue
-2   description + attachments + location (gated by sub_section.location_details)
-    + contact phone, prefilled from the profile
+2   description + attachments + contact phone + location (always)
 3   review + submit
 ```
 
+Step 1a lists only the trades the requester's own campus runs — `GET
+/catalog/?campus=`, which is campus-required and returns 400 without it.
+
+The requester never sees the word "trade" in their own UI; it is staff
+vocabulary (the admin catalogue, the assignment modal) because it names the
+technician-scoping boundary. To a requester these are just the maintenance
+services their campus offers.
+
 `contact_phone` is optional, Kenyan-only, and stored on the ticket in E.164
-(`+254712345678`) — not read from the profile at display time. Two reasons: the useful number is often not the
-requester's (a caretaker, whoever is actually in the room), and a profile edit
-must not rewrite the history of a job that closed months ago. Blank falls back
-to the profile number; a user with no number anywhere can still raise a ticket.
+(`+254712345678`) — not read from the profile at display time. Two reasons: the
+useful number is often not the requester's (a caretaker, whoever is actually in
+the room), and a profile edit must not rewrite the history of a job that closed
+months ago. Blank falls back to the profile number, tolerating an unusable one;
+a user with no number anywhere can still raise a ticket.
 It appears on the ticket **detail** only — one number is a technician doing
 their job, a page of them is a contact-list export.
 
@@ -175,15 +190,73 @@ Changing priority recomputes `response_due_at` / `resolution_due_at` **from
 since the requester raised it, and re-basing would hand back time already
 spent waiting. The change is written to `TicketLog` as `priority_changed`.
 
+The UI puts the priority control **above** the technician list, not below it.
+The two judgements feed each other — how urgent this is decides who can
+realistically take it — so choosing the person first, then the urgency from
+below a scrolling list, is the wrong order. It is pre-selected to what the
+ticket already carries, so "leave it at Low" costs nothing.
+
 `Ticket.sub_section` is denormalised deliberately: `analytics.aggregate()` may only
 touch direct `Ticket` columns (join fan-out there previously caused 500s and
 timeouts on Neon), and per-trade breakdown is the headline dimension of this system.
 
+## 5b. Location
+
+**Every ticket carries one.** There is no service for which the question is
+skipped: maintenance work happens somewhere, and a ticket the technician cannot
+find is not a ticket. What varies is *which fields* are asked for, and that is
+the facility type's job — not the trade's.
+
+`SubSection.location_details` existed to gate this and is gone. The seed set it
+true for all five trades, which made it a boolean that could not be false —
+configuration pretending to be a decision.
+
+Six facility types, in `apps/facilities/validators.py::TYPE_SPECS`, which is the
+whole contract: `required` and `optional` are the fields offered, `known` rejects
+anything else posted, and `building_dropdown` says whether a named facility off
+the register must be picked.
+
+| Type | Required | Optional | Names a facility? |
+|---|---|---|---|
+| `office_block` | floor, room | area | yes |
+| `hostel` | room_number | area | yes |
+| `building` | — | room, area | yes |
+| `residential` (Staff Quarters) | tenant_name | unit_number | no |
+| `equipment` | asset_name | asset_id, description | no |
+| `grounds` | zone | landmark | no |
+
+`building` is the catch-all for everything the register names but that has no
+interior scheme of its own — conference centres, dining halls, gate houses,
+recreational blocks. It is the one type requiring no `values` at all: the
+facility *is* the location, and room/area only narrow it down. So a type must
+offer either a named facility or at least one field, which is what
+`test_every_type_asks_for_something` asserts.
+
+Hostels and staff quarters are deliberately different. Hostel occupants rotate
+per course, so the room identifies the fault and the person in it is nobody in
+particular. Staff quarters are a standing household, so the tenant is who the
+technician arranges access with — which makes them the part worth insisting on.
+
+The frontend mirrors this table in `TicketCreationWizard.tsx::FACILITY_FORMS`
+and renders all six through one loop. The duplication is accepted: it is nine
+short lines, and serving the spec would be a new endpoint contract to keep in
+step. Changing `TYPE_SPECS` means changing both in the same commit.
+
+The wizard fetches `GET /facilities/?campus=` **once** and groups by type
+client-side, rather than one request per type the requester clicks. Each row
+carries `facility_type`, `type` and `facility_type_name`, which is enough to
+draw both the type tiles and the facility dropdown — so there is no
+`/facility-types/` call, and no further request as they click around. It also
+means only types the campus actually has anything for are offered.
+
 ## 6. Deferred and dropped
 
-**WebSockets deferred.** `Notification` + its REST endpoints are ported and the
-frontend polls. Dropped: `channels`, `channels-redis`, `daphne`, `redis`,
-`pywebpush`, `resolver/asgi.py`, and Redis from the deploy.
+**WebSockets deferred.** `Notification` + its REST endpoints are ported and read
+over plain HTTP. Dropped: `channels`, `channels-redis`, `daphne`, `redis`,
+`pywebpush`, `resolver/asgi.py`, Redis from the deploy — and on the frontend
+`lib/ws/wsClient.ts` and `hooks/useWsChannels.ts`, which were otherwise opening
+a socket against nothing and retrying with exponential backoff for the life of
+the session.
 
 Three reasons: a maintenance helpdesk runs on a minutes-to-hours cadence; WS forces
 ASGI + Redis into the deploy for a low-volume single-department app, and silently
@@ -195,6 +268,44 @@ notification helpers depend on the `is_primary` filters being deleted.
 
 **Mobile PWA kept** — offline queue, mobile ticket views, service-worker caching.
 `PushSubscriptionManager` is dropped with the push backend.
+
+## 6a. Rating the work
+
+`TicketFeedback` is one rating per ticket, from the requester, at or after
+`resolved`. There is no free-floating "how are we doing" feedback and no model
+for one.
+
+The rating is reachable from the ticket detail ("Rate & close"), which on its own
+means a requester who never reopens the ticket leaves it unrated forever — and
+the satisfaction figure ends up built from whoever happened to click through. So
+the list serializer carries `has_feedback`, an `Exists` annotation and a flag
+rather than the rating itself, and the requester's dashboard shows a prompt only
+when resolved tickets are actually waiting on them. A permanent nav item would
+sit empty for someone who raises three tickets a year.
+
+`GET /tickets/feedback/` lists ratings for the Feedback tab (technician, HOS,
+HOD, manager). It filters through `scoped_ticket_qs` rather than defining a
+second rule: a rating should be readable by exactly the people who could already
+read the ticket it belongs to. A technician therefore sees ratings across their
+whole trade, not only work they personally did — a trade's reputation is shared —
+while the campus and trade boundaries still hold.
+
+## 6b. Starting work
+
+Claiming and being assigned are different, and the UI treats them differently.
+
+`claim_ticket` drives `open → assigned → in_progress` in one action, logging both
+hops. A technician clicking claim on the open queue is volunteering: there is no
+real gap between claiming and starting, and a second "accept" click would only
+let people claim jobs and sit on them.
+
+Assignment by the HOS leaves the ticket at `assigned`, and it stays there until
+the technician acts. That dwell **is** the response-time SLA — auto-advancing to
+`in_progress` would make `response_due_at` measure nothing. Leaving it is a
+one-tap "Start work" button rather than a trip through the status modal, which
+insists on a progress note. Transitions that record a *decision* need words
+(`pending` needs a reason, `resolved` needs a note); transitions that record
+*starting* do not.
 
 ## 7. Inherited bugs — do not port
 
@@ -208,11 +319,11 @@ implementation today.
    Deferring WS avoids inheriting it; a correct scheme needs groups keyed on
    `(section, sub_section)` with membership re-derived from `SectionTechnician`
    rather than a JWT claim.
-2. **Frontend posts a backend field that does not exist.** `SectionTypeForm.tsx`
-   and `organizations.ts:175` send `parent` / `specialty_ids` for a
-   "specialty within a section type" feature. `SectionType` has no `parent` field
-   and `specialty` appears nowhere in the Python. DRF discards it silently. The
-   **UI is reusable** for SubSection admin — the backend was never built.
+2. ~~**Frontend posts a backend field that does not exist.**~~ `SectionTypeForm.tsx`
+   and `organizations.ts` sent `parent` / `specialty_ids` for a "specialty within
+   a section type" feature that exists nowhere in the Python; DRF discarded it
+   silently. **Fixed** — the UI was reused for SubSection admin, which is the
+   feature it was reaching for.
 3. **Tailwind config is inert.** `src/index.css:1` is `@import 'tailwindcss';` with
    no `@config`, so under Tailwind v4 + `@tailwindcss/vite` the config file is never
    loaded and `tailwindcss-animate` is never registered — every `animate-in` /
@@ -225,6 +336,18 @@ implementation today.
 6. `report_views.py:96-97` parses dates naive under `USE_TZ=True`.
 7. `routing.py:27` uses `.first()` with no `order_by` — nondeterministic if a campus
    ever has two matching active sections.
+
+## 7a. Keeping the two halves in step
+
+Frontend code can call an endpoint that does not exist and still compile, build
+and pass lint. That is the failure mode this port kept hitting, and the first
+sign of it is a 404 in front of a user.
+
+The check is mechanical — extract every `apiClient.<verb>('…')` path, extract
+every Django route, diff them. Doing it once found six unmatched calls: five
+dead (push, `/admin/config/`, `/auth/profile/`, `assign-hos`) and one live —
+`GET /tickets/feedback/`, which four roles' Feedback tab was calling and which
+had never been ported. Worth re-running after any batch of endpoint changes.
 
 ## 8. Target app layout
 

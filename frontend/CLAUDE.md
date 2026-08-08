@@ -1,6 +1,14 @@
-# CLAUDE.md — Resolver Frontend
+# CLAUDE.md — Resolver HelpDesk Frontend
 
-> **Kenya School of Government — Multi-Campus Service Desk System**
+> **Scope note.** The repo-wide file is `../CLAUDE.md` and the architecture SOT is
+> `../docs/architecture/target-architecture.md`; both take precedence over this
+> one. This document was inherited from the enterprise Service Desk frontend and
+> is kept for its design-system and directory detail, which still hold. Sections
+> touching the catalogue, ticket wizard, roles and real-time have been corrected
+> for the Maintenance Helpdesk — anything else predating the port should be
+> checked against the code before you trust it.
+
+> **Kenya School of Government — Maintenance Helpdesk**
 > React 19 · TypeScript · Vite · shadcn/ui · Tailwind CSS 4 · Zustand · React Query
 >
 > **Aligned with the backend implementation plan.** The Django Resolver API is the
@@ -54,7 +62,7 @@ violates one, see **§28 Reconciliation & Removal**.
 - HOS/HOD may assign a ticket only to technicians in **that ticket's section pool**. The technician picker must be scoped to the ticket's section, never the global technician list.
 
 ### 2.7 Location is facility-backed and conditional
-- The location step appears **only** when the selected category has `location_details === true`.
+- The location step **always** appears. Every ticket carries a location; what varies is which fields the chosen facility type asks for (SOT §5b).
 - The user picks a facility **type**, then a **hardcoded form for that type** renders its fields (the type set is small and fixed — no dynamic schema). Building-dropdown types (office_block, building) pick a campus-scoped **Facility**; others are plain inputs. Submit `{ facility_type_id, facility_id?, values }`. **No free-text building names; no `field_schema`/`DynamicFormRenderer`.**
 
 ### 2.8 Timeline = three sources, one view
@@ -307,7 +315,6 @@ client/
     │   ├── useServiceItems.ts        # ⟳ as above
     │   ├── useSortableColumn.tsx
     │   ├── useInView.ts         # "freeze once visible" IntersectionObserver — backs LazyMount (§19)
-    │   ├── useWsChannels.ts     # WebSocket channel subscriptions
     │   ├── analytics/           # useAdminAnalytics, useRoleAnalytics,
     │   │                        #   useTechnicianAnalytics, useTicketAnalytics
     │   ├── campuses/            # useCampuses
@@ -344,7 +351,6 @@ client/
     │   │   ├── permissions.ts
     │   │   └── roleContext.tsx
     │   ├── ws/
-    │   │   └── wsClient.ts      # WebSocket client; invalidates React Query on events
     │   └── utils.ts             # cn() utility
     │
     ├── stores/
@@ -410,7 +416,7 @@ const ManagerLayout  = lazy(() => import('./features/manager/ManagerLayout'));
 | `/hod/*` | `hod` |
 | `/manager/*` | `manager` |
 
-All protected routes are wrapped in `<DashboardShell>` which bootstraps user data and WebSocket.
+All protected routes are wrapped in `<DashboardShell>`, which bootstraps user data.
 
 > **Rule (C5/C6):** `/user/*` must use `requiredRoles={[]}` (empty array = any authenticated
 > user). Every authenticated user is a requester regardless of operational role. Users whose JWT
@@ -451,7 +457,7 @@ const ROLE_PATHS: Record<UserRole, string> = {
 > **Rule (C2):** There is **no `/api/v1/users/<id>/` endpoint**. `useUserData` must NOT call a
 > user-detail URL — it does not exist and returns 404. Hydrate the auth store directly from the
 > login-time profile stored in localStorage. When a fresh profile is needed (e.g. after
-> `switch-role`), call `GET /auth/me/` (`MeView`). Do not invent or call a user-detail endpoint.
+> call `GET /auth/me/` (`MeView`). Do not invent or call a user-detail endpoint. There is no role switching — a user holds exactly one role.
 
 ### Key auth files
 
@@ -552,7 +558,7 @@ Call hooks directly in the component that needs them. **Do not** wrap them in a 
 > users; write methods require admin. If a hook in this table returns 403 for a non-admin user,
 > the backend permission class is wrong, not the frontend. `SectionTypeViewSet` also exposes a
 > nested serializer (`SectionTypeWithCategoriesSerializer`) that includes related
-> `service_categories`, used by QuickActions widgets.
+> `sub_sections` (trades) with their service items, used by QuickActions.
 
 ---
 
@@ -572,7 +578,7 @@ Single shared instance. Token attached per request. On 401 → clears auth + red
 > **Rule (C3):** The `apiClient` base URL must end in `/api/v1`. All main endpoints
 > (`/tickets/`, `/analytics/`, `/catalog/`, `/facilities/`, `/departments/`,
 > `/section-types/`, etc.) live under `/api/v1/`. Auth endpoints (`/auth/login/`,
-> `/auth/refresh/`, `/auth/me/`, `/auth/switch-role/`) are registered at **both** `/api/`
+> `/auth/refresh/`, `/auth/me/`) are registered at **both** `/api/`
 > and `/api/v1/`, so they work regardless. Never use `/api` (without the version suffix)
 > as the base URL — all CRUD calls will 404.
 
@@ -654,7 +660,7 @@ interface CreateTicketPayload {
 
 **Write payloads** use `_id` suffix for FK fields (`facility_id`, `assigned_to_id`, etc.). The exception is ticket **create**, which is constrained to the shape above.
 
-> `priority` is **not** a free string union on writes. The string enum (`low|medium|high|critical`) survives only as a display/label convenience in `constants/tickets.ts`; the source of truth is the backend `Priority` entity. Remove any `ServiceCategory.department` field from `catalogue.ts` types — department derives from the section type (§28).
+> `priority` is **not** a free string union on writes. The string enum (`low|medium|high|critical`) survives only as a display/label convenience in `constants/tickets.ts`; the source of truth is the backend `Priority` entity. The catalogue carries no priority at all — a ticket opens at Low and the HOS sets the real one when they assign it.
 
 ---
 
@@ -663,7 +669,7 @@ interface CreateTicketPayload {
 The wizard is the canonical create path and must follow §2.2/§2.3/§2.7:
 
 1. **Service** — load the campus-filtered tree via `useCatalog(userData.campusId)`; user picks a **category**, then a **service item**. No global/flat catalogue. `campusId` must be non-null; it comes from `primary_campus_id` on the auth store, which `flattenJWT` populates from the JWT `campus_id` claim (always present for all users — see C9/C10). If `campusId` is null the hook is skipped and the wizard shows nothing.
-2. **Location (conditional)** — render **only** if the chosen category has `location_details === true`. Pick a facility type, then render that type's **hardcoded form** (a switch over the fixed type set). Building-dropdown types load `useFacilities(campusId, type)`; others are plain inputs. Collect `{ facility_type_id, facility_id?, values }`.
+2. **Location (always)** — pick one of the six facility types, then fill the fields that type asks for. The per-type field lists live in one table (`FACILITY_FORMS`) rendered through a single loop, mirroring `apps/facilities/validators.py::TYPE_SPECS`; change both together. Facilities come from one `GET /facilities/?campus=` grouped client-side, so clicking between types costs no requests. Collect `{ facility_type, facility?, values }`.
 3. **Details** — description (and any non-routing fields).
 4. **Submit** — `useCreateTicket()` posts `CreateTicketPayload`. **Priority, section, and SLA are not collected** — the server sets them and returns the created ticket with `priority`, `section`, `current_level`, and due dates populated.
 
@@ -844,9 +850,15 @@ Import from `@/utils/formatSection` or `@/utils`. Analytics endpoints provide `d
 
 ---
 
-## 25. WebSocket
+## 25. Real-time — removed
 
-`lib/ws/wsClient.ts` manages the connection. `wsInit()` is called in `main.tsx` with a `queryClient.invalidateQueries` callback so real-time events bust React Query caches. `hooks/useWsChannels.ts` subscribes the current user to role-appropriate channels — called once inside `DashboardShell`. Events that must invalidate ticket caches: **assignment, status change, escalation (`current_level` change), priority change, new comment**.
+There is none. Channels, Daphne and Redis are gone from the backend, so
+`lib/ws/wsClient.ts` and `hooks/useWsChannels.ts` were deleted rather than left
+opening a socket against nothing and retrying for the life of the session.
+
+Freshness comes from React Query: invalidate `['tickets']` after any mutation
+that changes assignment, status, escalation level, priority or comments. A
+maintenance helpdesk runs on a minutes-to-hours cadence, which polling covers.
 
 ---
 
@@ -924,34 +936,26 @@ VITE_API_URL_PROD=https://django-resolver.onrender.com/api/v1
 
 **A reference-data query param that's accepted but never filters is worse than none (C15).** `/departments/?campus=` and `/sections/?department=` looked correct — the frontend sent them, the URL showed them — but `DepartmentViewSet`/`SectionViewSet` had no `get_queryset()` override, so every Campus→Department→Section cascading select (Users admin page, Technician form) silently showed every row regardless of scope. Before trusting a scoping query param on a reference-data endpoint, check the viewset's `get_queryset()` actually applies it — don't assume from the param existing in the URL.
 
-**Replacing a primary `RoleAssignment` demotes the old one; it does not delete it (C16).** Posting a new `is_primary=True` role assignment for a user (the Users admin page's promote/demote flow) must not error on `one_primary_role_per_user`, and must not delete the previous primary — it demotes it (`is_primary: false`) inside the same transaction, keeping it for audit history. If you see this constraint error surfaced to the UI, the fix is server-side (`UserRoleAssignmentListCreateView`), not a frontend retry/catch.
+**A user holds exactly one role, and POSTing replaces it.** `RoleAssignment` is a `OneToOneField` with no `is_primary` and no validity window — there is no cover, no promotion/demotion pair and no role switching. Role changes go through Edit User; the endpoint offers GET and POST only. For a technician the POST must carry `sub_section_ids`, which the server uses to sync their `SectionTechnician` rows and which it refuses to leave empty.
 
-**`ServiceItem` priority override defaults to "inherit," not to the first priority in the list.** `ItemForm`'s priority `Select` must default to an empty/`__inherit__` sentinel, not `priorities[0]` (unlike `CategoryForm`, where a priority is required). Sending `default_priority_id: null` clears an existing override back to inheritance — omitting the field on update does not.
+**The catalogue carries no priority.** `ItemForm` and `SubSectionForm` have no priority field at all: "Leaking tap" in a store room and over a server rack are the same catalogue entry and nowhere near the same urgency. Priority is set once, by the HOS, at assignment.
 
 ---
 
-## 28. Reconciliation & Removal (aligns to backend plan §6)
+## 28. Reconciliation — done
 
-Apply after backend parity exists; remove only once the replacement path works.
+This section was a migration checklist against the enterprise backend. It has
+been worked through: approvals, per-campus workflows, context config, dynamic
+form schemas and the free-text location inputs are gone, and the catalogue,
+wizard, assignment, rating, timeline and analytics surfaces are bound to the
+endpoints listed above. The files it named (`WorkflowsPage`,
+`ContextConfigEditor`, `ApproveRejectActions`, `FacilityLocationSelector`,
+`DynamicFormRenderer`) do not exist in this repo.
 
-| File / area | Action | Reason (plan rule) |
-|-------------|--------|--------------------|
-| `features/admin/WorkflowsPage.tsx` + Workflows nav entry | **Remove** | No per-campus workflow; the ladder (technician→HOS→HOD) is structural (R6/R7/R10) |
-| `features/admin/ContextConfigEditor.tsx` | **Remove / repurpose** | "Context/workflow config" is not part of the model |
-| `components/shared/ticket/ApproveRejectActions.tsx` + manager approve/reject | **Remove** | No approval transition in the lifecycle — removed entirely (§2.4) |
-| `TicketCreationWizard.tsx` + `utils/ticketValidation.ts` | **Align** | Send `service_item` (+location) only; drop priority/section inputs (R6/R7) |
-| `useServiceCategories` / `useServiceItems` in the create flow → `useCatalog(campusId)` | **Align** | Campus-filtered catalogue tree (R5) |
-| `FacilityLocationSelector` + per-type forms + any free-text building inputs | **Align** | One hardcoded form per fixed facility type; building dropdown from `Facility` registry; remove free text. No `field_schema`/`DynamicFormRenderer` (R13/R14) |
-| `types/ticket.types.ts` status values | **Align** | Canonical set `open/assigned/in_progress/pending/resolved/closed`; drop `pending_approval`/`approved`/`rejected`/`escalated` |
-| `SLACountdown.tsx` | **Align** | Paused state on hold; no client SLA math (R9) |
-| `TechnicianPicker` / `AssignmentModal` | **Align** | Scope to the ticket's section pool |
-| `RatingModal` / `RatingWidget` | **Align** | Once, resolved+, requester only (R11) |
-| `TicketTimeline` / `CommentThread` | **Align** | Merge log+comment+feedback; hide internal from requester (R11) |
-| `SLAComplianceGauge` / `TicketVolumeChart` / `TechnicianPerformanceTable` / `SLATrackingView` | **Align** | Bind to `/analytics/*`; remove client aggregation (Phase 7) |
-| `features/admin/Sections/SectionForm` + `SectionsPage` | **Align** | Section = campus instance under (campus_department, section_type); not a global picklist (R3) |
-| `features/admin/Catalogue` category form + `types/catalogue.ts` | **Align / remove dept field** | Category has no department FK; derive via section type (R4) |
-| `EscalationModal.tsx` | **Align** | `current_level` server-owned; never client-computed (R7/R10) |
-| `types/ticket.types.ts` `current_level`, `priority` object, due dates, `paused_at`, `location` | **Add/align** | New/clarified fields (R7/R9/R13) |
-| `features/admin/SLARulesPage.tsx` | **Align** | Model as Priority + ordered EscalationRule rungs, not flat per-ticket numbers |
+What replaced it as an ongoing check is mechanical and worth re-running after
+any batch of endpoint changes: extract every `apiClient.<verb>('…')` path,
+extract every Django route, and diff them. Frontend code can call a
+non-existent endpoint and still typecheck, build and lint — the first sign of
+trouble is a 404 in front of a user. See SOT §7a.
 
 **Naming:** the human ticket id is **`ticket_no`** everywhere (frontend and backend serializer). The raiser FK is **`raised_by`** (not `requester`). There is no `reference` field.
