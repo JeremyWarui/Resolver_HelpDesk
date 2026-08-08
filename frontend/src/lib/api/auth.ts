@@ -193,13 +193,6 @@ export async function getProfile(): Promise<MeResponse> {
   return { ...data, role: (data.active_role?.role as UserRole) ?? 'user' };
 }
 
-export async function updateProfile(
-  payload: Partial<RegisterPayload>
-): Promise<LoginResponse> {
-  const { data } = await apiClient.put<JWTLoginResponse>('/auth/profile/', payload);
-  return flattenJWT(data);
-}
-
 // ── Sync helpers (read the auth store, no API call) ───────────────────────────
 
 export function isAuthenticated(): boolean {

@@ -815,3 +815,45 @@ class AdminAuditLogView(generics.ListAPIView):
             qs = qs.filter(created_at__lte=date_to)
 
         return qs
+
+
+class TicketFeedbackListView(generics.ListAPIView):
+    """GET /tickets/feedback/ — the ratings inside the caller's scope.
+
+    Drives the Feedback tab for technicians, HOS, HOD and managers. Scope is
+    the ticket's, not the feedback's: a rating is only ever readable by people
+    who could already read the ticket it belongs to, so this filters through
+    ``scoped_ticket_qs`` rather than defining a second, parallel rule that
+    could drift from it.
+
+    A technician sees the ratings on tickets in their own (section, trade)
+    pairs — including work they did not personally do, which is the point: a
+    trade's reputation is shared. Supervisors see their whole scope.
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = TicketFeedPagination
+
+    def get_queryset(self):
+        role = get_request_role(self.request)
+        scoped = scoped_ticket_qs(self.request.user, role)
+        qs = TicketFeedback.objects.filter(ticket__in=scoped).select_related(
+            "ticket__service_item",
+            "ticket__section__section_type",
+            "ticket__section__campus_department__campus",
+            "ticket__assigned_to",
+        )
+
+        params = self.request.query_params
+        if params.get("rating"):
+            qs = qs.filter(rating=params["rating"])
+        if params.get("date_from"):
+            qs = qs.filter(created_at__gte=params["date_from"])
+        if params.get("date_to"):
+            qs = qs.filter(created_at__lte=params["date_to"])
+        return qs.order_by("-created_at")
+
+    def get_serializer_class(self):
+        from apps.tickets.serializers import TicketFeedbackRowSerializer
+
+        return TicketFeedbackRowSerializer

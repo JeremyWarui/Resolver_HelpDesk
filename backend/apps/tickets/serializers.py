@@ -402,6 +402,44 @@ class TicketFeedbackSerializer(serializers.ModelSerializer):
         return value
 
 
+class TicketFeedbackRowSerializer(serializers.ModelSerializer):
+    """A rating as the Feedback tab lists it — flattened, with enough of the
+    ticket to know what is being rated and who did the work."""
+
+    ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
+    service_item = serializers.SerializerMethodField()
+    section = serializers.SerializerMethodField()
+    assigned_to = _UserMinSerializer(source="ticket.assigned_to", read_only=True, allow_null=True)
+    resolved_at = serializers.DateTimeField(source="ticket.resolved_at", read_only=True)
+
+    class Meta:
+        model = TicketFeedback
+        fields = [
+            "id",
+            "ticket_no",
+            "service_item",
+            "section",
+            "assigned_to",
+            "resolved_at",
+            "rating",
+            "comment",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_service_item(self, obj):
+        item = obj.ticket.service_item
+        return item.name if item else ""
+
+    def get_section(self, obj):
+        section = obj.ticket.section
+        if section is None:
+            return ""
+        campus = section.campus_department.campus.code
+        name = section.section_type.name if section.section_type_id else ""
+        return f"{campus} - {name}".strip(" -")
+
+
 class TicketAttachmentSerializer(serializers.ModelSerializer):
     uploaded_by = _UserMinSerializer(read_only=True)
     url = serializers.SerializerMethodField()

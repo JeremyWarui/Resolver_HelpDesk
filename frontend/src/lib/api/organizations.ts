@@ -251,10 +251,9 @@ export const sectionsService = {
     await apiClient.delete(`/sections/${sectionId}/technicians/${linkId}/`);
   },
 
-  assignHOS: async (id: number, headOfSectionId: number | null): Promise<Section> => {
-    const { data } = await apiClient.patch<Section>(`/sections/${id}/assign-hos/`, {
-      head_of_section_id: headOfSectionId,
-    });
+  /** `hos` is a plain field on Section — there is no separate assign action. */
+  assignHOS: async (id: number, hosUserId: number | null): Promise<Section> => {
+    const { data } = await apiClient.patch<Section>(`/sections/${id}/`, { hos: hosUserId });
     return data;
   },
 };

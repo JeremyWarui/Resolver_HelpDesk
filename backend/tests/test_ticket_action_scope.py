@@ -163,3 +163,97 @@ def test_technician_with_a_second_trade_reaches_both(
     for ticket in (nrb_electrical_ticket, nrb_plumbing_ticket):
         response = api.get(reverse("ticket-detail", args=[ticket.pk]))
         assert response.status_code == 200
+
+
+# ── The Feedback tab ──────────────────────────────────────────────────────────
+#
+# Four roles mount it. A rating is only readable by people who could already
+# read the ticket it belongs to, so the list filters through scoped_ticket_qs
+# rather than defining a second rule that could drift from it.
+
+
+@pytest.fixture
+def rated_electrical(nrb_electrical_ticket):
+    from apps.tickets.models import TicketFeedback
+
+    nrb_electrical_ticket.status = "closed"
+    nrb_electrical_ticket.save(update_fields=["status"])
+    return TicketFeedback.objects.create(
+        ticket=nrb_electrical_ticket, rating=5, comment="Quick work"
+    )
+
+
+@pytest.fixture
+def rated_plumbing(nrb_plumbing_ticket):
+    from apps.tickets.models import TicketFeedback
+
+    return TicketFeedback.objects.create(ticket=nrb_plumbing_ticket, rating=2)
+
+
+def _feedback(api, user):
+    api.force_authenticate(user)
+    response = api.get(reverse("ticket-feedback-list"))
+    assert response.status_code == 200, response.json()
+    return response.json()["results"]
+
+
+def test_hos_sees_every_rating_in_the_section(
+    api, nrb_hos, rated_electrical, rated_plumbing
+):
+    assert len(_feedback(api, nrb_hos)) == 2
+
+
+def test_a_technician_sees_only_their_own_trade(
+    api, nrb_electrician, rated_electrical, rated_plumbing
+):
+    """A trade's reputation is shared, so this is not "ratings on work I did" —
+    but it stops at the trade boundary, exactly as the ticket list does."""
+    rows = _feedback(api, nrb_electrician)
+    assert [row["ticket_no"] for row in rows] == [rated_electrical.ticket.ticket_no]
+
+
+def test_another_campus_is_not_visible(
+    api, msa_hos, rated_electrical, msa_electrical_ticket
+):
+    from apps.tickets.models import TicketFeedback
+
+    TicketFeedback.objects.create(ticket=msa_electrical_ticket, rating=3)
+    rows = _feedback(api, msa_hos)
+    assert [row["ticket_no"] for row in rows] == [msa_electrical_ticket.ticket_no]
+
+
+def test_a_requester_sees_only_the_ratings_they_gave(
+    api, requester, msa_requester, rated_electrical, msa_electrical_ticket
+):
+    from apps.tickets.models import TicketFeedback
+
+    TicketFeedback.objects.create(ticket=msa_electrical_ticket, rating=1)
+    assert len(_feedback(api, requester)) == 1
+    assert len(_feedback(api, msa_requester)) == 1
+
+
+def test_a_roleless_user_sees_nothing_not_everything(
+    api, nrb, rated_electrical, rated_plumbing, db
+):
+    roleless = factories.make_user("no_role_feedback", campus=nrb)
+    assert _feedback(api, roleless) == []
+
+
+def test_the_row_carries_what_the_tab_renders(api, nrb_hos, rated_electrical):
+    [row] = _feedback(api, nrb_hos)
+    assert row["rating"] == 5
+    assert row["comment"] == "Quick work"
+    assert row["ticket_no"] == rated_electrical.ticket.ticket_no
+    assert set(row) >= {"service_item", "section", "assigned_to", "resolved_at"}
+
+
+def test_ratings_can_be_filtered_to_the_bad_ones(
+    api, nrb_hos, rated_electrical, rated_plumbing
+):
+    api.force_authenticate(nrb_hos)
+    response = api.get(reverse("ticket-feedback-list"), {"rating": 2})
+    assert [r["rating"] for r in response.json()["results"]] == [2]
+
+
+def test_feedback_requires_authentication(api):
+    assert api.get(reverse("ticket-feedback-list")).status_code == 401

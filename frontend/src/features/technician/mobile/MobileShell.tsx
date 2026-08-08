@@ -17,7 +17,6 @@ import { getNotifications } from '@/lib/api/notifications';
 import { MobileTicketList } from './MobileTicketList';
 import { MobileTicketDetail } from './MobileTicketDetail';
 import { MobileNotifications } from './MobileNotifications';
-import { PushSubscriptionManager } from './PushSubscriptionManager';
 import { OfflineQueue } from './OfflineQueue';
 import type { Ticket as TicketType } from '@/types';
 
@@ -90,7 +89,6 @@ export function MobileShell() {
               Offline
             </span>
           )}
-          <PushSubscriptionManager />
         </div>
       </header>
 

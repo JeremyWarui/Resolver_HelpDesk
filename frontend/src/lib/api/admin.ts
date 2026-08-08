@@ -32,15 +32,3 @@ export const getAuditLog = (params?: AuditLogParams) =>
   apiClient.get<{ count: number; results: AuditLogEntry[] }>('/admin/audit-log/', { params });
 
 // ── System config ─────────────────────────────────────────────────────────────
-
-export interface SystemConfig {
-  auto_escalation_enabled: boolean;
-  sla_enforcement_enabled: boolean;
-  email_notifications_enabled: boolean;
-}
-
-export const getSystemConfig = () =>
-  apiClient.get<SystemConfig>('/admin/config/');
-
-export const updateSystemConfig = (data: Partial<SystemConfig>) =>
-  apiClient.patch<SystemConfig>('/admin/config/', data);
