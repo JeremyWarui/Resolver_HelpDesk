@@ -7,29 +7,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { CHART_COLORS as COLORS } from '@/constants/colors';
+import { PieTooltip } from '@/components/shared/data/ChartTooltips';
 
 
-interface TooltipPayload {
-  name: string;
-  value: number;
-}
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-}
 
-const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{payload[0].name}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface AppPieChartProps {
   data: { name: string; value: number }[];
@@ -72,7 +54,7 @@ export function AppPieChart({
             wrapperStyle={{ fontSize: '12px' }}
             formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<PieTooltip />} />
         </PieChart>
       </ResponsiveContainer>
     </div>

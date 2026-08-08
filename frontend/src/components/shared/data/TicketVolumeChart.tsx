@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { FlowResponse } from '@/types';
 import type { Granularity } from '@/components/shared/GranularitySelector';
+import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
 
 export interface VolumeSeries {
   date: string;
@@ -36,34 +37,8 @@ interface TicketVolumeChartFlowProps {
   granularity?: Granularity;
 }
 
-interface TooltipPayload {
-  name: string;
-  value: number;
-  color: string;
-}
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
 
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800 mb-1">{label}</p>
-        {payload.map((entry, i) => (
-          <p key={i} className="text-xs text-gray-600">
-            <span style={{ color: entry.color }}>●</span>{' '}
-            {entry.name}: {entry.value}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
 
 export function TicketVolumeChart({
   data,
@@ -103,7 +78,7 @@ export function TicketVolumeChart({
                   width={30}
                   allowDecimals={false}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<SeriesTooltip />} />
                 {!totalOnly && <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />}
                 <Bar dataKey="created" name="Created" fill="#0078d4" radius={[4, 4, 0, 0]} barSize={20} />
                 {!totalOnly && (

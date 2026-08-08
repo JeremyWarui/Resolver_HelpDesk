@@ -16,34 +16,10 @@ import {
 import { AlertCircle, CheckCircle, AlertTriangle, Users } from 'lucide-react';
 import MetricCard from '@/components/shared/data/MetricCard';
 import type { AnalyticsParams } from '@/types';
+import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
 
-interface TooltipPayload {
-  name: string;
-  value: number;
-  color: string;
-}
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
 
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800 mb-1">{label}</p>
-        {payload.map((entry, i) => (
-          <p key={i} className="text-xs text-gray-600">
-            <span style={{ color: entry.color }}>●</span> {entry.name}: {entry.value}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
 
 interface Props {
   params?: AnalyticsParams;
@@ -152,7 +128,7 @@ export default function TechnicianPerformanceReport({ params }: Props) {
                   interval={0}
                 />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<SeriesTooltip />} />
                 <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '12px' }} />
                 <Bar dataKey="Resolved" stackId="stack" fill="#107c10" maxBarSize={45} />
                 <Bar dataKey="Open"     stackId="stack" fill="#0078d4" maxBarSize={45} />

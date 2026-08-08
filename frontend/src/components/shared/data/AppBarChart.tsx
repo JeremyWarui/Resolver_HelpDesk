@@ -7,29 +7,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { BarTooltip } from '@/components/shared/data/ChartTooltips';
 
-interface TooltipPayload {
-  value: number;
-  payload: Record<string, unknown>;
-}
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
 
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{label}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface AppBarChartProps {
   data: Record<string, unknown>[];
@@ -70,7 +51,7 @@ export function AppBarChart({
             tick={{ fontSize: 12 }}
             width={30}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<BarTooltip />} />
           <Bar dataKey={dataKey} fill={barColor} radius={[4, 4, 0, 0]} barSize={barSize} />
         </BarChart>
       </ResponsiveContainer>

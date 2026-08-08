@@ -25,6 +25,7 @@ import {
 import { TrendingUp, AlertCircle } from 'lucide-react';
 import type { AnalyticsParams } from '@/types';
 import { CHART_COLORS as COLORS } from '@/constants/colors';
+import { BarTooltip, PieTooltip } from '@/components/shared/data/ChartTooltips';
 
 interface FacilityDemandRow {
   facility_type_id: number;
@@ -48,40 +49,9 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 
-interface TooltipPayload {
-  name: string;
-  value: number;
-}
 
-interface BarTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
 
-const BarTooltip = ({ active, payload, label }: BarTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{label}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
-const PieTooltip = ({ active, payload }: BarTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{payload[0].name}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface Props {
   params?: AnalyticsParams;

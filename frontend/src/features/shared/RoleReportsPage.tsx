@@ -26,8 +26,7 @@ import ServiceHealthCards from '@/components/shared/data/ServiceHealthCards';
 import LazyMount from '@/components/shared/LazyMount';
 import TicketMetricsReport from '@/features/admin/Reports/TicketMetricsReport';
 import TechnicianPerformanceReport from '@/features/admin/Reports/TechnicianPerformanceReport';
-import SectionPerformanceReport from '@/features/admin/Reports/SectionPerformanceReport';
-import CampusPerformanceReport from '@/features/admin/Reports/CampusPerformanceReport';
+import PerformanceBreakdownReport from '@/features/admin/Reports/PerformanceBreakdownReport';
 import GenerateReports from '@/features/admin/Reports/GenerateReports';
 import TechnicianPerformance from '@/features/shared/TechnicianPerformance';
 import { useScopedTechnicians } from '@/hooks/technicians/useScopedTechnicians';
@@ -494,7 +493,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
               </div>
             </CardHeader>
             <CardContent className="px-6 pb-6">
-              <SectionPerformanceReport params={params} />
+              <PerformanceBreakdownReport dimension="section" params={params} />
             </CardContent>
           </Card>
         )}
@@ -517,7 +516,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
               </div>
             </CardHeader>
             <CardContent className="px-6 pb-6">
-              <CampusPerformanceReport params={params} />
+              <PerformanceBreakdownReport dimension="campus" params={params} />
             </CardContent>
           </Card>
         )}

@@ -14,6 +14,7 @@ import {
   Legend,
 } from 'recharts';
 import { CHART_COLORS as COLORS } from '@/constants/colors';
+import { BarTooltip, PieTooltip } from '@/components/shared/data/ChartTooltips';
 
 
 export interface DistributionDatum {
@@ -21,40 +22,9 @@ export interface DistributionDatum {
   total: number;
 }
 
-interface TooltipPayload {
-  name: string;
-  value: number;
-}
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayload[];
-  label?: string;
-}
 
-const BarTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{label}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
-const PieTooltip = ({ active, payload }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-        <p className="text-xs font-medium text-gray-800">{payload[0].name}</p>
-        <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
-      </div>
-    );
-  }
-  return null;
-};
 
 interface Props {
   data: DistributionDatum[] | undefined;
