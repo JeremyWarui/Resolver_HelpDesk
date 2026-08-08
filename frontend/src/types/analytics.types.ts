@@ -148,13 +148,13 @@ export interface QualityResponse {
 }
 
 // GET /analytics/demand/
-export interface DemandCategoryItem { category_id: number; category_name: string; count: number; }
+export interface DemandSubSectionItem { sub_section_id: number; sub_section_name: string; count: number; }
 export interface DemandFacilityTypeItem { facility_type_id: number; facility_type_name: string; count: number; }
 export interface DemandSectionItem { section_id: number; section_type_name: string; campus_name: string; count: number; }
 
 export interface DemandResponse {
   date_range: DateRange;
-  by_category: DemandCategoryItem[];
+  by_sub_section: DemandSubSectionItem[];
   by_facility_type: DemandFacilityTypeItem[];
   by_section: DemandSectionItem[];
 }

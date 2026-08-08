@@ -671,11 +671,16 @@ def aggregate(
     )
 
     # ── Demand shape ──────────────────────────────────────────────────────────
-    demand_by_category = list(
-        window_qs.values(
-            category_id=F("sub_section__id"),
-            category_name=F("sub_section__name"),
-        )
+    # Named for the trade it actually groups by. It was `by_category` — a
+    # leftover from ServiceCategory, which no longer exists — and the name was
+    # actively misleading: the payload holds the per-trade split, which is the
+    # most useful breakdown this system has, while a chart bound to "sections"
+    # sat empty next to it.
+    # `sub_section_id` is a real column on Ticket, so it is selected directly —
+    # aliasing it via F() collides with the field. (The old `category_id=F(...)`
+    # alias sidestepped that by accident, not design.)
+    demand_by_sub_section = list(
+        window_qs.values("sub_section_id", sub_section_name=F("sub_section__name"))
         .annotate(count=Count("id"))
         .order_by("-count")
     )
@@ -815,7 +820,7 @@ def aggregate(
         "rating_histogram": rating_histogram,
         # Demand
         "demand": {
-            "by_category": demand_by_category,
+            "by_sub_section": demand_by_sub_section,
             "by_section_type": demand_by_section_type,
             "by_campus": demand_by_campus,
             "by_facility_type": demand_by_facility_type,

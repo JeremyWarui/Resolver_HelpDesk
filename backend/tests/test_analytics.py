@@ -382,3 +382,42 @@ def test_a_technician_is_never_served_a_peer_ranking(api, nrb_electrician):
 
     assert ROLE_VIEWS["technician"]["comparison"] is False
     assert resolve_group_by("technician", "technician") != "technician"
+
+
+# ── Demand shape ──────────────────────────────────────────────────────────────
+
+
+def test_demand_is_broken_down_by_trade(
+    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """The per-trade split is the most useful breakdown this system has, and
+    for an HOD or HOS it is the only one that varies — they have one section
+    each. It was shipped under the name `by_category`, left over from a model
+    that no longer exists, and a chart bound to "sections" sat empty beside it.
+    """
+    api.force_authenticate(nrb_hos)
+    demand = api.get(reverse("analytics:demand")).json()
+
+    assert "by_category" not in demand, "stale ServiceCategory-era key is back"
+    rows = {r["sub_section_name"]: r["count"] for r in demand["by_sub_section"]}
+    assert rows == {"Electrical": 1, "Plumbing": 1}
+    assert all("sub_section_id" in r for r in demand["by_sub_section"])
+
+
+def test_demand_by_trade_respects_scope(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    api.force_authenticate(nrb_electrician)
+    demand = api.get(reverse("analytics:demand")).json()
+    assert [r["sub_section_name"] for r in demand["by_sub_section"]] == ["Electrical"]
+
+
+def test_neither_hod_nor_hos_may_group_by_section():
+    """Both have exactly one Maintenance section, so a section breakdown can
+    only ever draw a single 100% slice. The reports page drops the tab for the
+    same reason — keep the two in step."""
+    from apps.analytics.role_config import ROLE_VIEWS
+
+    for role in ("hod", "hos"):
+        assert "section" not in ROLE_VIEWS[role]["allowed_group_by"], role
+        assert ROLE_VIEWS[role]["default_group_by"] in ("sub_section", "technician")

@@ -32,6 +32,12 @@ interface FacilityDemandRow {
   count: number;
 }
 
+interface SubSectionDemandRow {
+  sub_section_id: number;
+  sub_section_name: string;
+  count: number;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   open:        '#3b82f6',
   assigned:    '#f59e0b',
@@ -116,7 +122,14 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
   const statusCounts = data.series?.status_distribution ?? [];
   const facilityDistribution =
     (data.demand?.by_facility_type as FacilityDemandRow[] | undefined) ?? [];
-  const sectionDistribution = data.breakdown?.rows ?? [];
+  // Was bound to `breakdown.rows`, which is whatever the role's default
+  // group_by happens to be — technicians for an HOS. Those rows carry no
+  // `label`, so the chart drew four nameless zero-height bars under a
+  // "Top Sections" title. Sections are also the wrong dimension for HOD and
+  // HOS: role_config gives them one Maintenance section each and does not even
+  // allow grouping by it. The trade split is the one that varies for everyone.
+  const tradeDistribution =
+    (data.demand?.by_sub_section as SubSectionDemandRow[] | undefined) ?? [];
   const trendDataRaw = data.series?.flow_trend ?? [];
 
   const statusChartData = statusCounts.map((item) => ({
@@ -130,9 +143,9 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
     value: item.count,
   }));
 
-  const sectionChartData = sectionDistribution.slice(0, 10).map((item) => ({
-    name: String(item.label ?? item.section_type_name ?? item.key ?? '—'),
-    tickets: Number(item.total ?? 0),
+  const tradeChartData = tradeDistribution.slice(0, 10).map((item) => ({
+    name: String(item.sub_section_name ?? '—'),
+    tickets: Number(item.count ?? 0),
   }));
 
   const trendData = trendDataRaw.map((item) => ({
@@ -209,14 +222,14 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
         {/* Top Sections — Pattern A */}
         <Card className="py-7 px-2">
           <CardHeader className="pb-5">
-            <CardTitle className="pb-2">Top Sections by Ticket Volume</CardTitle>
-            <CardDescription>Sections with the most maintenance requests</CardDescription>
+            <CardTitle className="pb-2">Top Trades by Ticket Volume</CardTitle>
+            <CardDescription>Which trades the requests are landing on</CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-1">
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={sectionChartData}
+                  data={tradeChartData}
                   margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
                   barCategoryGap={50}
                 >
@@ -243,8 +256,8 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
         {/* Top Facilities — Pattern C (shadcn horizontal bar) */}
         <Card className="py-7 px-2">
           <CardHeader className="pb-5">
-            <CardTitle className="pb-2">Top Facilities by Ticket Volume</CardTitle>
-            <CardDescription>Facilities with the most tickets</CardDescription>
+            <CardTitle className="pb-2">Top Facility Types by Ticket Volume</CardTitle>
+            <CardDescription>Where the work is landing — offices, hostels, grounds</CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-1">
             <ChartContainer config={facilityChartConfig} className="min-h-[300px]">
@@ -306,15 +319,15 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
         {/* Section Distribution — Pattern B */}
         <Card className="py-7 px-2">
           <CardHeader className="pb-5">
-            <CardTitle className="pb-2">Section Distribution Breakdown</CardTitle>
-            <CardDescription>Percentage of total tickets by section</CardDescription>
+            <CardTitle className="pb-2">Trade Distribution</CardTitle>
+            <CardDescription>Share of tickets by trade</CardDescription>
           </CardHeader>
           <CardContent className="p-5 pt-1">
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={sectionChartData.map((d, i) => ({ name: d.name, value: d.tickets, fill: COLORS[i % COLORS.length] }))}
+                    data={tradeChartData.map((d, i) => ({ name: d.name, value: d.tickets, fill: COLORS[i % COLORS.length] }))}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -326,7 +339,7 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     }
                     labelLine={false}
                   >
-                    {sectionChartData.map((_entry, index) => (
+                    {tradeChartData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
@@ -354,7 +367,7 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={sectionChartData}
+                  data={tradeChartData}
                   margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
                   barCategoryGap={50}
                 >

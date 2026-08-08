@@ -30,6 +30,7 @@ import SectionPerformanceReport from '@/features/admin/Reports/SectionPerformanc
 import CampusPerformanceReport from '@/features/admin/Reports/CampusPerformanceReport';
 import GenerateReports from '@/features/admin/Reports/GenerateReports';
 import TechnicianPerformance from '@/features/shared/TechnicianPerformance';
+import { useScopedTechnicians } from '@/hooks/technicians/useScopedTechnicians';
 import type { AnalyticsParams } from '@/types';
 
 type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos' | 'technician';
@@ -59,13 +60,18 @@ const ROLE_COPY: Record<ReportsRole, RoleCopy> = {
     overviewHeading: 'Department Overview',
     tabs: ['overview', 'tickets', 'technicians', 'sections', 'campus', 'export'],
   },
+  // No 'sections' tab for either: an HOD has one Maintenance section per
+  // campus and an HOS has exactly one, so the report could only ever draw a
+  // single 100% slice. `role_config.py` reaches the same conclusion from the
+  // other side — neither role may group by section, and both default to
+  // `sub_section`. The trade split they actually need is on the Tickets tab.
   hod: {
     overviewHeading: 'Campus Department Overview',
-    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+    tabs: ['overview', 'tickets', 'technicians', 'export'],
   },
   hos: {
     overviewHeading: 'Section Overview',
-    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+    tabs: ['overview', 'tickets', 'technicians', 'export'],
   },
   // A technician gets their own numbers and the exporter. The other tabs are
   // supervisory views of other people's work — and `role_config.py` refuses to
@@ -101,21 +107,33 @@ interface RoleReportsPageProps {
 
 export default function RoleReportsPage({ role }: RoleReportsPageProps) {
   const copy = ROLE_COPY[role];
-  const isManager = role === 'manager';
   const isTechnician = role === 'technician';
+  /** Quick-access cards are shortcuts to tabs, so they must obey the same
+   *  config — a card linking to a tab the role does not have is a dead end
+   *  that leaves the header with nothing highlighted. */
+  const has = (tab: TabId) => copy.tabs.includes(tab);
   const [activeView, setActiveView] = useState<TabId>('overview');
   const [params, setParams] = useState<AnalyticsParams>({ days: 30 });
 
   // Fetch analytics for overview
   const { data: ticketAnalytics } = useTicketAnalytics(params);
 
-  // Overview metric from FlowResponse (created in window).
+  // The roster is scoped server-side and includes idle technicians, which the
+  // ticket-derived workload list does not.
+  const { technicians } = useScopedTechnicians();
+
+  // Three of these four cards used to be hardcoded 0 — "Active Technicians 0,
+  // Service Sections 0, Facilities 0" on a page listing nine live tickets,
+  // which reads as a broken system rather than a missing wire-up. Two are now
+  // real numbers already in the flow payload; the third is the roster count,
+  // which the Technician Performance tab was displaying correctly all along.
+  //
+  // Section and facility counts are gone rather than wired: they are estate
+  // inventory, not report metrics, and for an HOS "Service Sections: 1" is
+  // true of every HOS forever.
   const totalTickets = ticketAnalytics?.created ?? 0;
-  // Section/facility counts aren't part of FlowResponse; they belong to the demand
-  // endpoint (by_section / by_facility_type). Until that's wired they stay 0 —
-  // same runtime value as the old legacy-field reads, without the `as any`.
-  const totalSections = 0;
-  const totalFacilities = 0;
+  const openBacklog = ticketAnalytics?.open_backlog ?? 0;
+  const resolvedCount = ticketAnalytics?.resolved ?? 0;
 
   return (
     <div className="flex-1 overflow-y-auto bg-muted/30">
@@ -182,27 +200,27 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                   className="bg-card"
                 />
                 <MetricCard
-                  title="Active Technicians"
-                  value={0}
-                  description="Currently assigned"
-                  icon={<Users className="h-6 w-6 text-status-resolved" />}
+                  title="Open Backlog"
+                  value={openBacklog}
+                  description="Still to be finished"
+                  icon={<Activity className="h-6 w-6 text-status-assigned" />}
+                  iconBgColor="bg-[#f3e8ff]"
+                  className="bg-card"
+                />
+                <MetricCard
+                  title="Resolved"
+                  value={resolvedCount}
+                  description="In the selected window"
+                  icon={<CheckCircle2 className="h-6 w-6 text-status-resolved" />}
                   iconBgColor="bg-[#e5f9e5]"
                   className="bg-card"
                 />
                 <MetricCard
-                  title="Service Sections"
-                  value={totalSections}
-                  description="Operational departments"
-                  icon={<Building2 className="h-6 w-6 text-status-progress" />}
+                  title="Technicians"
+                  value={technicians.length}
+                  description="On your roster"
+                  icon={<Users className="h-6 w-6 text-status-progress" />}
                   iconBgColor="bg-[#fff9e5]"
-                  className="bg-card"
-                />
-                <MetricCard
-                  title="Facilities"
-                  value={totalFacilities}
-                  description="Managed locations"
-                  icon={<Activity className="h-6 w-6 text-status-assigned" />}
-                  iconBgColor="bg-[#f3e8ff]"
                   className="bg-card"
                 />
               </div>
@@ -216,7 +234,9 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
             {/* Quick Access Report Cards */}
             <div>
               <h2 className="text-lg font-semibold mb-4 text-foreground">Quick Access Reports</h2>
-              <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${isManager ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
+                ['tickets', 'technicians', 'sections', 'campus'].filter((t) => has(t as TabId)).length >= 4
+                  ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
                 {/* Ticket Lifecycle */}
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('tickets')}>
                   <CardHeader className="pb-4 pt-6">
@@ -264,6 +284,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                 </Card>
 
                 {/* Section Analysis */}
+                {has('sections') && (
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('sections')}>
                   <CardHeader className="pb-4 pt-6">
                     <div className="flex items-start justify-between">
@@ -285,9 +306,10 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                     </Button>
                   </CardContent>
                 </Card>
+                )}
 
                 {/* Campus Performance (manager only) */}
-                {isManager && (
+                {has('campus') && (
                   <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('campus')}>
                     <CardHeader className="pb-4 pt-6">
                       <div className="flex items-start justify-between">
@@ -478,7 +500,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
         )}
 
         {/* Campus Performance View (manager only) */}
-        {isManager && activeView === 'campus' && (
+        {has('campus') && activeView === 'campus' && (
           <Card>
             <CardHeader className="pb-6 pt-6">
               <div className="flex items-center justify-between">
