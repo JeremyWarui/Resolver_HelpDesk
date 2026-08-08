@@ -21,11 +21,21 @@ import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
 
 
 
+/**
+ * The technician roster — one row per person, for a supervisor.
+ *
+ * Answers "who on my team is overloaded", so it is a comparison across people
+ * and only ever shown to admin, manager, HOD and HOS. A technician's own
+ * figures live in `MyPerformancePanel`, which deliberately ranks nobody:
+ * `role_config.py` sets `comparison: False` for them and will not serve a peer
+ * breakdown, so this report is not offered to that role at all.
+ */
+
 interface Props {
   params?: AnalyticsParams;
 }
 
-export default function TechnicianPerformanceReport({ params }: Props) {
+export default function TeamPerformanceReport({ params }: Props) {
   const { data, loading, error } = usePerformanceTechnicians(params);
 
   if (loading) {

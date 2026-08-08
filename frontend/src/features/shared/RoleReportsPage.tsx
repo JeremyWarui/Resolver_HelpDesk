@@ -25,10 +25,10 @@ import MetricCard from '@/components/shared/data/MetricCard';
 import ServiceHealthCards from '@/components/shared/data/ServiceHealthCards';
 import LazyMount from '@/components/shared/LazyMount';
 import TicketMetricsReport from '@/features/admin/Reports/TicketMetricsReport';
-import TechnicianPerformanceReport from '@/features/admin/Reports/TechnicianPerformanceReport';
+import TeamPerformanceReport from '@/features/admin/Reports/TeamPerformanceReport';
 import PerformanceBreakdownReport from '@/features/admin/Reports/PerformanceBreakdownReport';
 import GenerateReports from '@/features/admin/Reports/GenerateReports';
-import TechnicianPerformance from '@/features/shared/TechnicianPerformance';
+import MyPerformancePanel from '@/features/shared/MyPerformancePanel';
 import { useScopedTechnicians } from '@/hooks/technicians/useScopedTechnicians';
 import type { AnalyticsParams } from '@/types';
 
@@ -178,9 +178,9 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
       {/* Content Area */}
       <div className="p-4 md:p-6 space-y-6">
         {/* A technician's overview is their own performance, not an inventory
-            of the estate — see TechnicianPerformance for the ordering. */}
+            of the estate — see MyPerformancePanel for the ordering. */}
         {activeView === 'overview' && isTechnician && (
-          <TechnicianPerformance params={params} />
+          <MyPerformancePanel params={params} />
         )}
 
         {/* Overview Dashboard — supervisory roles */}
@@ -470,7 +470,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
               </div>
             </CardHeader>
             <CardContent className="px-6 pb-6">
-              <TechnicianPerformanceReport params={params} />
+              <TeamPerformanceReport params={params} />
             </CardContent>
           </Card>
         )}

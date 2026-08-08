@@ -11,7 +11,13 @@ import { formatSeconds } from '@/utils/date';
 import type { AnalyticsParams } from '@/types';
 
 /**
- * A technician's own report.
+ * The caller's OWN performance — one person, no comparison.
+ *
+ * Not to be confused with `TeamPerformanceReport`, which is the roster: one row
+ * per technician, for a supervisor deciding who is overloaded. These two were
+ * once called `TechnicianPerformance` and `TechnicianPerformanceReport`, one
+ * word apart, and importing the wrong one here would show a technician their
+ * colleagues' figures — a scope leak, not a cosmetic slip.
  *
  * Ordered by what can be acted on today, not by what is easiest to count. The
  * first row is work that needs attention now; throughput and quality follow.
@@ -23,7 +29,7 @@ import type { AnalyticsParams } from '@/types';
  * technicians and keeps `technician` out of their `allowed_group_by`, so the
  * backend will not serve a ranking — and this must not imply one exists.
  */
-export function TechnicianPerformance({ params }: { params: AnalyticsParams }) {
+export function MyPerformancePanel({ params }: { params: AnalyticsParams }) {
   const { data, loading } = useTechnicianDashboard(params);
   const { data: times } = useResolutionTimes(params);
 
@@ -228,4 +234,4 @@ export function TechnicianPerformance({ params }: { params: AnalyticsParams }) {
   );
 }
 
-export default TechnicianPerformance;
+export default MyPerformancePanel;
