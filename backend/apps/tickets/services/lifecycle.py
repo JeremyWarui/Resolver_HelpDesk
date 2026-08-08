@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.models import TicketLog
-from apps.realtime.ws_utils import (
+from apps.notifications.notify import (
     emit_ticket_assigned,
     emit_ticket_status_changed,
     emit_ticket_resolved,

@@ -38,9 +38,13 @@ no schema change.**
 
 ## 2. Catalogue
 
-`catalog.ServiceCategory` is deleted. Its `default_priority` and `location_details`
-fields move to `org.SubSection`; `ServiceItem.category` becomes
-`ServiceItem.sub_section`.
+`catalog.ServiceCategory` is deleted. Its `location_details` field moves to
+`org.SubSection`; `ServiceItem.category` becomes `ServiceItem.sub_section`.
+
+**Priority leaves the catalogue entirely.** `ServiceCategory.default_priority`
+and `ServiceItem.default_priority` are both gone. A ticket opens at the lowest
+priority (`Priority.default()`) and the HOS sets the real one when they assign
+it — see §5a.
 
 Rationale: SubSection "Carpentry" and ServiceCategory "Carpentry Services" are a 1:1
 redundancy — two tables for one concept, plus a dead step in the ticket wizard. If a
@@ -133,8 +137,28 @@ The requester picks a **service item**; everything else is derived server-side.
 ```
 
 Derived at submit: `requester_campus` (from profile — never asked), `section`
-(routing), `sub_section` (from the item), `priority` (item override → sub-section
-default), `ticket_no` (sequence).
+(routing), `sub_section` (from the item), `ticket_no` (sequence). Priority is
+**not** derived — every ticket opens at Low.
+
+## 5a. Priority
+
+Priority is a property of a *ticket*, not of a service. "Faulty socket" can be a
+dead bulb or a live wire, and a catalogue default would rate both identically —
+so the requester never picks one and the catalogue never carries one.
+
+```
+raise    → priority = Priority.default()   (lowest rank, i.e. Low)
+assign   → HOS optionally sets Low | Medium | High | Critical
+```
+
+The HOS is the right decider: they have read the ticket and know the section's
+workload. `POST /tickets/{pk}/assign/` therefore takes an optional `priority`
+alongside `assigned_to`; omitting it leaves the ticket where it is.
+
+Changing priority recomputes `response_due_at` / `resolution_due_at` **from
+`created_at`, not from the assignment time** — the SLA clock has been running
+since the requester raised it, and re-basing would hand back time already
+spent waiting. The change is written to `TicketLog` as `priority_changed`.
 
 `Ticket.sub_section` is denormalised deliberately: `analytics.aggregate()` may only
 touch direct `Ticket` columns (join fan-out there previously caused 500s and

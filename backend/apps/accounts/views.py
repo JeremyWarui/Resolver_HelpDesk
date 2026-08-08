@@ -1,4 +1,4 @@
-"""Auth and user-management views — Phase 6 (SoT §5.1, §3.8, R17)."""
+"""Auth and user-management views."""
 
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -11,14 +11,16 @@ from apps.accounts.models import RoleAssignment, UserProfile
 from apps.accounts.serializers import (
     RoleAssignmentSerializer,
     RoleAssignmentCreateSerializer,
-    RoleAssignmentUpdateSerializer,
     UserAdminSerializer,
     UserCreateSerializer,
     UserUpdateSerializer,
 )
-from apps.accounts.jwt_utils import build_tokens_for_assignment, serialize_auth_user
+from apps.accounts.jwt_utils import (
+    build_tokens_for_assignment,
+    get_assignment,
+    serialize_auth_user,
+)
 from apps.common.permissions import get_request_role
-from apps.realtime.ws_utils import emit_role_changed
 
 REFRESH_COOKIE = "resolver_refresh"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
@@ -39,173 +41,82 @@ def _clear_refresh_cookie(response):
     response.delete_cookie(REFRESH_COOKIE)
 
 
-def _get_active_assignment_from_request(request):
-    """Resolve which RoleAssignment is currently active for this request's JWT."""
-    ra_id = None
-    try:
-        if request.auth:
-            ra_id = request.auth.get("role_assignment_id")
-    except Exception:
-        pass
-    return resolve_active_assignment(request.user, ra_id)
-
-
 class MeView(APIView):
-    """GET /auth/me/ — profile + all role assignments (§5.1)."""
+    """GET /auth/me/ — profile + role assignment."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        active = _get_active_assignment_from_request(request)
-        data = serialize_auth_user(request.user, active)
-        return Response(data)
+        # Re-read the assignment rather than trusting the token's claims, so an
+        # admin's role change lands on the next /me/ instead of at token expiry.
+        assignment = get_assignment(request.user)
+        return Response(serialize_auth_user(request.user, assignment))
 
 
-class SwitchRoleView(APIView):
-    """POST /auth/switch-role/ — re-issue JWT for a different active assignment (§3.8, §3.6)."""
+def _sync_org_scope(target, ra, old_ra):
+    """Keep the org-structural FKs in sync with the RoleAssignment.
 
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        ra_id = request.data.get("roleAssignmentId")
-        if ra_id is None:
-            return Response(
-                {
-                    "error": {
-                        "code": "VALIDATION_ERROR",
-                        "message": "roleAssignmentId is required",
-                    }
-                },
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
-
-        try:
-            ra = RoleAssignment.objects.select_related(
-                "section", "campus_department", "department"
-            ).get(pk=ra_id)
-        except RoleAssignment.DoesNotExist:
-            return Response(
-                {
-                    "error": {
-                        "code": "NOT_FOUND",
-                        "message": "Role assignment not found",
-                    }
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if ra.user_id != request.user.pk:
-            return Response(
-                {
-                    "error": {
-                        "code": "FORBIDDEN",
-                        "message": "This role assignment does not belong to you",
-                    }
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if not ra.is_active():
-            return Response(
-                {
-                    "error": {
-                        "code": "FORBIDDEN",
-                        "message": "This role assignment is not currently active",
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if ra.is_demoted():
-            return Response(
-                {
-                    "error": {
-                        "code": "FORBIDDEN",
-                        "message": "This role assignment has been superseded",
-                    }
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Blacklist existing refresh token.
-        raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
-        if raw_refresh:
-            try:
-                RefreshToken(raw_refresh).blacklist()
-            except TokenError:
-                pass
-
-        refresh, access = build_tokens_for_assignment(request.user, ra)
-        response = Response(
-            {
-                "user": serialize_auth_user(request.user, ra),
-                "accessToken": str(access),
-            },
-            status=status.HTTP_200_OK,
-        )
-        _set_refresh_cookie(response, refresh)
-        return response
-
-
-def _sync_org_scope(target, ra, old_primary):
-    """Keep org-structural FKs (Section.hos, CampusDepartment.head_of_department,
-    Department.manager_user) and the SectionTechnician link table in sync with
-    RoleAssignment. scope.py's scoped_ticket_qs/scoped_section_qs read those
-    directly for primary manager/hod/hos scope (and always for technician,
-    primary or cover) -- NOT RoleAssignment -- so a promotion that only
-    creates a RoleAssignment row is a silent no-op for the promoted user's
-    actual access.
+    `scoped_ticket_qs` / `scoped_section_qs` read `Section.hos`,
+    `CampusDepartment.head_of_department`, `Department.manager_user` and
+    `SectionTechnician` directly — never RoleAssignment — so a promotion that
+    only writes a RoleAssignment row would be a silent no-op for the promoted
+    user's actual access. This is what closes that gap, in both directions.
     """
-    from apps.org.models import Section, CampusDepartment, Department, SectionTechnician
+    from apps.org.models import (
+        CampusDepartment,
+        Department,
+        Section,
+        SectionTechnician,
+    )
+
+    # Backward first: strip whatever the previous role granted, so a
+    # technician moving campus does not keep the old campus's links.
+    if old_ra is not None:
+        if old_ra.role == "hos" and old_ra.section_id:
+            Section.objects.filter(pk=old_ra.section_id, hos=target).update(hos=None)
+        elif old_ra.role == "hod" and old_ra.campus_department_id:
+            CampusDepartment.objects.filter(
+                pk=old_ra.campus_department_id, head_of_department=target
+            ).update(head_of_department=None)
+        elif old_ra.role == "manager" and old_ra.department_id:
+            Department.objects.filter(
+                pk=old_ra.department_id, manager_user=target
+            ).update(manager_user=None)
+        elif old_ra.role == "technician":
+            SectionTechnician.objects.filter(user=target).delete()
 
     # Forward: grant scope for the new assignment.
     if ra.role == "technician" and ra.section_id:
-        # No primary/cover distinction for technician scope -- always sync.
-        SectionTechnician.objects.get_or_create(user=target, section_id=ra.section_id)
-    elif ra.role == "hos" and ra.is_primary and ra.section_id:
+        # One link per trade. Technician scope is the set of (section,
+        # sub_section) pairs, so this is where a technician's access actually
+        # comes from — the RoleAssignment alone grants nothing.
+        for sub_section in ra._sub_sections:
+            SectionTechnician.objects.get_or_create(
+                user=target, section_id=ra.section_id, sub_section=sub_section
+            )
+    elif ra.role == "hos" and ra.section_id:
+        # One HOS per section: whoever held it is displaced by this assignment.
         Section.objects.filter(pk=ra.section_id).update(hos=target)
-    elif ra.role == "hod" and ra.is_primary and ra.campus_department_id:
+    elif ra.role == "hod" and ra.campus_department_id:
         CampusDepartment.objects.filter(pk=ra.campus_department_id).update(
             head_of_department=target
         )
-    elif ra.role == "manager" and ra.is_primary and ra.department_id:
+    elif ra.role == "manager" and ra.department_id:
         Department.objects.filter(pk=ra.department_id).update(manager_user=target)
 
-    # Backward: revoke stale scope left over from the just-demoted primary,
-    # unless the new assignment already covers the identical scope (then
-    # it's a harmless no-op -- the forward sync above already reset it).
-    if old_primary is None:
-        return
-    if old_primary.role == "hos" and old_primary.section_id:
-        if not (ra.role == "hos" and ra.section_id == old_primary.section_id):
-            Section.objects.filter(pk=old_primary.section_id, hos=target).update(hos=None)
-    elif old_primary.role == "hod" and old_primary.campus_department_id:
-        if not (ra.role == "hod" and ra.campus_department_id == old_primary.campus_department_id):
-            CampusDepartment.objects.filter(
-                pk=old_primary.campus_department_id, head_of_department=target
-            ).update(head_of_department=None)
-    elif old_primary.role == "manager" and old_primary.department_id:
-        if not (ra.role == "manager" and ra.department_id == old_primary.department_id):
-            Department.objects.filter(
-                pk=old_primary.department_id, manager_user=target
-            ).update(manager_user=None)
-    elif old_primary.role == "technician" and old_primary.section_id:
-        if not (ra.role == "technician" and ra.section_id == old_primary.section_id):
-            SectionTechnician.objects.filter(
-                user=target, section_id=old_primary.section_id
-            ).delete()
 
+class UserRoleAssignmentView(APIView):
+    """GET + POST /users/{user_pk}/role-assignments/ — admin only.
 
-class UserRoleAssignmentListCreateView(generics.ListCreateAPIView):
-    """GET + POST /users/{user_pk}/role-assignments/
+    A user has exactly one role. GET returns it as a single-element list (the
+    frontend reads a list here); POST replaces it, syncing the org-structural
+    FKs and, for technicians, the SectionTechnician trade links.
 
-    GET: list all assignments for the target user (admin sees all; HOD within scope).
-    POST: HOD/admin can create cover assignments (never primary, assigned_by = requester).
+    Only an admin may assign roles — HOD does not, since there is no cover to
+    arrange and a single Maintenance HOS per campus is an org-level decision.
     """
 
     permission_classes = [IsAuthenticated]
-    serializer_class = RoleAssignmentSerializer
-    pagination_class = None  # a user has only a handful of assignments; frontend expects a bare list
 
     def _get_target_user(self):
         from django.contrib.auth import get_user_model
@@ -214,127 +125,66 @@ class UserRoleAssignmentListCreateView(generics.ListCreateAPIView):
         User = get_user_model()
         return get_object_or_404(User, pk=self.kwargs["user_pk"])
 
-    def _get_caller_role(self):
-        return get_request_role(self.request)
-
-    def get_queryset(self):
-        target = self._get_target_user()
-        caller_role = self._get_caller_role()
-        qs = RoleAssignment.objects.filter(user=target).select_related(
-            "section__campus_department__campus",
-            "section__campus_department__department",
-            "section__section_type",
-            "campus_department__campus",
-            "campus_department__department",
-            "department",
-            "assigned_by",
-        )
-        if caller_role == "admin":
-            return qs
-        if caller_role == "hod":
-            # HOD sees only assignments scoped to sections within their campus_department.
-            caller_ra = getattr(self.request.user, "primary_role_assignment", None)
-            if caller_ra and caller_ra.campus_department_id:
-                cd_id = caller_ra.campus_department_id
-                return qs.filter(section__campus_department_id=cd_id) | qs.filter(
-                    campus_department_id=cd_id
-                )
-        return RoleAssignment.objects.none()
-
-    def create(self, request, *args, **kwargs):
-        target = self._get_target_user()
-        caller_role = self._get_caller_role()
-
-        if caller_role not in ("admin", "hod"):
+    def get(self, request, user_pk):
+        if get_request_role(request) != "admin":
             return Response(
-                {"detail": "Only HOD or admin may create role assignments."},
+                {"detail": "Only an admin may read role assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        target = self._get_target_user()
+        ra = (
+            RoleAssignment.objects.filter(user=target)
+            .select_related(
+                "section__campus_department__campus",
+                "section__campus_department__department",
+                "section__section_type",
+                "campus_department__campus",
+                "campus_department__department",
+                "department",
+                "assigned_by",
+            )
+            .first()
+        )
+        return Response([RoleAssignmentSerializer(ra).data] if ra else [])
+
+    def post(self, request, user_pk):
+        from django.db import transaction
+
+        if get_request_role(request) != "admin":
+            return Response(
+                {"detail": "Only an admin may assign roles."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        target = self._get_target_user()
         serializer = RoleAssignmentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
 
-        # HOD scope check: can only assign roles within their campus_department.
-        if caller_role == "hod":
-            caller_ra = getattr(request.user, "primary_role_assignment", None)
-            if caller_ra and caller_ra.campus_department_id:
-                cd_id = caller_ra.campus_department_id
-                section = vd.get("section")
-                cd = vd.get("campus_department")
-                section_cd_id = section.campus_department_id if section else None
-                assignment_cd_id = cd.id if cd else None
-                if section_cd_id != cd_id and assignment_cd_id != cd_id:
-                    return Response(
-                        {
-                            "detail": "HOD can only create assignments within their campus department."
-                        },
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
-            if vd.get("role") not in ("technician", "hos"):
-                return Response(
-                    {
-                        "detail": "HOD can only create technician or HOS cover assignments."
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            vd["is_primary"] = False  # HOD can only create cover assignments
-
-        is_primary = (
-            vd.pop("is_primary", False)
-            if caller_role == "admin"
-            else (vd.pop("is_primary", None) or False)
-        )
-
-        # Strip the frontend-friendly keys before creating (already resolved to FK objects)
+        sub_sections = vd.pop("sub_sections", [])
+        # Frontend-friendly keys, already resolved to FK objects in validate().
         vd.pop("campus_id", None)
         vd.pop("department_id", None)
         vd.pop("section_id", None)
+        vd.pop("sub_section_ids", None)
 
-        from django.db import IntegrityError, transaction
+        with transaction.atomic():
+            old_ra = (
+                RoleAssignment.objects.select_for_update()
+                .filter(user=target)
+                .select_related("section", "campus_department", "department")
+                .first()
+            )
+            if old_ra is not None:
+                # Replace rather than update, so assigned_by/assigned_at reflect
+                # who made this change.
+                old_ra.delete()
+            ra = RoleAssignment.objects.create(
+                user=target, assigned_by=request.user, **vd
+            )
+            ra._sub_sections = sub_sections
+            _sync_org_scope(target, ra, old_ra)
 
-        try:
-            with transaction.atomic():
-                old_primary = None
-                if is_primary:
-                    # Replacing the primary role (e.g. promoting/demoting a user from
-                    # the Users admin page) — demote the existing primary instead of
-                    # erroring, since only one primary assignment is allowed per user.
-                    old_primary = target.role_assignments.filter(
-                        is_primary=True
-                    ).select_related("section", "campus_department", "department").first()
-                    target.role_assignments.filter(is_primary=True).update(
-                        is_primary=False
-                    )
-                ra = RoleAssignment.objects.create(
-                    user=target,
-                    is_primary=is_primary,
-                    assigned_by=request.user,
-                    **vd,
-                )
-                _sync_org_scope(target, ra, old_primary)
-                if is_primary:
-                    # A primary swap is the one case that changes what the
-                    # target's *current* session is authorized to do — cover
-                    # (is_primary=False) assignments don't take effect until
-                    # the user explicitly switches into them, so no push there.
-                    transaction.on_commit(
-                        lambda: emit_role_changed(
-                            target.id,
-                            old_primary.role if old_primary else None,
-                            ra.role,
-                        )
-                    )
-        except IntegrityError as exc:
-            msg = str(exc)
-            if "one_primary_role_per_user" in msg:
-                return Response(
-                    {
-                        "detail": "This user already has a primary role assignment. Delete or demote it first, or set is_primary=false."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            raise
         ra = RoleAssignment.objects.select_related(
             "section__campus_department__campus",
             "section__campus_department__department",
@@ -349,72 +199,6 @@ class UserRoleAssignmentListCreateView(generics.ListCreateAPIView):
         )
 
 
-class UserRoleAssignmentDetailView(APIView):
-    """PATCH + DELETE /users/{user_pk}/role-assignments/{ra_pk}/
-
-    PATCH: update valid_until (HOD/admin within scope).
-    DELETE: remove a cover assignment (HOD/admin within scope). Cannot delete primary.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def _get_objects(self):
-        from django.contrib.auth import get_user_model
-        from django.shortcuts import get_object_or_404
-
-        User = get_user_model()
-        target = get_object_or_404(User, pk=self.kwargs["user_pk"])
-        ra = get_object_or_404(RoleAssignment, pk=self.kwargs["ra_pk"], user=target)
-        return target, ra
-
-    def _get_caller_role(self):
-        return get_request_role(self.request)
-
-    def _check_scope(self, ra):
-        caller_role = self._get_caller_role()
-        if caller_role == "admin":
-            return True
-        if caller_role == "hod":
-            caller_ra = getattr(self.request.user, "primary_role_assignment", None)
-            if caller_ra and caller_ra.campus_department_id:
-                cd_id = caller_ra.campus_department_id
-                if ra.section and ra.section.campus_department_id == cd_id:
-                    return True
-                if ra.campus_department_id == cd_id:
-                    return True
-        return False
-
-    def patch(self, request, user_pk, ra_pk):
-        _, ra = self._get_objects()
-        if not self._check_scope(ra):
-            return Response(
-                {"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN
-            )
-        serializer = RoleAssignmentUpdateSerializer(ra, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        # valid_until edits can end an actively-used cover assignment early —
-        # push a signal so a session currently riding this assignment forces
-        # a clean re-login instead of silently falling back to primary scope
-        # with a UI still showing the (now invalid) cover role.
-        emit_role_changed(ra.user_id, ra.role, ra.role)
-        return Response(RoleAssignmentSerializer(ra).data)
-
-    def delete(self, request, user_pk, ra_pk):
-        _, ra = self._get_objects()
-        if ra.is_primary:
-            return Response(
-                {"detail": "Cannot delete a primary role assignment."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not self._check_scope(ra):
-            return Response(
-                {"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN
-            )
-        ra.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
 # ── Auth endpoints: login / refresh / logout ───────────────────────────────────
 # Migrated from tickets/api/jwt_auth_views.py
 
@@ -423,11 +207,7 @@ from django.contrib.auth import authenticate, get_user_model
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken as _RefreshToken
-from apps.accounts.jwt_utils import (
-    get_primary_assignment_or_infer,
-    ensure_floor_assignment,
-    resolve_active_assignment,
-)
+from apps.accounts.jwt_utils import ensure_floor_assignment
 
 _logger = logging.getLogger(__name__)
 _User = get_user_model()
@@ -458,7 +238,7 @@ def jwt_login(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    assignment = get_primary_assignment_or_infer(user)
+    assignment = get_assignment(user)
     refresh, access = build_tokens_for_assignment(user, assignment)
 
     response = Response(
@@ -542,7 +322,7 @@ def jwt_register(request):
     ensure_floor_assignment(user)
     UserProfile.objects.create(user=user, campus_id=campus_id)
 
-    assignment = get_primary_assignment_or_infer(user)
+    assignment = get_assignment(user)
     refresh, access = build_tokens_for_assignment(user, assignment)
 
     response = Response(
@@ -579,9 +359,9 @@ def jwt_refresh(request):
         uid_claim = _get_user_id_claim()
         user = _User.objects.get(pk=refresh[uid_claim])
         old_role = refresh.payload.get("role")
-        active_assignment = resolve_active_assignment(
-            user, refresh.payload.get("role_assignment_id")
-        )
+        # Re-read from the DB, never from the token: an admin's role change must
+        # land on the next silent refresh rather than at token expiry.
+        active_assignment = get_assignment(user)
         new_refresh, new_access = build_tokens_for_assignment(user, active_assignment)
         new_role = active_assignment.role if active_assignment else None
 
@@ -651,22 +431,18 @@ class UserListCreateView(APIView):
     def get(self, request):
         self._require_admin(request)
         from django.contrib.auth import get_user_model
-        from django.db.models import Prefetch
 
         User = get_user_model()
-        qs = User.objects.select_related("profile__campus").prefetch_related(
-            Prefetch(
-                "role_assignments",
-                queryset=RoleAssignment.objects.filter(is_primary=True).select_related(
-                    "section__campus_department__campus",
-                    "section__campus_department__department",
-                    "section__section_type",
-                    "campus_department__campus",
-                    "campus_department__department",
-                    "department",
-                ),
-                to_attr="primary_ra_list",
-            )
+        # role_assignment is a OneToOne now, so the whole scope graph joins in
+        # one query — no prefetch, no N+1.
+        qs = User.objects.select_related(
+            "profile__campus",
+            "role_assignment__section__campus_department__campus",
+            "role_assignment__section__campus_department__department",
+            "role_assignment__section__section_type",
+            "role_assignment__campus_department__campus",
+            "role_assignment__campus_department__department",
+            "role_assignment__department",
         ).order_by("-date_joined")
 
         serializer = UserAdminSerializer(qs, many=True)

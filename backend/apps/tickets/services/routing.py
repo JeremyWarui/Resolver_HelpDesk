@@ -5,16 +5,20 @@ class ServiceNotAvailableError(Exception):
     pass
 
 
-def resolve_routing(requester_campus_id, service_item_id):
-    """Return the matching Section for the given campus and service item.
+def resolve_routing(requester_campus_id, service_item):
+    """Return the Section that handles `service_item` at `requester_campus_id`.
 
-    Traversal: Section → campus_department__campus, section_type → service_categories → service_items.
-    Raises ServiceNotAvailableError if no active section handles the service at the campus.
+    The service item names a sub-section, the sub-section names a section type,
+    and the section is that type's instance at the requester's campus. Routing
+    is therefore fully determined by the one choice the requester makes.
+
+    Raises ServiceNotAvailableError if no active section handles the service at
+    the campus — e.g. a campus that runs no Maintenance section at all.
     """
     section = (
         Section.objects.filter(
             campus_department__campus_id=requester_campus_id,
-            section_type__service_categories__service_items__id=service_item_id,
+            section_type_id=service_item.sub_section.section_type_id,
             is_active=True,
         )
         .select_related(
@@ -23,6 +27,10 @@ def resolve_routing(requester_campus_id, service_item_id):
             "hos",
             "section_type",
         )
+        # (campus_department, section_type) is unique and a campus has one
+        # Administration department, so this matches at most one row. Ordered
+        # anyway so the result can never depend on insertion order.
+        .order_by("pk")
         .first()
     )
     if section is None:

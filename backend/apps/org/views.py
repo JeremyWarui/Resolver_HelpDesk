@@ -1,4 +1,4 @@
-from rest_framework import serializers as drf_serializers, viewsets
+from rest_framework import generics, serializers as drf_serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +15,8 @@ from apps.org.models import (
     Section,
     SectionTechnician,
     SectionType,
+    ServiceItem,
+    SubSection,
 )
 from apps.org.serializers import (
     CampusDepartmentSerializer,
@@ -23,8 +25,11 @@ from apps.org.serializers import (
     SectionSerializer,
     SectionTechnicianSerializer,
     SectionTypeSerializer,
-    SectionTypeWithCategoriesSerializer,
+    SectionTypeWithSubSectionsSerializer,
+    ServiceItemSerializer,
+    SubSectionSerializer,
 )
+from apps.org.services.visibility import get_visible_sub_sections
 
 
 class CampusViewSet(viewsets.ModelViewSet):
@@ -53,13 +58,13 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
 class SectionTypeViewSet(viewsets.ModelViewSet):
     """Admin CRUD for section types.
-    List/retrieve return the richer SectionTypeWithCategoriesSerializer so the
-    requester QuickActions widget can render the service catalogue grouped by
-    department without a second round-trip."""
+    List/retrieve return the richer SectionTypeWithSubSectionsSerializer so the
+    requester QuickActions widget can render the service catalogue without a
+    second round-trip."""
 
     queryset = (
         SectionType.objects.select_related("department")
-        .prefetch_related("service_categories")
+        .prefetch_related("sub_sections__service_items")
         .order_by("department", "name")
     )
     permission_classes = [IsAdminOrReadOnly]
@@ -67,8 +72,70 @@ class SectionTypeViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
-            return SectionTypeWithCategoriesSerializer
+            return SectionTypeWithSubSectionsSerializer
         return SectionTypeSerializer
+
+
+class SubSectionViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for sub-sections (trades). ?section_type=<id> scopes the list."""
+
+    serializer_class = SubSectionSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    pagination_class = None  # plain list — the frontend does not unwrap this one
+
+    def get_queryset(self):
+        qs = (
+            SubSection.objects.select_related("section_type__department")
+            .prefetch_related("service_items")
+            .order_by("section_type", "name")
+        )
+        section_type_id = self.request.query_params.get("section_type")
+        if section_type_id:
+            qs = qs.filter(section_type_id=section_type_id)
+        return qs
+
+
+class ServiceItemViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for service items. ?sub_section=<id> scopes the list."""
+
+    serializer_class = ServiceItemSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    pagination_class = ConfigListPagination
+
+    def get_queryset(self):
+        qs = ServiceItem.objects.select_related(
+            "sub_section__section_type"
+        ).order_by("sub_section", "name")
+        sub_section_id = self.request.query_params.get("sub_section")
+        if sub_section_id:
+            qs = qs.filter(sub_section_id=sub_section_id)
+        return qs
+
+
+class CatalogTreeView(generics.ListAPIView):
+    """GET /catalog/?campus=<id> — sub-sections served at that campus, items nested.
+
+    Any authenticated user may call this; it drives the ticket create wizard.
+    `campus` is required and returns 400 when missing.
+    """
+
+    serializer_class = SubSectionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = ConfigListPagination
+
+    def get_queryset(self):
+        campus_id = self.request.query_params.get("campus")
+        if not campus_id:
+            return SubSection.objects.none()
+        return get_visible_sub_sections(campus_id)
+
+    def list(self, request, *args, **kwargs):
+        if not request.query_params.get("campus"):
+            return Response(
+                {"detail": "campus query parameter is required."},
+                status=400,
+            )
+        return super().list(request, *args, **kwargs)
 
 
 class CampusDepartmentViewSet(viewsets.ModelViewSet):
@@ -88,9 +155,9 @@ class CampusDepartmentViewSet(viewsets.ModelViewSet):
         cd = self.get_object()
         User = get_user_model()
         users = User.objects.filter(
-            role_assignments__role="hod",
-            role_assignments__campus_department=cd,
-        ).distinct().order_by("last_name", "first_name")
+            role_assignment__role="hod",
+            role_assignment__campus_department=cd,
+        ).order_by("last_name", "first_name")
 
         data = [
             {
@@ -161,11 +228,14 @@ class SectionTechnicianViewSet(viewsets.ModelViewSet):
     pagination_class = ConfigListPagination
 
     def get_queryset(self):
-        qs = SectionTechnician.objects.select_related("user", "section")
+        qs = SectionTechnician.objects.select_related("user", "section", "sub_section")
         section_pk = self.kwargs.get("section_pk")
         if section_pk:
             qs = qs.filter(section_id=section_pk)
-        return qs.order_by("section", "user")
+        sub_section_id = self.request.query_params.get("sub_section")
+        if sub_section_id:
+            qs = qs.filter(sub_section_id=sub_section_id)
+        return qs.order_by("section", "sub_section", "user")
 
     def perform_create(self, serializer):
         section_pk = self.kwargs.get("section_pk")
@@ -194,6 +264,7 @@ class ScopedTechnicianRosterView(APIView):
             SectionTechnician.objects.filter(section__in=sections)
             .select_related(
                 "user",
+                "sub_section",
                 "section__section_type",
                 "section__campus_department__campus",
                 "section__campus_department__department",
@@ -217,6 +288,8 @@ class ScopedTechnicianRosterView(APIView):
                     "role": "technician",
                     "sections": [],
                     "section_names": [],
+                    "sub_sections": [],
+                    "sub_section_names": [],
                     "campus_name": None,
                     "primary_campus_id": None,
                     "primary_campus_display": None,
@@ -225,10 +298,16 @@ class ScopedTechnicianRosterView(APIView):
                     "primary_department_name": None,
                 }
             sec = link.section
-            entry["sections"].append(sec.id)
+            # A technician working several trades in one section yields several
+            # links — keep each list distinct.
+            if sec.id not in entry["sections"]:
+                entry["sections"].append(sec.id)
             stype = sec.section_type.name if sec.section_type_id else None
             if stype and stype not in entry["section_names"]:
                 entry["section_names"].append(stype)
+            if link.sub_section_id not in entry["sub_sections"]:
+                entry["sub_sections"].append(link.sub_section_id)
+                entry["sub_section_names"].append(link.sub_section.name)
             # First section establishes the technician's primary campus/department.
             if entry["campus_name"] is None:
                 cd = sec.campus_department
@@ -250,23 +329,34 @@ class SectionAssignableTechniciansView(APIView):
     Returns User objects keyed by user.id — not SectionTechnician link records.
     Accessible to any authenticated user so HOS/technician roles can use the
     assignment modal.
+
+    `?sub_section=<id>` narrows to technicians who work that trade, and callers
+    assigning a ticket must pass it. Without it a HOS sees every technician in
+    the section and can assign a Plumbing ticket to a carpenter, who then gets a
+    403 on their own ticket — the dropdown has to agree with `scoped_ticket_qs`.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request, section_pk):
-        links = (
-            SectionTechnician.objects.filter(section_id=section_pk)
-            .select_related("user")
-            .order_by("user__first_name", "user__last_name", "user__username")
+        links = SectionTechnician.objects.filter(section_id=section_pk)
+        sub_section_id = request.query_params.get("sub_section")
+        if sub_section_id:
+            links = links.filter(sub_section_id=sub_section_id)
+        links = links.select_related("user").order_by(
+            "user__first_name", "user__last_name", "user__username"
         )
-        data = [
-            {
-                "id": link.user.id,
-                "username": link.user.username,
-                "first_name": link.user.first_name,
-                "last_name": link.user.last_name,
-            }
-            for link in links
-        ]
-        return Response(data)
+        # One row per user: a technician working two trades in this section has
+        # two links but must appear once in the dropdown.
+        data = {}
+        for link in links:
+            data.setdefault(
+                link.user_id,
+                {
+                    "id": link.user.id,
+                    "username": link.user.username,
+                    "first_name": link.user.first_name,
+                    "last_name": link.user.last_name,
+                },
+            )
+        return Response(list(data.values()))

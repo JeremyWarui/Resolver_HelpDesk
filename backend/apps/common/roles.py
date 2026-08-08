@@ -1,8 +1,8 @@
 """Single source of truth for resolving the caller's active role.
 
-Reads the role from the JWT claim (SoT §3.8 — JWT claim is authoritative for the
-request), with a DB fallback to the user's primary RoleAssignment for tests that
-use `force_authenticate` and therefore have no token. Every view/analytic/report
+Reads the role from the JWT claim (the JWT claim is authoritative for the
+request), with a DB fallback to the user's RoleAssignment for tests that use
+`force_authenticate` and therefore have no token. Every view/analytic/report
 must resolve role through here so behaviour does not diverge between code paths.
 """
 
@@ -12,7 +12,7 @@ def resolve_role(request):
 
     1. JWT claim `role` (works for both a SimpleJWT Token, which proxies `.get`
        to its payload, and a plain dict).
-    2. Fallback: the user's primary RoleAssignment (force_authenticate in tests).
+    2. Fallback: the user's RoleAssignment (force_authenticate in tests).
     """
     try:
         auth = getattr(request, "auth", None)
@@ -22,5 +22,5 @@ def resolve_role(request):
     except Exception:
         pass
 
-    ra = getattr(getattr(request, "user", None), "primary_role_assignment", None)
-    return ra.role if ra else None
+    user = getattr(request, "user", None)
+    return getattr(user, "role", None) if user else None

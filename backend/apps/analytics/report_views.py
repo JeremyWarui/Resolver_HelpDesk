@@ -281,7 +281,7 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
     tickets = qs.select_related(
         "raised_by",
         "requester_campus",
-        "service_item__category",
+        "service_item__sub_section",
         "section__section_type",
         "section__campus_department__campus",
         "priority",
@@ -304,11 +304,7 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
                     else ""
                 ),
                 t.requester_campus.name if t.requester_campus_id else "",
-                (
-                    t.service_item.category.name
-                    if t.service_item_id and t.service_item.category_id
-                    else ""
-                ),
+                t.sub_section.name if t.sub_section_id else "",
                 t.service_item.name if t.service_item_id else "",
                 (
                     t.section.section_type.name
@@ -422,10 +418,10 @@ def _sheet_facility_health(ws, qs) -> None:
     ACTIVE = ["open", "assigned", "in_progress", "pending"]
     DONE = ["resolved", "closed"]
 
-    # Group by service_item__category and facility_type from location (if present)
+    # Group by sub_section and facility_type from location (if present)
     rows = (
         qs.values(
-            "service_item__category__name",
+            "sub_section__name",
             "location__facility_type__name",
         )
         .annotate(
@@ -439,7 +435,7 @@ def _sheet_facility_health(ws, qs) -> None:
     for row in rows:
         ws.append(
             [
-                row["service_item__category__name"] or "Unknown",
+                row["sub_section__name"] or "Unknown",
                 row["location__facility_type__name"] or "—",
                 row["total"],
                 row["open_count"],

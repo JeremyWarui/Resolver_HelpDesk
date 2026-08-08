@@ -1,11 +1,10 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
-    """User model. Role is derived from the active primary RoleAssignment — not stored."""
+    """User model. Role is derived from the RoleAssignment — not stored here."""
 
     phone_number = models.CharField(max_length=15, blank=True)
 
@@ -17,19 +16,12 @@ class CustomUser(AbstractUser):
         return self.username
 
     @property
-    def primary_role_assignment(self):
-        """Return the active primary RoleAssignment, or None."""
-        return (
-            self.role_assignments.filter(is_primary=True)
-            .select_related("section", "campus_department", "department")
-            .first()
-        )
-
-    @property
     def role(self):
-        """Derived accessor — reads from the active primary RoleAssignment."""
-        ra = self.primary_role_assignment
-        return ra.role if ra else None
+        """Derived accessor — reads the user's single RoleAssignment."""
+        try:
+            return self.role_assignment.role
+        except RoleAssignment.DoesNotExist:
+            return None
 
     @property
     def campus(self):
@@ -65,16 +57,18 @@ class UserProfile(models.Model):
 
 
 class RoleAssignment(models.Model):
-    """Maps a user to a role with an explicit organisational scope.
+    """Maps a user to their one role, with an explicit organisational scope.
+
+    One row per user. Role cover is deliberately absent: absence is handled
+    organisationally, not in software, so there are no validity windows, no
+    primary/secondary distinction and no role switching. Only an admin creates
+    or changes these rows.
 
     Scope constraints per role (enforced in clean(), not DB CheckConstraints):
       technician / hos → section required
       hod            → campus_department required
       manager        → department required
-      admin          → no scope (all three must be null)
-
-    The unique_primary_role_per_user constraint ensures only one primary
-    assignment per user (partial unique index on is_primary=True).
+      admin / user   → no scope (all three must be null)
     """
 
     ROLE_CHOICES = [
@@ -86,10 +80,10 @@ class RoleAssignment(models.Model):
         ("admin", "Admin"),
     ]
 
-    user = models.ForeignKey(
+    user = models.OneToOneField(
         "accounts.CustomUser",
         on_delete=models.CASCADE,
-        related_name="role_assignments",
+        related_name="role_assignment",
     )
     role = models.CharField(max_length=12, choices=ROLE_CHOICES)
 
@@ -116,9 +110,6 @@ class RoleAssignment(models.Model):
         related_name="+",
     )
 
-    is_primary = models.BooleanField(default=False)
-    valid_from = models.DateTimeField(null=True, blank=True)  # null = effective now
-    valid_until = models.DateTimeField(null=True, blank=True)  # null = standing role
     assigned_by = models.ForeignKey(
         "accounts.CustomUser",
         on_delete=models.SET_NULL,
@@ -130,25 +121,6 @@ class RoleAssignment(models.Model):
 
     class Meta:
         app_label = "accounts"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user"],
-                condition=models.Q(is_primary=True),
-                name="one_primary_role_per_user",
-            ),
-        ]
-
-    def is_active(self, now=None):
-        from apps.common.time_windows import is_window_active
-
-        now = now or timezone.now()
-        return is_window_active(self.valid_from, self.valid_until, now)
-
-    def is_demoted(self):
-        """Demoted ex-primary kept for audit (C16): non-primary with no
-        valid_until. Genuine covers always carry valid_until. Not switchable,
-        not offered in available_roles."""
-        return not self.is_primary and self.valid_until is None
 
     def clean(self):
         """Per-role scope rules — one readable, testable place."""
@@ -169,11 +141,12 @@ class RoleAssignment(models.Model):
                 raise ValidationError(
                     {"department": "A manager assignment requires a department."}
                 )
-        elif self.role == "admin":
-            # Admin has no scope — all three must be null.
+        elif self.role in ("admin", "user"):
+            # No organisational scope — all three must be null.
             if self.section_id or self.campus_department_id or self.department_id:
                 raise ValidationError(
-                    "Admin assignments must have no scope (section, campus_department, department all null)."
+                    f"A {self.role} assignment must have no scope "
+                    "(section, campus_department, department all null)."
                 )
 
     def __str__(self):
@@ -184,5 +157,4 @@ class RoleAssignment(models.Model):
             parts.append(f"cd={self.campus_department_id}")
         if self.department_id:
             parts.append(f"dept={self.department_id}")
-        suffix = " [primary]" if self.is_primary else ""
-        return f"{self.user_id} / {' > '.join(parts)}{suffix}"
+        return f"{self.user_id} / {' > '.join(parts)}"

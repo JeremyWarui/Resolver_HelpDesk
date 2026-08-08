@@ -1,10 +1,8 @@
 from django.urls import path
-from apps.realtime.views import (
+from apps.notifications.views import (
     NotificationListView,
     NotificationMarkAllReadView,
     NotificationMarkReadView,
-    PushSubscribeView,
-    VapidPublicKeyView,
 )
 
 urlpatterns = [
@@ -19,6 +17,4 @@ urlpatterns = [
         NotificationMarkAllReadView.as_view(),
         name="notifications-read-all",
     ),
-    path("push/subscribe/", PushSubscribeView.as_view(), name="push-subscribe"),
-    path("push/vapid-key/", VapidPublicKeyView.as_view(), name="push-vapid-key"),
 ]

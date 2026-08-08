@@ -16,7 +16,7 @@ intentionally not persisted here.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from apps.realtime.ws_utils import emit_ws_event
+from apps.notifications.notify import emit_ws_event
 from apps.tickets.models import Ticket, TicketLog
 
 ACTIVE_STATUSES = ("open", "assigned", "in_progress", "pending")

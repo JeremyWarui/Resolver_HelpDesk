@@ -2,11 +2,11 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.catalog.models import ServiceItem
+from apps.org.models import SectionTechnician, ServiceItem
+from apps.sla.models import Priority
 from apps.sla.services.due_dates import compute_due_dates
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import validate_location
-from apps.org.models import SectionTechnician
 from apps.tickets.models import (
     Ticket,
     TicketAttachment,
@@ -43,15 +43,16 @@ class _PriorityMinSerializer(serializers.Serializer):
     rank = serializers.IntegerField()
 
 
-class _ServiceCategoryMinSerializer(serializers.Serializer):
+class _SubSectionMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
+    code = serializers.CharField()
 
 
 class _ServiceItemMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
-    category = _ServiceCategoryMinSerializer()
+    sub_section = _SubSectionMinSerializer()
 
 
 class _SectionMinSerializer(serializers.Serializer):
@@ -180,11 +181,7 @@ class LocationInputSerializer(serializers.Serializer):
 
 class TicketCreateSerializer(serializers.Serializer):
     service_item = serializers.PrimaryKeyRelatedField(
-        queryset=ServiceItem.objects.select_related(
-            "category__section_type",
-            "category__default_priority",
-            "default_priority",
-        )
+        queryset=ServiceItem.objects.select_related("sub_section__section_type")
     )
     location = LocationInputSerializer(required=False, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, default="")
@@ -205,18 +202,18 @@ class TicketCreateSerializer(serializers.Serializer):
 
         # 2. Resolve the routing section.
         try:
-            section = resolve_routing(campus.id, service_item.id)
+            section = resolve_routing(campus.id, service_item)
         except ServiceNotAvailableError as exc:
             raise serializers.ValidationError({"service_item": str(exc)}) from exc
 
-        # 3. Resolve priority: item-level override first, then category default.
-        priority = (
-            service_item.default_priority or service_item.category.default_priority
-        )
+        # 3. Every ticket opens at the default (lowest) priority. The HOS sets
+        #    the real one when they assign it — they have seen the ticket; the
+        #    catalogue has not.
+        priority = Priority.default()
 
         # 4. Handle location.
         location_input = attrs.get("location")
-        if service_item.category.location_details:
+        if service_item.sub_section.location_details:
             if not location_input:
                 raise serializers.ValidationError(
                     {"location": "Location is required for this service."}
@@ -232,6 +229,7 @@ class TicketCreateSerializer(serializers.Serializer):
 
         # Store private attrs for use in create().
         attrs["_section"] = section
+        attrs["_sub_section"] = service_item.sub_section
         attrs["_priority"] = priority
         attrs["_requester_campus"] = campus
         attrs["_location_data"] = location_data
@@ -242,6 +240,7 @@ class TicketCreateSerializer(serializers.Serializer):
         request = self.context["request"]
 
         section = validated_data.pop("_section")
+        sub_section = validated_data.pop("_sub_section")
         priority = validated_data.pop("_priority")
         requester_campus = validated_data.pop("_requester_campus")
         location_data = validated_data.pop("_location_data")
@@ -257,6 +256,7 @@ class TicketCreateSerializer(serializers.Serializer):
             requester_campus=requester_campus,
             service_item=validated_data["service_item"],
             section=section,
+            sub_section=sub_section,
             priority=priority,
             description=validated_data.get("description", ""),
             response_due_at=response_due_at,
@@ -289,15 +289,31 @@ class TicketStatusUpdateSerializer(serializers.Serializer):
 
 
 class TicketAssignSerializer(serializers.Serializer):
+    """Assignment is where priority is decided.
+
+    A ticket opens at the default (lowest) priority because the requester
+    should not be grading their own urgency. The HOS has read it and knows the
+    section's workload, so they set the real priority as they hand it out.
+    Optional — omitting it leaves whatever the ticket already carries.
+    """
+
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    priority = serializers.PrimaryKeyRelatedField(
+        queryset=Priority.objects.all(), required=False
+    )
 
     def validate(self, attrs):
         ticket = self.context["ticket"]
         if not SectionTechnician.objects.filter(
-            section=ticket.section, user=attrs["assigned_to"]
+            section=ticket.section,
+            sub_section=ticket.sub_section,
+            user=attrs["assigned_to"],
         ).exists():
             raise serializers.ValidationError(
-                {"assigned_to": "User is not a technician in the ticket's section."}
+                {
+                    "assigned_to": "User is not a technician for this ticket's "
+                    "section and sub-section."
+                }
             )
         return attrs
 

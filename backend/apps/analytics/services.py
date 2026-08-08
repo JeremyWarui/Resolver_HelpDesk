@@ -234,9 +234,9 @@ _GENERIC_GROUP_BY = {
         F("section__campus_department__department__name"),
     ),
     "section_type": (F("section__section_type__id"), F("section__section_type__name")),
-    "service_category": (
-        F("service_item__category__id"),
-        F("service_item__category__name"),
+    "sub_section": (
+        F("sub_section__id"),
+        F("sub_section__name"),
     ),
     "service_item": (F("service_item__id"), F("service_item__name")),
     "priority": (F("priority__id"), F("priority__name")),
@@ -338,7 +338,7 @@ def aggregate(
         group_by:   Optional breakdown dimension. Bespoke shapes:
                     'section' | 'campus' | 'campus_department' | 'technician'.
                     Generic {key,label,+metrics} shapes: 'department' |
-                    'section_type' | 'service_category' | 'service_item' |
+                    'section_type' | 'sub_section' | 'service_item' |
                     'priority' | 'facility_type' | 'facility' | 'status'.
                     'time' returns the per-day flow_trend.
 
@@ -666,8 +666,8 @@ def aggregate(
     # ── Demand shape ──────────────────────────────────────────────────────────
     demand_by_category = list(
         window_qs.values(
-            category_id=F("service_item__category__id"),
-            category_name=F("service_item__category__name"),
+            category_id=F("sub_section__id"),
+            category_name=F("sub_section__name"),
         )
         .annotate(count=Count("id"))
         .order_by("-count")

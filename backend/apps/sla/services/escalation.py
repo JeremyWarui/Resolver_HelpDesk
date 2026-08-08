@@ -2,48 +2,20 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.common.time_windows import active_window_q
-
 LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 
 
 def resolve_active_holder(section, level, now=None):
-    from apps.accounts.models import RoleAssignment
+    """The user a ticket escalates to at `level`, or None if the post is vacant.
 
-    if now is None:
-        now = timezone.now()
-
+    Reads the org-structural FK, which is the only source of truth: there is no
+    cover to consult, and an absent HOS is handled organisationally. A vacant
+    post means the escalation falls through to the next level up.
+    """
     if level == "hos":
-        cover = (
-            RoleAssignment.objects.filter(
-                role="hos",
-                section=section,
-                is_primary=False,
-            )
-            .filter(active_window_q(now))
-            .select_related("user")
-            .first()
-        )
-        if cover is not None:
-            return cover.user
         return section.hos
-
     if level == "hod":
-        campus_department = section.campus_department
-        cover = (
-            RoleAssignment.objects.filter(
-                role="hod",
-                campus_department=campus_department,
-                is_primary=False,
-            )
-            .filter(active_window_q(now))
-            .select_related("user")
-            .first()
-        )
-        if cover is not None:
-            return cover.user
-        return campus_department.head_of_department
-
+        return section.campus_department.head_of_department
     return None
 
 
@@ -88,7 +60,7 @@ def run_escalation_for_ticket(ticket, now, rules):
                 to_value=rule.to_level,
                 level_user=holder,
             )
-            from apps.realtime.ws_utils import emit_ticket_escalated
+            from apps.notifications.notify import emit_ticket_escalated
 
             emit_ticket_escalated(ticket)
             return True

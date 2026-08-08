@@ -1,5 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from rest_framework import serializers
 
 from apps.accounts.models import RoleAssignment, UserProfile
@@ -47,22 +46,22 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
     department_id = serializers.SerializerMethodField()
     department_name = serializers.SerializerMethodField()
     assigned_by_username = serializers.SerializerMethodField()
+    sub_section_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = RoleAssignment
         fields = [
             "id",
             "role",
-            "is_primary",
             "campus_id",
             "campus_name",
             "department_id",
             "department_name",
             "section_id",
             "section_name",
+            "sub_section_ids",
             "assigned_by_username",
             "assigned_at",
-            "valid_until",
         ]
         read_only_fields = fields
 
@@ -92,25 +91,41 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
             obj.assigned_by.username if obj.assigned_by_id and obj.assigned_by else None
         )
 
+    def get_sub_section_ids(self, obj):
+        """The trades a technician works, from SectionTechnician — empty for other roles.
+
+        Technician scope lives in SectionTechnician, not here: one role row
+        cannot express "Carpentry and Plumbing at Nairobi".
+        """
+        if obj.role != "technician" or not obj.section_id:
+            return []
+        from apps.org.models import SectionTechnician
+
+        return list(
+            SectionTechnician.objects.filter(
+                user_id=obj.user_id, section_id=obj.section_id
+            ).values_list("sub_section_id", flat=True)
+        )
+
 
 class RoleAssignmentCreateSerializer(serializers.Serializer):
-    """Write serializer — accepts frontend-friendly campus_id/department_id/section_id."""
+    """Write serializer — accepts frontend-friendly campus_id/department_id/section_id.
+
+    A user has one role, so POSTing this replaces whatever they had.
+    `sub_section_ids` is technician-only and sets their trades in one action;
+    without it a new technician would be left with a role but no ticket access.
+    """
 
     role = serializers.ChoiceField(choices=RoleAssignment.ROLE_CHOICES)
-    is_primary = serializers.BooleanField(default=False)
     campus_id = serializers.IntegerField(required=False, allow_null=True)
     department_id = serializers.IntegerField(required=False, allow_null=True)
     section_id = serializers.IntegerField(required=False, allow_null=True)
-    valid_from = serializers.DateTimeField(required=False, allow_null=True)
-    valid_until = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate_valid_until(self, value):
-        if value is not None and value <= timezone.now():
-            raise serializers.ValidationError("valid_until must be in the future.")
-        return value
+    sub_section_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list
+    )
 
     def validate(self, attrs):
-        from apps.org.models import CampusDepartment, Department, Section
+        from apps.org.models import CampusDepartment, Department, Section, SubSection
 
         role = attrs["role"]
         campus_id = attrs.get("campus_id")
@@ -162,47 +177,48 @@ class RoleAssignmentCreateSerializer(serializers.Serializer):
         elif role in ("admin", "user"):
             pass  # no scope required
 
-        if not attrs.get("is_primary") and not attrs.get("valid_until"):
+        # Trades are technician-only, and must belong to the assigned section's type.
+        sub_section_ids = attrs.get("sub_section_ids") or []
+        if sub_section_ids and role != "technician":
             raise serializers.ValidationError(
-                {"valid_until": "A cover (non-primary) assignment requires an end date."}
+                {"sub_section_ids": "Only technician assignments carry sub-sections."}
             )
+        if role == "technician":
+            if not sub_section_ids:
+                raise serializers.ValidationError(
+                    {
+                        "sub_section_ids": "A technician assignment requires at least "
+                        "one sub-section, or they would see no tickets."
+                    }
+                )
+            section = attrs["section"]
+            found = SubSection.objects.filter(
+                pk__in=sub_section_ids, section_type_id=section.section_type_id
+            )
+            if found.count() != len(set(sub_section_ids)):
+                raise serializers.ValidationError(
+                    {
+                        "sub_section_ids": "Every sub-section must belong to the "
+                        "section's section_type."
+                    }
+                )
+            attrs["sub_sections"] = list(found)
 
         return attrs
-
-
-class RoleAssignmentUpdateSerializer(serializers.ModelSerializer):
-    """Partial update — only valid_until can be changed on an existing assignment."""
-
-    class Meta:
-        model = RoleAssignment
-        fields = ["valid_until"]
-
-    def validate_valid_until(self, value):
-        if value is not None and value <= timezone.now():
-            raise serializers.ValidationError("valid_until must be in the future.")
-        return value
 
 
 # ── User admin serializers ────────────────────────────────────────────────────
 
 
 def _primary_ra(user_obj):
-    """Return the primary RoleAssignment from the prefetched attribute or a DB hit."""
-    ras = getattr(user_obj, "primary_ra_list", None)
-    if ras is not None:
-        return ras[0] if ras else None
-    return (
-        user_obj.role_assignments.filter(is_primary=True)
-        .select_related(
-            "section__campus_department__campus",
-            "section__campus_department__department",
-            "section__section_type",
-            "campus_department__campus",
-            "campus_department__department",
-            "department",
-        )
-        .first()
-    )
+    """Return the user's RoleAssignment, or None.
+
+    Comes free off `select_related("role_assignment__…")` in the list view.
+    """
+    try:
+        return user_obj.role_assignment
+    except RoleAssignment.DoesNotExist:
+        return None
 
 
 class UserAdminSerializer(serializers.ModelSerializer):
@@ -347,7 +363,7 @@ class UserCreateSerializer(serializers.Serializer):
             first_name=first,
             last_name=last,
         )
-        RoleAssignment.objects.create(user=user, role="user", is_primary=True)
+        RoleAssignment.objects.create(user=user, role="user")
         UserProfile.objects.create(user=user, campus_id=validated_data["campus_id"])
         return user
 

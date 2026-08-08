@@ -40,12 +40,22 @@ class Ticket(models.Model):
         related_name="+",
     )
     service_item = models.ForeignKey(
-        "catalog.ServiceItem",
+        "org.ServiceItem",
         on_delete=models.PROTECT,
         related_name="tickets",
     )
     section = models.ForeignKey(
         "org.Section",
+        on_delete=models.PROTECT,
+        related_name="tickets",
+    )
+    # Denormalised from service_item.sub_section, and non-nullable on purpose.
+    # Technician scope matches on (section, sub_section) pairs, so a null here
+    # would make the technician queryset silently empty; and analytics.aggregate()
+    # may only touch direct Ticket columns, while per-trade breakdown is the
+    # headline dimension of this system.
+    sub_section = models.ForeignKey(
+        "org.SubSection",
         on_delete=models.PROTECT,
         related_name="tickets",
     )
@@ -109,6 +119,11 @@ class Ticket(models.Model):
             models.Index(
                 fields=["section", "created_at"],
                 name="ticket_section_created_idx",
+            ),
+            # Technician scope and the per-trade breakdown both key on this pair.
+            models.Index(
+                fields=["section", "sub_section", "-updated_at"],
+                name="ticket_section_sub_idx",
             ),
         ]
 

@@ -6,6 +6,8 @@ from apps.org.models import (
     Section,
     SectionTechnician,
     SectionType,
+    ServiceItem,
+    SubSection,
 )
 
 
@@ -57,15 +59,43 @@ class SectionTypeSerializer(serializers.ModelSerializer):
         fields = ["id", "department", "name", "code"]
 
 
-class SectionTypeWithCategoriesSerializer(serializers.ModelSerializer):
+class ServiceItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceItem
+        fields = ["id", "sub_section", "name", "description", "is_active"]
+
+
+class SubSectionSerializer(serializers.ModelSerializer):
+    """A trade under a section type, with its service items nested for the wizard."""
+
+    items = ServiceItemSerializer(source="service_items", many=True, read_only=True)
+    section_type_name = serializers.CharField(source="section_type.name", read_only=True)
+
+    class Meta:
+        model = SubSection
+        fields = [
+            "id",
+            "section_type",
+            "section_type_name",
+            "name",
+            "code",
+            "description",
+            "is_active",
+            "location_details",
+            "items",
+        ]
+        read_only_fields = ["items", "section_type_name"]
+
+
+class SectionTypeWithSubSectionsSerializer(serializers.ModelSerializer):
     """Read serializer for the QuickActions widget.
-    Returns each section type with flattened department fields and its
-    active service categories — the shape expected by the frontend."""
+    Returns each section type with flattened department fields and its active
+    sub-sections — the shape expected by the frontend."""
 
     department_id = serializers.IntegerField(source="department.id", read_only=True)
     department_code = serializers.CharField(source="department.code", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
-    service_categories = serializers.SerializerMethodField()
+    sub_sections = serializers.SerializerMethodField()
 
     class Meta:
         model = SectionType
@@ -76,18 +106,18 @@ class SectionTypeWithCategoriesSerializer(serializers.ModelSerializer):
             "department_id",
             "department_code",
             "department_name",
-            "service_categories",
+            "sub_sections",
         ]
 
-    def get_service_categories(self, obj):
+    def get_sub_sections(self, obj):
         return [
             {
-                "id": cat.id,
-                "name": cat.name,
+                "id": sub.id,
+                "name": sub.name,
+                "code": sub.code,
                 "section_type_name": obj.name,
-                "is_active": cat.is_active,
-                "location_details": cat.location_details,
-                "icon": None,
+                "is_active": sub.is_active,
+                "location_details": sub.location_details,
                 "service_items": [
                     {
                         "id": item.id,
@@ -95,12 +125,12 @@ class SectionTypeWithCategoriesSerializer(serializers.ModelSerializer):
                         "description": item.description,
                         "is_active": item.is_active,
                     }
-                    for item in cat.service_items.filter(is_active=True).order_by(
+                    for item in sub.service_items.filter(is_active=True).order_by(
                         "name"
                     )
                 ],
             }
-            for cat in obj.service_categories.filter(is_active=True).order_by("name")
+            for sub in obj.sub_sections.filter(is_active=True).order_by("name")
         ]
 
 
@@ -168,7 +198,25 @@ class SectionSerializer(serializers.ModelSerializer):
 
 
 class SectionTechnicianSerializer(serializers.ModelSerializer):
+    sub_section_name = serializers.CharField(source="sub_section.name", read_only=True)
+
     class Meta:
         model = SectionTechnician
-        fields = ["id", "user", "section", "added_at"]
-        read_only_fields = ["added_at"]
+        fields = ["id", "user", "section", "sub_section", "sub_section_name", "added_at"]
+        read_only_fields = ["added_at", "sub_section_name"]
+
+    def validate(self, attrs):
+        """Mirror SectionTechnician.clean() — the trade must belong to the section's type."""
+        section = attrs.get("section") or getattr(self.instance, "section", None)
+        sub_section = attrs.get("sub_section") or getattr(
+            self.instance, "sub_section", None
+        )
+        if (
+            section
+            and sub_section
+            and sub_section.section_type_id != section.section_type_id
+        ):
+            raise serializers.ValidationError(
+                {"sub_section": "sub_section must belong to the section's section_type."}
+            )
+        return attrs

@@ -70,12 +70,11 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.accounts",
     "apps.org",
-    "apps.catalog",
     "apps.sla",
     "apps.facilities",
     "apps.tickets",
     "apps.analytics",
-    "apps.realtime",
+    "apps.notifications",
     # third-party
     "rest_framework",
     "rest_framework.authtoken",
@@ -85,32 +84,6 @@ INSTALLED_APPS = [
     "corsheaders",
     "whitenoise.runserver_nostatic",
 ]
-
-# ── Django Channels + Daphne (ASGI) ───────────────────────────────────────────
-# daphne in INSTALLED_APPS makes `runserver` serve ASGI automatically —
-# no separate `daphne` command needed in development.
-try:
-    import channels  # noqa: F401
-
-    INSTALLED_APPS = ["daphne"] + INSTALLED_APPS + ["channels"]
-    ASGI_APPLICATION = "resolver.asgi.application"
-    _redis_url = os.getenv("REDIS_URL")
-    if _redis_url:
-        CHANNEL_LAYERS = {
-            "default": {
-                "BACKEND": "channels_redis.core.RedisChannelLayer",
-                "CONFIG": {"hosts": [_redis_url]},
-            }
-        }
-    else:
-        # No Redis configured — use in-memory layer (single-process only, fine for demo)
-        CHANNEL_LAYERS = {
-            "default": {
-                "BACKEND": "channels.layers.InMemoryChannelLayer",
-            }
-        }
-except ImportError:
-    pass
 
 # Django Unfold Admin Configuration
 UNFOLD = {

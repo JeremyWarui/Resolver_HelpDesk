@@ -2,7 +2,6 @@
 
 from .settings import *  # noqa: F401, F403
 
-# Allow all origins/hosts so WebsocketCommunicator (no Origin header) passes OriginValidator.
 ALLOWED_HOSTS = ["*"]
 
 DATABASES = {
@@ -14,10 +13,3 @@ DATABASES = {
 
 # Fast hasher — PBKDF2 dominates suite runtime otherwise (every fixture user).
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
-
-# Use in-memory channel layer so WS tests don't require Redis.
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    }
-}

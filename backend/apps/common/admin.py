@@ -14,12 +14,13 @@ from apps.org.models import (
     Department,
     CampusDepartment,
     SectionType,
+    SubSection,
+    ServiceItem,
     Section,
     SectionTechnician,
 )
 from apps.facilities.models import FacilityType, Facility
 from apps.sla.models import Priority, EscalationRule
-from apps.catalog.models import ServiceCategory, ServiceItem
 from apps.tickets.models import (
     Ticket,
     TicketLocation,
@@ -81,13 +82,13 @@ class RoleAssignmentAdmin(ModelAdmin):
     list_display = (
         "user",
         "role",
-        "is_primary",
         "section",
         "campus_department",
         "department",
-        "valid_until",
+        "assigned_by",
+        "assigned_at",
     )
-    list_filter = ("role", "is_primary")
+    list_filter = ("role",)
     search_fields = ("user__username", "user__email")
 
 
@@ -124,8 +125,8 @@ class SectionAdmin(ModelAdmin):
 
 @admin.register(SectionTechnician)
 class SectionTechnicianAdmin(ModelAdmin):
-    list_display = ("section", "user", "added_at")
-    list_filter = ("section",)
+    list_display = ("section", "sub_section", "user", "added_at")
+    list_filter = ("section", "sub_section")
 
 
 @admin.register(FacilityType)
@@ -152,17 +153,17 @@ class EscalationRuleAdmin(ModelAdmin):
     list_filter = ("to_level", "priority")
 
 
-@admin.register(ServiceCategory)
-class ServiceCategoryAdmin(ModelAdmin):
-    list_display = ("name", "section_type", "is_active", "default_priority")
+@admin.register(SubSection)
+class SubSectionAdmin(ModelAdmin):
+    list_display = ("name", "code", "section_type", "is_active", "location_details")
     list_filter = ("is_active", "section_type")
-    search_fields = ("name",)
+    search_fields = ("name", "code")
 
 
 @admin.register(ServiceItem)
 class ServiceItemAdmin(ModelAdmin):
-    list_display = ("name", "category", "is_active", "default_priority")
-    list_filter = ("is_active", "category")
+    list_display = ("name", "sub_section", "is_active")
+    list_filter = ("is_active", "sub_section")
     search_fields = ("name",)
 
 

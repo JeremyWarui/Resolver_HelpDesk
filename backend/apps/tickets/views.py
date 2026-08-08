@@ -38,10 +38,11 @@ from apps.tickets.services.lifecycle import (
     transition_status,
     TransitionError,
 )
+from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.services.scope import scoped_ticket_qs
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
 from apps.common.permissions import get_request_role
-from apps.realtime.ws_utils import (
+from apps.notifications.notify import (
     emit_ticket_created,
     emit_ticket_assigned,
     emit_comment_added,
@@ -176,23 +177,51 @@ class TicketAssignView(APIView):
             pk,
             allow_requester=False,
             staff_only=True,
-            qs=Ticket.objects.select_related("service_item", "assigned_to"),
+            qs=Ticket.objects.select_related(
+                "service_item", "assigned_to", "priority"
+            ),
         )
         serializer = TicketAssignSerializer(
             data=request.data, context={"ticket": ticket}
         )
         serializer.is_valid(raise_exception=True)
         assignee = serializer.validated_data["assigned_to"]
+        new_priority = serializer.validated_data.get("priority")
 
         previous_assignee = (
             ticket.assigned_to
         )  # loaded via select_related before overwrite
         old_status = ticket.status
+        old_priority = ticket.priority
 
         ticket.assigned_to = assignee
         if old_status == "open":
             ticket.status = "assigned"
-        ticket.save(update_fields=["assigned_to", "status", "updated_at"])
+
+        updated_fields = ["assigned_to", "status", "updated_at"]
+        priority_changed = (
+            new_priority is not None and new_priority.pk != old_priority.pk
+        )
+        if priority_changed:
+            ticket.priority = new_priority
+            # Recompute the SLA window from created_at, not from now: the clock
+            # has been running since the requester raised it, and re-basing here
+            # would hand back time the ticket has already spent waiting.
+            ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
+                new_priority, ticket.created_at
+            )
+            updated_fields += ["priority", "response_due_at", "resolution_due_at"]
+
+        ticket.save(update_fields=updated_fields)
+
+        if priority_changed:
+            TicketLog.objects.create(
+                ticket=ticket,
+                actor=request.user,
+                event_type="priority_changed",
+                from_value=old_priority.name,
+                to_value=new_priority.name,
+            )
 
         event_type = "reassigned" if previous_assignee is not None else "assigned"
         TicketLog.objects.create(
@@ -209,7 +238,12 @@ class TicketAssignView(APIView):
         emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
 
         return Response(
-            {"assigned_to": assignee.pk, "status": ticket.status}, status=200
+            {
+                "assigned_to": assignee.pk,
+                "status": ticket.status,
+                "priority": ticket.priority_id,
+            },
+            status=200,
         )
 
 
@@ -398,7 +432,7 @@ class TicketListCreateView(generics.ListCreateAPIView):
                     "section__section_type",
                     "section__hos",
                     "priority",
-                    "service_item__category",
+                    "service_item__sub_section",
                     "assigned_to",
                     "raised_by",
                     "requester_campus",
@@ -553,7 +587,7 @@ class TicketDetailView(generics.RetrieveAPIView):
                 "section__campus_department__campus",
                 "section__section_type",
                 "priority",
-                "service_item__category",
+                "service_item__sub_section",
                 "assigned_to",
                 "raised_by",
                 "requester_campus",
