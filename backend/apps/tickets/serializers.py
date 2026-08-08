@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
@@ -98,6 +100,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
     """Role-aware read serializer for list and detail views."""
 
     service_item = _ServiceItemMinSerializer(read_only=True)
+    sub_section = _SubSectionMinSerializer(read_only=True)
     section = _SectionMinSerializer(read_only=True)
     priority = _PriorityMinSerializer(read_only=True)
     assigned_to = _UserMinSerializer(read_only=True, allow_null=True)
@@ -116,6 +119,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "raised_by_id",
             "requester_campus",
             "service_item",
+            "sub_section",
             "section",
             "priority",
             "assigned_to",
@@ -144,15 +148,17 @@ class TicketReadSerializer(serializers.ModelSerializer):
 
 
 class TicketDetailReadSerializer(TicketReadSerializer):
-    """Detail-only extension: nests submitted feedback (QA D3).
+    """Detail-only extension: submitted feedback and the requester's contact number.
 
-    Kept off the list serializer so list payload size is unchanged.
+    `contact_phone` is deliberately absent from the list serializer. A
+    technician opening one ticket needs a number to call; nobody needs every
+    requester's number in a single paginated response.
     """
 
     feedback = serializers.SerializerMethodField()
 
     class Meta(TicketReadSerializer.Meta):
-        fields = TicketReadSerializer.Meta.fields + ["feedback"]
+        fields = TicketReadSerializer.Meta.fields + ["feedback", "contact_phone"]
         read_only_fields = fields
 
     def get_feedback(self, ticket):
@@ -179,12 +185,50 @@ class LocationInputSerializer(serializers.Serializer):
     )
 
 
+# Shown beside the field in the ticket wizard. Lives here so the API's own
+# help_text and the UI copy cannot drift apart.
+CONTACT_PHONE_HELP = "Optional — just in case the technician needs to call you."
+
+
+def normalise_phone(value):
+    """Strip formatting so two spellings of one number compare and dial alike.
+
+    Deliberately permissive about *form* and strict only about substance: a
+    technician needs something dialable, and rejecting a valid number because
+    it was typed with spaces would be worse than accepting an odd one. Kenyan
+    mobiles are 10 digits locally (07…/01…) or 12 with the country code, but
+    landlines and short extensions are shorter, so the floor is 7 digits.
+    """
+    cleaned = re.sub(r"[\s\-().]", "", value or "")
+    if not cleaned:
+        return ""
+    if not re.fullmatch(r"\+?\d{7,15}", cleaned):
+        raise serializers.ValidationError(
+            "Enter a phone number the technician can dial — digits only, "
+            "optionally starting with +."
+        )
+    return cleaned
+
+
 class TicketCreateSerializer(serializers.Serializer):
     service_item = serializers.PrimaryKeyRelatedField(
         queryset=ServiceItem.objects.select_related("sub_section__section_type")
     )
     location = LocationInputSerializer(required=False, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, default="")
+    # Optional. Omit it and the requester's own number is used, so the common
+    # case costs nothing; supplying one lets whoever raises a ticket for a
+    # hostel wing give the caretaker's number instead of their own.
+    contact_phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=32,
+        help_text=CONTACT_PHONE_HELP,
+    )
+
+    def validate_contact_phone(self, value):
+        return normalise_phone(value)
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -199,6 +243,13 @@ class TicketCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("User has no campus assigned.")
 
         service_item = attrs["service_item"]
+
+        # 1b. A number for the technician to call, if there is one. Optional
+        #     throughout: a missing phone number is not a reason to refuse
+        #     someone a repair, and the ticket itself carries the detail.
+        attrs["contact_phone"] = attrs.get("contact_phone") or normalise_phone(
+            getattr(user, "phone_number", "")
+        )
 
         # 2. Resolve the routing section.
         try:
@@ -259,6 +310,7 @@ class TicketCreateSerializer(serializers.Serializer):
             sub_section=sub_section,
             priority=priority,
             description=validated_data.get("description", ""),
+            contact_phone=validated_data["contact_phone"],
             response_due_at=response_due_at,
             resolution_due_at=resolution_due_at,
         )

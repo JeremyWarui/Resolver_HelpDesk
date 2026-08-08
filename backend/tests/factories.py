@@ -91,7 +91,10 @@ def make_user(username, campus=None, role=None, **scope):
     row alone grants a technician nothing — see `make_technician`.
     """
     user = User.objects.create_user(
-        username=username, password="pw", email=f"{username}@example.test"
+        username=username,
+        password="pw",
+        email=f"{username}@example.test",
+        phone_number=f"07{abs(hash(username)) % 100_000_000:08d}",
     )
     UserProfile.objects.create(user=user, campus=campus)
     if role is not None:
@@ -159,6 +162,7 @@ def make_ticket(raised_by, section, sub_section, service_item=None, **kwargs):
     kwargs.setdefault("priority", Priority.default())
     kwargs.setdefault("requester_campus", section.campus_department.campus)
     kwargs.setdefault("description", "test ticket")
+    kwargs.setdefault("contact_phone", raised_by.phone_number)
     return Ticket.objects.create(
         raised_by=raised_by,
         section=section,

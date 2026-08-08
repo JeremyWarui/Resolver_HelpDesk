@@ -72,6 +72,16 @@ class Ticket(models.Model):
         related_name="assigned_tickets",
     )
     description = models.TextField(blank=True)
+    # Who the technician calls about *this* job. Optional, and captured per
+    # ticket rather than read from the requester's profile: the useful number
+    # is often not theirs (a caretaker, a departmental extension, whoever is
+    # actually on site), and a profile edit months later must not rewrite the
+    # history of a closed job.
+    contact_phone = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Optional — just in case the technician needs to call.",
+    )
     status = models.CharField(max_length=16, choices=STATUS, default="open")
     current_level = models.CharField(max_length=12, choices=LEVEL, default="technician")
     response_due_at = models.DateTimeField(null=True, blank=True)

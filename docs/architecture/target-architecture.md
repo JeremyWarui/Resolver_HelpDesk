@@ -133,8 +133,17 @@ The requester picks a **service item**; everything else is derived server-side.
 1a  sub-section   Electrical │ Plumbing │ Carpentry │ Masonry │ Painting
 1b  service item  Faulty socket │ Replace bulb │ Generator issue
 2   description + attachments + location (gated by sub_section.location_details)
+    + contact phone, prefilled from the profile
 3   review + submit
 ```
+
+`contact_phone` is optional and stored on the ticket, not read from the
+profile at display time. Two reasons: the useful number is often not the
+requester's (a caretaker, whoever is actually in the room), and a profile edit
+must not rewrite the history of a job that closed months ago. Blank falls back
+to the profile number; a user with no number anywhere can still raise a ticket.
+It appears on the ticket **detail** only — one number is a technician doing
+their job, a page of them is a contact-list export.
 
 Derived at submit: `requester_campus` (from profile — never asked), `section`
 (routing), `sub_section` (from the item), `ticket_no` (sequence). Priority is

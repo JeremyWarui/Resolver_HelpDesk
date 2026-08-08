@@ -405,6 +405,13 @@ class Command(BaseCommand):
 
     # ── People ────────────────────────────────────────────────────────────────
 
+    _phone_counter = 0
+
+    def _next_phone(self):
+        """A distinct, obviously-fake Kenyan mobile per seeded account."""
+        self._phone_counter += 1
+        return f"07{self._phone_counter:08d}"
+
     def _make_user(self, username, first, last, password, campus=None):
         user, created = User.objects.get_or_create(
             username=username,
@@ -412,6 +419,7 @@ class Command(BaseCommand):
                 "first_name": first,
                 "last_name": last,
                 "email": f"{username}@ksg.ac.ke",
+                "phone_number": self._next_phone(),
             },
         )
         if created:
@@ -601,6 +609,7 @@ class Command(BaseCommand):
                 priority=priority,
                 assigned_to=None if status == "open" else technician,
                 description=f"{item.name} reported by {requester.get_full_name()}.",
+                contact_phone=requester.phone_number,
                 status=status,
                 response_due_at=created_at + timedelta(minutes=priority.response_minutes),
                 resolution_due_at=created_at + timedelta(minutes=priority.resolution_minutes),
