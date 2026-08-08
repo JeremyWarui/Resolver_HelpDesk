@@ -12,8 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { Ticket, Bell, Settings, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
-import { useQuery } from '@tanstack/react-query';
-import { getNotifications } from '@/lib/api/notifications';
+import { useNotifications } from '@/hooks/useNotifications';
 import { MobileTicketList } from './MobileTicketList';
 import { MobileTicketDetail } from './MobileTicketDetail';
 import { MobileNotifications } from './MobileNotifications';
@@ -46,14 +45,9 @@ export function MobileShell() {
     ? (user.first_name ? `${user.first_name} ${user.last_name ?? ''}`.trim() : user.username)
     : 'Technician';
 
-  // Unread notification count for the badge
-  const { data: notifs } = useQuery({
-    queryKey: ['mobile-notifications'],
-    queryFn: getNotifications,
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
-  });
-  const unreadCount = notifs?.filter(n => !n.read).length ?? 0;
+  // Same feed and cache key as the notifications screen, so opening it and
+  // marking things read updates this badge without a second round trip.
+  const { unreadCount } = useNotifications();
 
   const handleSelectTicket = (ticket: TicketType) => {
     setSelectedTicket(ticket);

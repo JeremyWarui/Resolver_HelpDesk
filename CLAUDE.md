@@ -113,7 +113,12 @@ out-of-scope id matches nothing rather than reaching past the caller.
   `?mine=1` branch, or it silently becomes a query per row.
 - **Frontend can call a dead endpoint and still compile.** After any batch of
   endpoint changes, diff `apiClient.<verb>('…')` paths against Django's routes
-  (SOT §7a). That check found a live 404 behind four roles' Feedback tab.
+  (SOT §7a) — comparing trailing slashes **exactly**, since `APPEND_SLASH`
+  turns a slashless POST into a 405. That check found a live 404 behind four
+  roles' Feedback tab, and normalising slashes hid a broken "Mark all read".
+- **Notifications are polled, not pushed.** `useNotifications()` is the single
+  source; the emitters in `apps/notifications/notify.py` write the rows and are
+  wrapped so they can never break the ticket update that triggered them.
 - Frontend role checks (`useAuth().user.role`) are UI convenience only; the
   backend enforces scope.
 

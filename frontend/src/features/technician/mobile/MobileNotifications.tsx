@@ -1,8 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getNotifications, markRead, markAllRead } from '@/lib/api/notifications';
-import type { AppNotification } from '@/types';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const EVENT_COLOR: Record<string, string> = {
   ticket_created:        'bg-blue-100 text-blue-700',
@@ -36,27 +34,14 @@ function timeAgo(dateStr: string): string {
 }
 
 export function MobileNotifications() {
-  const qc = useQueryClient();
-
-  const { data, isLoading } = useQuery<AppNotification[]>({
-    queryKey: ['mobile-notifications'],
-    queryFn: getNotifications,
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
-  });
-
-  const { mutate: readOne } = useMutation({
-    mutationFn: markRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['mobile-notifications'] }),
-  });
-
-  const { mutate: readAll, isPending: markingAll } = useMutation({
-    mutationFn: markAllRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['mobile-notifications'] }),
-  });
-
-  const notifications = data ?? [];
-  const unread = notifications.filter(n => !n.read).length;
+  const {
+    notifications,
+    unreadCount: unread,
+    loading: isLoading,
+    markRead: readOne,
+    markAllRead: readAll,
+    markingAll,
+  } = useNotifications();
 
   return (
     <div className="flex flex-col h-full bg-gray-50">

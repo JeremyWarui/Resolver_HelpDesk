@@ -2,8 +2,11 @@
 
 One function per domain event, called from the ticket services. Each persists
 `Notification` rows for the users who should hear about it; the frontend polls
-`/notifications/`. Every emitter swallows its own errors — a notification must
-never be the reason a ticket update fails.
+`/notifications/` on a one-minute interval and on window focus.
+
+Every emitter is wrapped in `@_never_fails` — a notification must never be the
+reason a ticket update fails. These rows are the courtesy; the ticket is the
+work.
 
 WebSockets are deferred, not removed: a maintenance helpdesk runs on a
 minutes-to-hours cadence, and live delivery would force ASGI plus Redis into
@@ -11,9 +14,29 @@ the deploy for a low-volume single-department app. Re-adding it means giving
 these functions a second sink, not restructuring them.
 """
 
+import functools
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _never_fails(emit):
+    """A notification must never be the reason a ticket update fails.
+
+    The guarantee has to live at the emitter boundary, not only inside the bulk
+    insert: these functions also read related objects and format names, and any
+    of that can raise on data the caller never anticipated. Without this the
+    promise held for a database error and broke for an attribute error.
+    """
+
+    @functools.wraps(emit)
+    def guarded(*args, **kwargs):
+        try:
+            return emit(*args, **kwargs)
+        except Exception as exc:
+            logger.warning("%s failed: %s", emit.__name__, exc, exc_info=True)
+
+    return guarded
 
 
 # ── Scope helpers ─────────────────────────────────────────────────────────────
@@ -97,6 +120,7 @@ def _notify_users(
 # ── Public emit functions ─────────────────────────────────────────────────────
 
 
+@_never_fails
 def emit_ticket_created(ticket) -> None:
     cd_id = _campus_department_id(ticket)
 
@@ -110,6 +134,7 @@ def emit_ticket_created(ticket) -> None:
     )
 
 
+@_never_fails
 def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
     assignee = ticket.assigned_to
     assignee_name = (
@@ -153,6 +178,7 @@ def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
     )
 
 
+@_never_fails
 def emit_ticket_status_changed(ticket, from_status: str) -> None:
     _notify_users(
         [ticket.raised_by_id],
@@ -163,6 +189,7 @@ def emit_ticket_status_changed(ticket, from_status: str) -> None:
     )
 
 
+@_never_fails
 def emit_ticket_resolved(ticket) -> None:
     _notify_users(
         [ticket.raised_by_id],
@@ -173,6 +200,7 @@ def emit_ticket_resolved(ticket) -> None:
     )
 
 
+@_never_fails
 def emit_comment_added(ticket, comment) -> None:
     author = comment.author
     if author and author.id != ticket.raised_by_id:
@@ -187,6 +215,7 @@ def emit_comment_added(ticket, comment) -> None:
         )
 
 
+@_never_fails
 def emit_ticket_escalated(ticket) -> None:
     cd_id = _campus_department_id(ticket)
 

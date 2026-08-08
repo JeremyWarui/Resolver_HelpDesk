@@ -349,6 +349,13 @@ dead (push, `/admin/config/`, `/auth/profile/`, `assign-hos`) and one live —
 `GET /tickets/feedback/`, which four roles' Feedback tab was calling and which
 had never been ported. Worth re-running after any batch of endpoint changes.
 
+**Compare trailing slashes exactly.** The first version of this check
+normalised them on both sides, which hid a real bug: the client posted to
+`/notifications/read-all` and the route is `notifications/read-all/`. With
+`APPEND_SLASH` that is a redirect, the redirect turns the POST into a GET, and
+"Mark all read" answers 405. A path that differs only by a slash is a
+mismatch, not a match.
+
 ## 8. Target app layout
 
 ```
