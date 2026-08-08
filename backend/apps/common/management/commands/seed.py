@@ -648,22 +648,44 @@ class Command(BaseCommand):
             values=builder(rng) if builder else {},
         )
 
+    @staticmethod
+    def _log(ticket, when, **fields):
+        """Write a TicketLog stamped `when` rather than now.
+
+        `created_at` is auto_now_add, so a plain create() stamps every log with
+        the moment the seed ran. That broke two things at once: response SLA is
+        measured from the first action log against `response_due_at`, so every
+        demo ticket missed it (0% everywhere, for all roles), and each ticket's
+        timeline showed its whole life happening in the same second.
+        """
+        log = TicketLog.objects.create(ticket=ticket, **fields)
+        TicketLog.objects.filter(pk=log.pk).update(created_at=when)
+        return log
+
     def _write_history(self, ticket, technician, created_at, rng):
         """Give each ticket a log trail consistent with the status it landed on."""
-        TicketLog.objects.create(
-            ticket=ticket, event_type="created",
+        self._log(
+            ticket, created_at, event_type="created",
             actor=ticket.raised_by, to_value=ticket.ticket_no,
         )
         if ticket.status == "open":
             return
 
-        TicketLog.objects.create(
-            ticket=ticket, event_type="assigned", actor=None,
+        # Picked up well inside the response window most of the time — the same
+        # shape as resolution below, so response SLA means something.
+        response_window = timedelta(minutes=ticket.priority.response_minutes)
+        if rng.random() < 0.85:
+            assigned_at = created_at + response_window * rng.uniform(0.1, 0.9)
+        else:
+            assigned_at = created_at + response_window * rng.uniform(1.2, 3.0)
+        self._log(
+            ticket, assigned_at, event_type="assigned", actor=None,
             to_value=technician.get_full_name() if technician else "",
         )
+        started_at = assigned_at + timedelta(minutes=rng.randint(5, 240))
         if ticket.status in ("in_progress", "pending", "resolved", "closed"):
-            TicketLog.objects.create(
-                ticket=ticket, event_type="status_changed", actor=technician,
+            self._log(
+                ticket, started_at, event_type="status_changed", actor=technician,
                 from_value="assigned", to_value="in_progress",
             )
         if ticket.status == "pending":
@@ -671,10 +693,22 @@ class Command(BaseCommand):
                 paused_at=created_at + timedelta(hours=rng.randint(1, 12))
             )
         if ticket.status in ("resolved", "closed"):
-            resolved_at = created_at + timedelta(hours=rng.randint(2, 72))
+            # Resolution time is drawn relative to the ticket's own SLA window,
+            # not from a flat 2–72 hours. The flat draw ignored priority, so a
+            # Critical ticket (2h to resolve) almost always missed — across the
+            # whole seed only 7% of resolved tickets met their deadline, every
+            # gauge showed 0%, and a genuine SLA regression would have been
+            # indistinguishable from the demo data.
+            #
+            # Most work lands inside the window; a realistic minority runs over.
+            window = timedelta(minutes=ticket.priority.resolution_minutes)
+            if rng.random() < 0.78:
+                resolved_at = created_at + window * rng.uniform(0.2, 0.95)
+            else:
+                resolved_at = created_at + window * rng.uniform(1.1, 2.5)
             Ticket.objects.filter(pk=ticket.pk).update(resolved_at=resolved_at)
-            TicketLog.objects.create(
-                ticket=ticket, event_type="resolved", actor=technician,
+            self._log(
+                ticket, resolved_at, event_type="resolved", actor=technician,
                 from_value="in_progress", to_value="resolved",
             )
             TicketComment.objects.create(
@@ -686,10 +720,14 @@ class Command(BaseCommand):
                 ]),
             )
         if ticket.status == "closed":
-            closed_at = created_at + timedelta(hours=rng.randint(73, 120))
+            # The requester confirms some time after the fix — always after
+            # `resolved_at`, which the flat 73–120h draw did not guarantee once
+            # resolution became SLA-relative (a Critical ticket resolves in
+            # under two hours).
+            closed_at = resolved_at + timedelta(hours=rng.randint(2, 48))
             Ticket.objects.filter(pk=ticket.pk).update(closed_at=closed_at)
-            TicketLog.objects.create(
-                ticket=ticket, event_type="closed", actor=ticket.raised_by,
+            self._log(
+                ticket, closed_at, event_type="closed", actor=ticket.raised_by,
                 from_value="resolved", to_value="closed",
             )
             if rng.random() < 0.7:

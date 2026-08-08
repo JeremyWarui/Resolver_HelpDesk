@@ -185,7 +185,8 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
     },
     {
       label: 'CSAT',
-      value: quality?.csat != null ? `${quality.csat.toFixed(1)}%` : '—',
+      // Avg(rating), out of five — not a percentage.
+      value: quality?.csat != null ? `${quality.csat.toFixed(1)} / 5` : '—',
       icon: <Star className="h-4 w-4" />,
       colorClass: 'bg-purple-500/10 text-purple-500',
       trend: quality?.delta.csat ?? undefined,

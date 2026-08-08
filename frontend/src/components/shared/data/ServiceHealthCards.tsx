@@ -40,7 +40,7 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
         />
         <MetricCard
           title="CSAT"
-          value={quality?.csat != null ? `${quality.csat.toFixed(1)}%` : '—'}
+          value={quality?.csat != null ? `${quality.csat.toFixed(1)} / 5` : '—'}
           description="Customer satisfaction score"
           icon={<Star className="h-6 w-6 text-purple-600" />}
           iconBgColor="bg-purple-100"

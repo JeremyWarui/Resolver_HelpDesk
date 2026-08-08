@@ -32,6 +32,11 @@ export function TechnicianPerformance({ params }: { params: AnalyticsParams }) {
   const aging = me?.aging_buckets;
 
   const pct = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(1)}%`);
+  // `csat` is Avg(rating) — a mean out of five, not a percentage. The previous
+  // report rendered it with a % sign, so a solid 4-star average displayed as
+  // "4.0%" and read as catastrophic.
+  const rating = (v: number | null | undefined) =>
+    v == null ? '—' : `${v.toFixed(1)} / 5`;
 
   // ── Needs attention now ────────────────────────────────────────────────────
   const attention: KPIMetric[] = [
@@ -107,8 +112,8 @@ export function TechnicianPerformance({ params }: { params: AnalyticsParams }) {
   const quality: KPIMetric[] = [
     {
       label: 'Satisfaction',
-      value: pct(me?.csat),
-      description: 'From requester ratings',
+      value: rating(me?.csat),
+      description: 'Average requester rating',
       trend: me?.delta?.csat ?? undefined,
       icon: <Star className="h-5 w-5" />,
       colorClass: 'text-amber-500',
