@@ -165,14 +165,10 @@ export const sectionsService = {
     department_id: number;
     name: string;
     code: string;
-    description?: string;
-    staff_label?: string;
-    parent_id?: number | null;
   }): Promise<SectionType> => {
-    const { department_id, parent_id, ...rest } = payload;
+    const { department_id, ...rest } = payload;
     const { data } = await apiClient.post<SectionType>('/section-types/', {
       department: department_id,
-      parent: parent_id ?? null,
       ...rest,
     });
     return data;
@@ -181,7 +177,6 @@ export const sectionsService = {
   updateSectionType: async (id: number, payload: Partial<{
     name: string;
     code: string;
-    staff_label: string;
   }>): Promise<SectionType> => {
     const { data } = await apiClient.patch<SectionType>(`/section-types/${id}/`, payload);
     return data;

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,67 +7,54 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import * as catalogueService from '@/lib/api/catalogue';
-import type { SLAPriority } from '@/lib/api/sla';
-import type { ServiceCategory, ServiceItem } from '@/types/catalogue';
-import type { CategoryWithPriority } from './types';
-import { SlaPreview } from './SlaPreview';
-import { fmtMins } from './format';
+import type { ServiceItem, SubSection } from '@/types/catalogue';
 
 // Mounted only while open — state initializes from props on mount.
+//
+// No priority field, deliberately. Priority is not a property of the service:
+// a leaking tap in a store room and one over a server rack are the same
+// catalogue entry and nowhere near the same urgency. The HOS decides it per
+// ticket, when they assign it.
 export function ItemForm({
-  categoryId,
-  categories,
-  priorities,
+  subSectionId,
+  subSections,
   editing,
   onSaved,
   onClose,
 }: {
-  categoryId?: number;
-  categories: ServiceCategory[];
-  priorities: SLAPriority[];
+  subSectionId?: number;
+  subSections: SubSection[];
   editing?: ServiceItem | null;
   onSaved: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(editing?.name ?? '');
   const [description, setDescription] = useState(editing?.description ?? '');
-  const [selectedCatId, setSelectedCatId] = useState<string>(() => {
-    if (editing?.category) return String(editing.category);
-    return categoryId ? String(categoryId) : '';
+  const [selectedSubId, setSelectedSubId] = useState<string>(() => {
+    if (editing?.sub_section) return String(editing.sub_section);
+    return subSectionId ? String(subSectionId) : '';
   });
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
-  // '' = inherit the category's default_priority — the common case; most items
-  // don't need their own override.
-  const [priorityId, setPriorityId] = useState<string>(
-    editing?.default_priority?.id ? String(editing.default_priority.id) : ''
-  );
   const [saving, setSaving] = useState(false);
 
-  const selectedCategory = categories.find(c => String(c.id) === selectedCatId) as
-    | CategoryWithPriority
-    | undefined;
-  const overridePriority = priorities.find(p => String(p.id) === priorityId);
-
   const handleSave = async () => {
-    if (!name.trim() || !selectedCatId) { toast.error('Name and category are required'); return; }
+    if (!name.trim() || !selectedSubId) { toast.error('Name and trade are required'); return; }
     setSaving(true);
     try {
       if (editing) {
         await catalogueService.updateServiceItem(editing.id, {
           name: name.trim(),
           description: description.trim(),
-          category: Number(selectedCatId),
+          sub_section: Number(selectedSubId),
           is_active: isActive,
-          default_priority_id: priorityId ? Number(priorityId) : null,
-        } as Partial<ServiceItem>);
+        });
         toast.success('Item updated');
       } else {
         await catalogueService.createServiceItem({
-          category: Number(selectedCatId),
+          sub_section: Number(selectedSubId),
           name: name.trim(),
           description: description.trim(),
           is_active: isActive,
-          default_priority_id: priorityId ? Number(priorityId) : null,
         });
         toast.success('Item created');
       }
@@ -87,22 +73,27 @@ export function ItemForm({
         <DialogHeader>
           <DialogTitle>{editing ? 'Edit Service Item' : 'New Service Item'}</DialogTitle>
           <p className="text-sm text-gray-500 mt-1">
-            A service item is a specific request users can raise (e.g. "WiFi not working", "Pipe burst").
+            A service item is one fault a requester can report — "Leaking tap or pipe",
+            "Faulty socket or switch".
           </p>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="item-category" className="text-sm font-medium">Category *</Label>
-            <Select value={selectedCatId} onValueChange={setSelectedCatId}>
-              <SelectTrigger id="item-category" className="h-10">
-                <SelectValue placeholder="Select category" />
+            <Label htmlFor="item-trade" className="text-sm font-medium">Trade *</Label>
+            <Select value={selectedSubId} onValueChange={setSelectedSubId}>
+              <SelectTrigger id="item-trade" className="h-10">
+                <SelectValue placeholder="Select trade" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map(cat => (
-                  <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
+                {subSections.map(sub => (
+                  <SelectItem key={sub.id} value={String(sub.id)}>{sub.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-gray-500">
+              This is what routes the ticket — it decides which technicians can be
+              given the job.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="item-name" className="text-sm font-medium">Item Name *</Label>
@@ -110,7 +101,7 @@ export function ItemForm({
               id="item-name"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Pipe Installation"
+              placeholder="e.g. Leaking tap or pipe"
               className="h-10"
             />
           </div>
@@ -124,34 +115,6 @@ export function ItemForm({
               rows={2}
               className="resize-none"
             />
-          </div>
-
-          {/* Priority override — optional; most items inherit the category's default */}
-          <div className="space-y-2">
-            <Label htmlFor="item-priority" className="text-sm font-medium">Priority Override</Label>
-            <Select value={priorityId || '__inherit__'} onValueChange={v => setPriorityId(v === '__inherit__' ? '' : v)}>
-              <SelectTrigger id="item-priority" className="h-10">
-                <SelectValue placeholder="Inherit from category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__inherit__">Inherit from category</SelectItem>
-                {priorities.map(p => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {overridePriority ? (
-              <SlaPreview
-                responseMinutes={overridePriority.response_minutes}
-                resolutionMinutes={overridePriority.resolution_minutes}
-              />
-            ) : selectedCategory?.default_priority ? (
-              <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-xs text-gray-600">
-                <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-                <span>Inherits <strong>{selectedCategory.default_priority.name}</strong> from category —</span>
-                <span>{fmtMins(selectedCategory.default_priority.response_minutes)} response, {fmtMins(selectedCategory.default_priority.resolution_minutes)} resolution</span>
-              </div>
-            ) : null}
           </div>
 
           <div className="pt-1">

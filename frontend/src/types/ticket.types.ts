@@ -8,6 +8,12 @@ export interface Priority {
   resolution_minutes: number;
 }
 
+export interface SubSectionRef {
+  id: number;
+  name: string;
+  code: string;
+}
+
 export interface TicketLocation {
   facility_type: { id: number; name: string; code: string };
   facility: { id: number; name: string } | null;
@@ -72,10 +78,10 @@ export interface Ticket {
 
   // Read-only nested objects
   section: NestedRef;
-  /** Specialty child SectionType (R18) — e.g. "Plumbing" within a "Maintenance"
-   *  section. Null when the routed section has no specialty children. Pool-
-   *  filtering/display only — never an escalation or scope boundary. */
-  specialty?: { id: number; name: string } | null;
+  /** The trade that owns the work — Plumbing, Electrical, and so on. Derived
+   *  server-side from the chosen service item; together with `section` it is
+   *  the pair a technician is scoped to. */
+  sub_section: SubSectionRef;
   raised_by: string | { id: number; username: string; full_name: string };
   raised_by_id: number; // user ID — use this for ownership checks, not raised_by
   assigned_to: AssignedUser | null;
@@ -86,7 +92,7 @@ export interface Ticket {
   paused_at?: string | null;
   accumulated_pause?: string;
 
-  // Location (present when category.location_details is true)
+  // Location (present when the trade's location_details is true)
   location?: TicketLocation | null;
 
   // Timestamps
@@ -102,13 +108,21 @@ export interface Ticket {
   // Available technicians (only for roles that can assign)
   available_technicians?: Array<{ id: number; username: string; full_name: string }>;
 
+  /** Whether the requester has rated it. A flag, present on list rows; the
+   *  rating object itself stays on the detail view. */
+  has_feedback?: boolean;
+
   // Nested data (detail view only)
   comments?: Comment[];
   feedback?: Feedback | null;
+  /** Detail only. Deliberately absent from the list serializer — a phone
+   *  number is for the technician who opened the ticket, not for anyone
+   *  scrolling a table. Stored E.164, rendered locally. */
+  contact_phone?: string;
   service_item?: {
     id: number;
     name: string;
-    category_name: string;
+    sub_section: SubSectionRef;
   } | null;
 }
 
@@ -119,10 +133,13 @@ export interface TicketsResponse {
   results: Ticket[];
 }
 
-// Canonical create payload — server resolves section + priority (R6/R7)
+// Canonical create payload — the server derives section, trade and priority
+// from the service item and the requester's own campus.
 export interface CreateTicketPayload {
   service_item: number;
   description: string;
+  /** Optional. Left out, the requester's own number is used. */
+  contact_phone?: string;
   location?: {
     facility_type: number;
     facility?: number;
@@ -158,6 +175,8 @@ export interface TicketsParams {
   ordering?: string;
   // Server-side filters (narrow the role-scoped queryset; never widen scope)
   section?: number;
+  sub_section?: number;   // trade — Plumbing, Electrical, …
+  current_level?: 'technician' | 'hos' | 'hod';
   assigned_to?: number;  // technician (assignee) user id
   raised_by?: number;    // requester user id
 }

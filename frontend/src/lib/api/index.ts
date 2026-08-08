@@ -37,8 +37,6 @@ export { default as reportsService } from './reports';
 export * from './notifications';
 export { default as notificationsService } from './notifications';
 
-export * from './services';
-
 export * from './admin';
 
 export * from './sla';

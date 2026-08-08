@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -9,12 +10,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { assignTicket } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { useSectionTechnicians } from '@/hooks/technicians/useSectionTechnicians';
+import { getPriorities } from '@/lib/api/sla';
 import type { Ticket } from '@/types';
 
 interface AssignmentModalProps {
@@ -33,28 +34,37 @@ export function AssignmentModal({
   mode = 'assign',
 }: AssignmentModalProps) {
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
+  const [priorityId, setPriorityId] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const invalidate = useTicketInvalidate();
 
-  const { data: rawTechnicians = [], isLoading: loadingTechs, error: techError } = useSectionTechnicians(
+  // Scoped to the ticket's trade as well as its section — a plumber is not an
+  // option for a carpentry job, and the server would refuse it anyway.
+  const { data: technicians = [], isLoading: loadingTechs, error: techError } = useSectionTechnicians(
     open ? ticket.section.id : null,
+    ticket.sub_section?.id,
   );
 
-  // Specialty match (R18) floats to the top — display/sort only, never a
-  // hard filter, since a specialist may be unavailable and any section
-  // technician can still pick up the ticket.
-  const specialtyId = ticket.specialty?.id;
-  const technicians = specialtyId
-    ? [...rawTechnicians].sort((a, b) => {
-        const aMatch = a.specialty_ids?.includes(specialtyId) ? 1 : 0;
-        const bMatch = b.specialty_ids?.includes(specialtyId) ? 1 : 0;
-        return bMatch - aMatch;
-      })
-    : rawTechnicians;
+  const { data: priorities = [] } = useQuery({
+    queryKey: ['priorities'],
+    queryFn: getPriorities,
+    enabled: open,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  // Highest urgency first — the judgement being made is "is this worse than
+  // the Low it opened at", so the alternatives should lead.
+  const priorityChoices = useMemo(
+    () => [...priorities].sort((a, b) => b.rank - a.rank),
+    [priorities],
+  );
+
+  const chosenPriority = priorityId ?? ticket.priority?.id ?? null;
 
   function handleClose() {
     setSelectedTechId(null);
+    setPriorityId(null);
     setNote('');
     onClose();
   }
@@ -63,7 +73,11 @@ export function AssignmentModal({
     if (!selectedTechId) return;
     setSubmitting(true);
     try {
-      const updated = await assignTicket(ticket.id, selectedTechId);
+      const updated = await assignTicket(
+        ticket.id,
+        selectedTechId,
+        priorityId ?? undefined,
+      );
       const tech = technicians.find((t) => t.id === selectedTechId);
       const displayName = tech
         ? (tech.first_name && tech.last_name ? `${tech.first_name} ${tech.last_name}` : tech.username)
@@ -75,6 +89,7 @@ export function AssignmentModal({
       );
       invalidate(ticket.id);
       setSelectedTechId(null);
+      setPriorityId(null);
       setNote('');
       onSuccess(updated);
     } catch {
@@ -98,7 +113,8 @@ export function AssignmentModal({
             </span>
           </div>
           <DialogDescription>
-            Assign or reassign this ticket to a technician in your section.
+            Assign this ticket to a {ticket.sub_section?.name.toLowerCase() ?? 'section'} technician,
+            and set how urgent it is.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,6 +128,47 @@ export function AssignmentModal({
               </span>
             </div>
           )}
+
+          {/* Priority — above the technician list on purpose.
+              The two judgements feed each other: how urgent this is decides
+              who can realistically take it now. Deciding the person first, and
+              the urgency afterwards from below a scrolling list, is the wrong
+              way round. */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                Priority
+              </span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {priorityChoices.map((p) => {
+                const isSelected = chosenPriority === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPriorityId(p.id)}
+                    disabled={submitting}
+                    className={[
+                      'rounded-md border px-2 py-2 text-center text-xs font-medium transition-colors',
+                      isSelected
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-background text-muted-foreground hover:bg-muted/50',
+                    ].join(' ')}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {priorityId == null
+                ? `Opened at ${ticket.priority?.name ?? 'Low'}. Raise it if this is worse than it reads.`
+                : 'The SLA is re-timed from when the ticket was raised, not from now.'}
+            </p>
+          </div>
 
           {/* Technician radio cards */}
           <div className="space-y-2">
@@ -136,7 +193,8 @@ export function AssignmentModal({
               </p>
             ) : technicians.length === 0 ? (
               <p className="text-sm text-muted-foreground italic py-2">
-                No technicians assigned to section {ticket.section.id}.
+                No {ticket.sub_section?.name.toLowerCase() ?? ''} technicians at this campus.
+                The ticket routed correctly, but there is nobody here to do the work.
               </p>
             ) : (
               technicians.map((tech) => {
@@ -144,7 +202,6 @@ export function AssignmentModal({
                 const fullName = tech.first_name && tech.last_name
                   ? `${tech.first_name} ${tech.last_name}`
                   : null;
-                const isSpecialtyMatch = specialtyId != null && !!tech.specialty_ids?.includes(specialtyId);
                 return (
                   <button
                     key={tech.id}
@@ -175,11 +232,6 @@ export function AssignmentModal({
                         <p className="text-sm font-medium text-foreground leading-snug">
                           {fullName ?? tech.username}
                         </p>
-                        {isSpecialtyMatch && (
-                          <Badge variant="secondary" className="text-xs">
-                            {ticket.specialty?.name} match
-                          </Badge>
-                        )}
                       </div>
                       {fullName && (
                         <p className="text-xs text-muted-foreground leading-snug">

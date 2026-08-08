@@ -1,113 +1,84 @@
 import apiClient from './client';
-import type { ServiceCategory, ServiceItem } from '@/types/catalogue';
+import type { ServiceItem, SubSection } from '@/types/catalogue';
 
-// ── Campus-filtered catalogue tree (R5 — SoT §5.3) ───────────────────────────
+// ── Campus-filtered catalogue tree ───────────────────────────────────────────
+//
+// `GET /catalog/?campus=<id>` returns the trades that campus actually runs,
+// with their service items nested. Campus is required: the catalogue is not
+// global, and a campus with no Maintenance section offers nothing.
 
-export interface CatalogItem {
-  id: number;
-  name: string;
-  description: string;
-  is_active: boolean;
-}
+export type CatalogItem = Pick<ServiceItem, 'id' | 'name' | 'description' | 'is_active'>;
 
-export interface CatalogCategory {
-  id: number;
-  name: string;
-  description: string;
-  location_details: boolean;
-  default_priority: { id: number; name: string; rank: number };
-  /** FK integer — the section type this category belongs to */
-  section_type: number;
-  /** Derived by backend from section_type.department — always present */
-  department: { id: number; name: string; code: string };
-  items: CatalogItem[];
-}
+export type CatalogSubSection = SubSection & { items: CatalogItem[] };
 
-/** Convenience wrapper type matching the spec shape — the API returns an array directly */
-export interface CatalogResponse {
-  categories: CatalogCategory[];
-}
-
-export interface FacilityTypeRef {
+/** A facility as the ticket wizard needs it. Each row names its own type, so
+ *  one campus-wide call is enough to draw both the type tiles and the facility
+ *  dropdown — there is no separate /facility-types/ fetch, and no further
+ *  request as the requester clicks between tiles. */
+export interface CampusFacility {
   id: number;
   name: string;
   code: string;
+  /** FK id of the facility type — what the create payload sends. */
+  facility_type: number;
+  /** Type code, e.g. "office_block" — what the client groups on. */
+  type: string;
+  facility_type_name: string;
 }
 
-export async function getCatalog(campusId: number): Promise<CatalogCategory[]> {
+export async function getCatalog(campusId: number): Promise<CatalogSubSection[]> {
   const { data } = await apiClient.get('/catalog/', { params: { campus: campusId } });
   return Array.isArray(data) ? data : (data.results ?? data);
 }
 
-export async function getFacilityTypes(): Promise<FacilityTypeRef[]> {
-  const { data } = await apiClient.get('/facility-types/');
-  return Array.isArray(data) ? data : (data.results ?? data);
-}
-
-export async function getFacilitiesByCampusAndType(
-  campusId: number,
-  facilityTypeCode: string
-): Promise<{ id: number; name: string; code: string }[]> {
-  const { data } = await apiClient.get('/facilities/', {
-    params: { campus: campusId, facility_type: facilityTypeCode },
-  });
+export async function getCampusFacilities(campusId: number): Promise<CampusFacility[]> {
+  const { data } = await apiClient.get('/facilities/', { params: { campus: campusId } });
   return Array.isArray(data) ? data : (data.results ?? data);
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
-export const getCategoriesBySectionType = (sectionTypeId: number) =>
-  apiClient.get<ServiceCategory[]>(`/section-types/${sectionTypeId}/categories/`);
-
-export const getAllCategories = (params?: {
+export const getSubSections = (params?: {
   section_type?: number;
   is_active?: boolean;
-}) => apiClient.get<ServiceCategory[]>(`/service-categories/`, { params });
+}) => apiClient.get<SubSection[]>(`/sub-sections/`, { params });
 
-export const getServiceItemsByCategory = (categoryId: number) =>
+export const getServiceItemsBySubSection = (subSectionId: number) =>
   apiClient.get<ServiceItem[]>(`/service-items/`, {
-    params: { category: categoryId },
+    params: { sub_section: subSectionId },
   });
 
 export const getAllServiceItems = (params?: {
-  category?: number;
+  sub_section?: number;
   is_active?: boolean;
 }) => apiClient.get<ServiceItem[]>(`/service-items/`, { params });
 
 export const getServiceItemDetail = (itemId: number) =>
   apiClient.get<ServiceItem>(`/service-items/${itemId}/`);
 
-// ── Service Category CRUD ─────────────────────────────────────────────────────
+// ── Sub-section CRUD ──────────────────────────────────────────────────────────
 
-export const createCategory = (data: {
+export const createSubSection = (data: {
   section_type: number;
   name: string;
+  code: string;
   description?: string;
-  icon?: string;
-  order?: number;
   is_active?: boolean;
   location_details?: boolean;
-  default_priority_id?: number;
-}) => apiClient.post<ServiceCategory>(`/service-categories/`, data);
+}) => apiClient.post<SubSection>(`/sub-sections/`, data);
 
-export const updateCategory = (id: number, data: Partial<ServiceCategory>) =>
-  apiClient.patch<ServiceCategory>(
-    `/service-categories/${id}/`,
-    data
-  );
+export const updateSubSection = (id: number, data: Partial<SubSection>) =>
+  apiClient.patch<SubSection>(`/sub-sections/${id}/`, data);
 
-export const deleteCategory = (id: number) =>
-  apiClient.delete(`/service-categories/${id}/`);
+export const deleteSubSection = (id: number) =>
+  apiClient.delete(`/sub-sections/${id}/`);
 
-// ── Service Item CRUD ─────────────────────────────────────────────────────────
+// ── Service item CRUD ─────────────────────────────────────────────────────────
 
 export const createServiceItem = (data: {
-  category: number;
+  sub_section: number;
   name: string;
   description?: string;
-  /** Per-item priority override; omit/null to inherit the category's default_priority. */
-  default_priority_id?: number | null;
-  order?: number;
   is_active?: boolean;
 }) => apiClient.post<ServiceItem>(`/service-items/`, data);
 

@@ -100,12 +100,20 @@ export async function deleteTicket(id: number): Promise<void> {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+/** Assignment is also where priority is decided.
+ *
+ *  A ticket opens at Low because the requester should not be grading their own
+ *  urgency. The HOS has read it and knows the section's workload, so they set
+ *  the real priority as they hand it out. Omit it to leave the ticket as it is
+ *  — reassignment is not necessarily a re-judgement. */
 export async function assignTicket(
   id: number,
-  technicianId: number
+  technicianId: number,
+  priorityId?: number
 ): Promise<Ticket> {
   const { data } = await apiClient.post<Ticket>(`/tickets/${id}/assign/`, {
     assigned_to: technicianId,
+    ...(priorityId != null ? { priority: priorityId } : {}),
   });
   return data;
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   UserCheck, RefreshCw, AlertCircle,
-  RotateCcw, Star, Hand, CheckCheck,
+  RotateCcw, Star, Hand, CheckCheck, Play,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,10 +22,11 @@ import { useTicketDetail, useTicketTimeline, useTicketInvalidate } from '@/hooks
 import { usePermissions } from '@/lib/auth/roleContext';
 import { useAuthStore } from '@/stores/authStore';
 import { joinChannel, leaveChannel } from '@/lib/ws/wsClient';
-import { claimTicket, reopenTicket } from '@/lib/api/tickets';
+import { claimTicket, reopenTicket, updateTicketStatus } from '@/lib/api/tickets';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
 import { formatDate, formatDateTime } from '@/utils/date';
 import { formatSectionDisplay } from '@/utils/formatSection';
+import { formatPhoneLocal } from '@/utils/phone';
 import type { Ticket } from '@/types';
 
 type ActiveModal = 'status' | 'assign' | 'escalate' | 'rate' | 'reopen' | null;
@@ -134,6 +135,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [startSubmitting, setStartSubmitting] = useState(false);
 
   useEffect(() => {
     if (ticketId == null) return;
@@ -169,6 +171,16 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     ticket.status === 'open' &&
     ticket.assigned_to == null &&
     !isRaisedByCurrentUser;
+
+  // "Start work" — the assignee leaving `assigned`. Its own button rather than
+  // a trip through the status modal, because the modal insists on a progress
+  // note and there is nothing to say yet beyond "I have begun". The dwell in
+  // `assigned` is what the response-time SLA measures, so it stays a real
+  // resting state — this just makes leaving it one tap.
+  const showStartWork =
+    ticket != null &&
+    ticket.status === 'assigned' &&
+    ticket.assigned_to?.id === currentUser?.id;
 
   const showStatusUpdate =
     permissions.canUpdateTicketStatus &&
@@ -220,12 +232,27 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     }
   }
 
+  async function handleStartWork() {
+    if (!ticket) return;
+    setStartSubmitting(true);
+    try {
+      await updateTicketStatus(ticket.id, 'in_progress', 'Started work');
+      toast.success('Marked as in progress.');
+      invalidate(ticket.id);
+    } catch {
+      toast.error('Could not start this ticket. Please try again.');
+      invalidate(ticket.id);
+    } finally {
+      setStartSubmitting(false);
+    }
+  }
+
   async function handleClaim() {
     if (!ticket) return;
     setClaimSubmitting(true);
     try {
       await claimTicket(ticket.id);
-      toast.success('Ticket claimed — it is now assigned to you.');
+      toast.success('Ticket claimed — it is yours and now in progress.');
       invalidate(ticket.id);
     } catch {
       toast.error('Could not claim this ticket. It may already be assigned.');
@@ -264,7 +291,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
             </DialogHeader>
 
             {/* ── Action toolbar ─────────────────────────────────────────────── */}
-            {(showClaim || showStatusUpdate || showAssign || showReassign || showEscalate || showConfirmResolved || showReopen) && (
+            {(showClaim || showStartWork || showStatusUpdate || showAssign || showReassign || showEscalate || showConfirmResolved || showReopen) && (
               <div className="px-6 py-3 border-b bg-muted/30 shrink-0 flex items-center justify-between gap-2">
                 {/* Secondary actions — left */}
                 <div className="flex items-center gap-2 flex-wrap">
@@ -301,8 +328,19 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                       Reassign
                     </Button>
                   )}
+                  {showStartWork && (
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={handleStartWork}
+                      disabled={startSubmitting}
+                    >
+                      <Play className="h-3.5 w-3.5 mr-1.5" />
+                      {startSubmitting ? 'Starting…' : 'Start work'}
+                    </Button>
+                  )}
                   {showStatusUpdate && (
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setActiveModal('status')}>
+                    <Button size="sm" variant="outline" onClick={() => setActiveModal('status')}>
                       <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                       Update Status
                     </Button>
@@ -372,7 +410,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                         <div className="space-y-1.5">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Service Request</p>
                           <div className="border rounded-lg divide-y">
-                            <DetailRow label="Category" value={ticket.service_item.category_name} />
+                            <DetailRow label="Trade" value={ticket.sub_section?.name ?? ticket.service_item.sub_section?.name} />
                             <DetailRow label="Service" value={ticket.service_item.name} />
                           </div>
                         </div>
@@ -400,6 +438,16 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                                 : <span className="text-muted-foreground italic text-xs">Unassigned</span>
                             }
                           />
+                          {ticket.contact_phone && (
+                            <DetailRow
+                              label="Contact"
+                              value={
+                                <a href={`tel:${ticket.contact_phone}`} className="text-primary hover:underline">
+                                  {formatPhoneLocal(ticket.contact_phone)}
+                                </a>
+                              }
+                            />
+                          )}
                           <DetailRow label="Opened" value={formatDateTime(ticket.created_at)} />
                           {ticket.resolved_at && (
                             <DetailRow label="Resolved" value={formatDate(ticket.resolved_at)} />

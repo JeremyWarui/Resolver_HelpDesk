@@ -2,9 +2,8 @@ import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as catalogueService from '@/lib/api/catalogue';
-import { getPriorities } from '@/lib/api/sla';
 import { departmentsService, sectionsService } from '@/lib/api/organizations';
-import type { ServiceCategory } from '@/types/catalogue';
+import type { SubSection } from '@/types/catalogue';
 import type { SectionType } from './types';
 
 const KEY = ['catalogue'] as const;
@@ -26,43 +25,37 @@ export function useCatalogueData(activeTypeId: number | null) {
     queryFn: () => departmentsService.getDepartments(),
   });
 
-  const priorities = useQuery({
-    queryKey: ['priorities'],
-    queryFn: getPriorities,
-  });
-
-  const categories = useQuery({
-    queryKey: [...KEY, 'categories', activeTypeId],
+  const subSections = useQuery({
+    queryKey: [...KEY, 'sub-sections', activeTypeId],
     enabled: activeTypeId != null,
     queryFn: async () => {
-      const res = await catalogueService.getAllCategories({ section_type: activeTypeId! });
+      const res = await catalogueService.getSubSections({ section_type: activeTypeId! });
       const raw = res.data;
       return Array.isArray(raw)
-        ? (raw as ServiceCategory[])
-        : ((raw as { results: ServiceCategory[] }).results ?? []);
+        ? (raw as SubSection[])
+        : ((raw as { results: SubSection[] }).results ?? []);
     },
   });
 
-  const structureError = sectionTypes.error || departments.error || priorities.error;
+  const structureError = sectionTypes.error || departments.error;
   useEffect(() => {
     if (structureError) toast.error('Failed to load catalogue');
   }, [structureError]);
   useEffect(() => {
-    if (categories.error) toast.error('Failed to load categories');
-  }, [categories.error]);
+    if (subSections.error) toast.error('Failed to load trades');
+  }, [subSections.error]);
 
   return {
     sectionTypes: sectionTypes.data ?? [],
     departments: departments.data ?? [],
-    priorities: priorities.data ?? [],
-    categories: categories.data ?? [],
-    loading: sectionTypes.isLoading || departments.isLoading || priorities.isLoading,
-    catsLoading: categories.isLoading,
+    subSections: subSections.data ?? [],
+    loading: sectionTypes.isLoading || departments.isLoading,
+    subsLoading: subSections.isLoading,
     /** After creating/renaming/deleting a section type. */
     invalidateStructure: () =>
       queryClient.invalidateQueries({ queryKey: [...KEY, 'section-types'] }),
-    /** After any category/item write. */
-    invalidateCategories: () =>
-      queryClient.invalidateQueries({ queryKey: [...KEY, 'categories'] }),
+    /** After any trade/item write. */
+    invalidateSubSections: () =>
+      queryClient.invalidateQueries({ queryKey: [...KEY, 'sub-sections'] }),
   };
 }

@@ -10,30 +10,29 @@ export interface FormSchemaField {
   help_text?: string
 }
 
-export interface ServiceCategory {
+/** A trade under the Maintenance section type — Carpentry, Plumbing, and so on.
+ *  This is both the catalogue's top level and the technician scoping boundary,
+ *  so its `code` is the one the seed and the roster share. */
+export interface SubSection {
   id: number
   section_type: number
   section_type_name: string
   name: string
+  code: string
   description: string
-  icon: string
-  order: number
   is_active: boolean
+  /** Whether raising against this trade must name a place — a leaking tap has
+   *  a room, a policy question does not. */
   location_details: boolean
-  service_items?: ServiceItem[]
+  items?: ServiceItem[]
 }
 
 export interface ServiceItem {
   id: number
-  category: number
-  category_name: string
+  sub_section: number
   name: string
   description: string
-  default_priority?: { id: number; name: string; rank: number; response_minutes: number; resolution_minutes: number } | null
   is_active: boolean
-  order: number
-  request_count: number
-  section_type_code?: string | null
 }
 
 export type RequestData = Record<string, string | string[] | number | null>
