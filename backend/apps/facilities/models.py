@@ -41,6 +41,13 @@ class Facility(models.Model):
         app_label = "facilities"
         ordering = ["campus", "name"]
         verbose_name_plural = "Facilities"
+        constraints = [
+            # (campus, name) is the natural key — every campus has exactly one
+            # "Administration Block", and several campuses each have one.
+            models.UniqueConstraint(
+                fields=["campus", "name"], name="unique_facility_per_campus"
+            ),
+        ]
 
     def __str__(self):
         return f"{self.campus} – {self.name}"

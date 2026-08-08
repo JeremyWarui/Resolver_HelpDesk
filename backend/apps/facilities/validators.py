@@ -1,10 +1,53 @@
 from rest_framework import serializers
 
+# What the ticket wizard asks for, per facility type. Each entry is the whole
+# contract: `required` and `optional` are the fields offered, `known` guards
+# against anything else being posted, and `building_dropdown` says whether the
+# form offers a named-facility picker.
+#
+# Several types share an identical spec (area + room). They stay distinct
+# anyway: the type is also the reporting dimension, and "how much of our work
+# is in hostels vs conference facilities" is a question this system should be
+# able to answer.
 TYPE_SPECS = {
     "office_block": {
         "required": {"floor", "room"},
         "optional": {"area"},
         "known": {"floor", "room", "area"},
+        "building_dropdown": True,
+    },
+    "conference_facility": {
+        "required": {"area"},
+        "optional": {"room"},
+        "known": {"area", "room"},
+        "building_dropdown": True,
+    },
+    "hostel": {
+        # Participant accommodation — occupants rotate per course, so the room
+        # identifies the fault, not the person in it.
+        "required": {"room_number"},
+        "optional": {"wing"},
+        "known": {"room_number", "wing"},
+        "building_dropdown": True,
+    },
+    "residential": {
+        # Staff quarters — a standing household, so the tenant is worth knowing:
+        # a plumber needs someone to let them in.
+        "required": {"unit_number"},
+        "optional": {"tenant_name"},
+        "known": {"unit_number", "tenant_name"},
+        "building_dropdown": False,
+    },
+    "dining": {
+        "required": {"area"},
+        "optional": {"room"},
+        "known": {"area", "room"},
+        "building_dropdown": True,
+    },
+    "recreational": {
+        "required": {"area"},
+        "optional": {"room"},
+        "known": {"area", "room"},
         "building_dropdown": True,
     },
     "building": {
@@ -17,12 +60,6 @@ TYPE_SPECS = {
         "required": {"asset_name"},
         "optional": {"asset_id", "description"},
         "known": {"asset_name", "asset_id", "description"},
-        "building_dropdown": False,
-    },
-    "residential": {
-        "required": {"unit_number"},
-        "optional": {"tenant_name"},
-        "known": {"unit_number", "tenant_name"},
         "building_dropdown": False,
     },
     "grounds": {
