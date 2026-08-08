@@ -6,7 +6,6 @@ import type {
   UsersResponse,
   RoleAssignment,
   CreateRoleAssignmentPayload,
-  UpdateRoleAssignmentPayload,
 } from '@/types';
 
 export interface UserListParams {
@@ -55,22 +54,6 @@ export async function createRoleAssignment(
   return data;
 }
 
-export async function updateRoleAssignment(
-  userId: number,
-  raId: number,
-  payload: UpdateRoleAssignmentPayload
-): Promise<RoleAssignment> {
-  const { data } = await apiClient.patch<RoleAssignment>(
-    `/users/${userId}/role-assignments/${raId}/`,
-    payload
-  );
-  return data;
-}
-
-export async function deleteRoleAssignment(userId: number, raId: number): Promise<void> {
-  await apiClient.delete(`/users/${userId}/role-assignments/${raId}/`);
-}
-
 const usersService = {
   getUsers,
   getUserById,
@@ -79,8 +62,6 @@ const usersService = {
   deleteUser,
   getRoleAssignments,
   createRoleAssignment,
-  updateRoleAssignment,
-  deleteRoleAssignment,
 };
 
 export default usersService;

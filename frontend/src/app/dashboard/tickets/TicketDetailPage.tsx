@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   UserCheck, RefreshCw, AlertCircle,
@@ -21,7 +21,6 @@ import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { useTicketDetail, useTicketTimeline, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { usePermissions } from '@/lib/auth/roleContext';
 import { useAuthStore } from '@/stores/authStore';
-import { joinChannel, leaveChannel } from '@/lib/ws/wsClient';
 import { claimTicket, reopenTicket, updateTicketStatus } from '@/lib/api/tickets';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
 import { formatDate, formatDateTime } from '@/utils/date';
@@ -136,13 +135,6 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [startSubmitting, setStartSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (ticketId == null) return;
-    const channel = `ticket_${ticketId}`;
-    joinChannel(channel);
-    return () => leaveChannel(channel);
-  }, [ticketId]);
 
   const isRaisedByCurrentUser = ticket?.raised_by_id === currentUser?.id;
 

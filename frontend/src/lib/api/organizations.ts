@@ -8,6 +8,16 @@ import type {
 } from '@/types';
 import type { Facility } from '@/types/facility.types';
 
+/** One (technician, section, trade) membership row. */
+export interface SectionTechnicianLink {
+  id: number;
+  user: number;
+  section: number;
+  sub_section: number;
+  sub_section_name: string;
+  added_at: string;
+}
+
 // ── Utility: normalise DRF list response (array or paginated) ─────────────────
 
 function toArray<T>(data: T[] | { results: T[] }): T[] {
@@ -215,30 +225,30 @@ export const sectionsService = {
     await apiClient.delete(`/sections/${id}/`);
   },
 
-  getSectionTechnicians: async (sectionId: number): Promise<
-    { id: number; user: number; section: number; specialty_ids: number[] }[]
-  > => {
+  /** A technician's memberships in a section — one row per trade they work.
+   *
+   *  Not a tag list on a single membership: `(section, sub_section)` is the
+   *  pair `scoped_ticket_qs` matches on, so a plumber who also does carpentry
+   *  holds two rows. Adding or removing a trade is creating or deleting one. */
+  getSectionTechnicians: async (sectionId: number): Promise<SectionTechnicianLink[]> => {
     const { data } = await apiClient.get(`/sections/${sectionId}/technicians/`);
     return toArray(data as never);
   },
 
-  addSectionTechnician: async (sectionId: number, userId: number): Promise<{ id: number }> => {
-    const { data } = await apiClient.post(`/sections/${sectionId}/technicians/`, { user: userId });
+  addSectionTechnician: async (
+    sectionId: number,
+    userId: number,
+    subSectionId: number
+  ): Promise<SectionTechnicianLink> => {
+    const { data } = await apiClient.post(`/sections/${sectionId}/technicians/`, {
+      user: userId,
+      sub_section: subSectionId,
+    });
     return data;
   },
 
-  /** Replace the full specialty tag set for a technician's section membership
-   * (R18) — linkId is the SectionTechnician id, not the user id. */
-  setTechnicianSpecialties: async (
-    sectionId: number,
-    linkId: number,
-    specialtyIds: number[]
-  ): Promise<{ specialty_ids: number[] }> => {
-    const { data } = await apiClient.put(
-      `/sections/${sectionId}/technicians/${linkId}/specialties/`,
-      { specialty_ids: specialtyIds }
-    );
-    return data;
+  removeSectionTechnician: async (sectionId: number, linkId: number): Promise<void> => {
+    await apiClient.delete(`/sections/${sectionId}/technicians/${linkId}/`);
   },
 
   assignHOS: async (id: number, headOfSectionId: number | null): Promise<Section> => {

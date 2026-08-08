@@ -19,8 +19,6 @@ interface JWTUser {
     section_id?: number | null;
     campus_department_id?: number | null;
     department_id?: number | null;
-    is_primary?: boolean;
-    valid_until?: string | null;
   } | null;
 }
 
@@ -93,7 +91,7 @@ function flattenJWT(data: JWTLoginResponse): LoginResponse {
   };
 }
 
-/** Map the flat login/switch-role response to the app-wide User shape.
+/** Map the flat login response to the app-wide User shape.
  * Display variants the response doesn't carry are null — useUserData
  * refreshes them on next mount. */
 export function flatToUser(flat: LoginResponse): User {
@@ -149,13 +147,6 @@ export async function getPublicCampuses(): Promise<PublicCampus[]> {
   return data;
 }
 
-export async function switchRoleApi(roleAssignmentId: number): Promise<LoginResponse> {
-  const { data } = await apiClient.post<JWTLoginResponse>('/auth/switch-role/', { roleAssignmentId });
-  const flat = flattenJWT(data);
-  persistSession(flat);
-  return flat;
-}
-
 export async function logout(): Promise<void> {
   try {
     await apiClient.post('/auth/logout/');
@@ -166,15 +157,18 @@ export async function logout(): Promise<void> {
   }
 }
 
+/** One role per user, held for as long as they hold the post.
+ *
+ *  No `is_primary` and no validity window: time-boxed cover was an enterprise
+ *  Service Desk feature, and reintroducing the fields is what would let it
+ *  back in by accident. The backend model is a OneToOne — see the negative
+ *  tests in backend/tests/test_auth.py. */
 export interface RoleAssignment {
   id: number;
   role: string;
   section_id: number | null;
   campus_department_id: number | null;
   department_id: number | null;
-  is_primary: boolean;
-  valid_from: string | null;
-  valid_until: string | null;
 }
 
 // GET /auth/me/ returns the serialized user at the TOP level (no `user`
@@ -189,7 +183,6 @@ export interface MeResponse {
   /** active_role.role, defaulting to 'user' for pure requesters. */
   role: UserRole;
   active_role: RoleAssignment | null;
-  available_roles: RoleAssignment[];
   home_campus_name: string | null;
   primary_department_name: string | null;
   section_name: string | null;

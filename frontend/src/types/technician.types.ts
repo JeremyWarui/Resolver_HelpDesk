@@ -8,10 +8,12 @@ export interface Technician {
   role: 'technician';
   sections: number[]; // Array of section IDs
   section_names?: string[];
-  /** Specialty tags (R18) within a single section membership — present on
-   *  the /sections/{id}/assignable-technicians/ response only. */
-  specialty_ids?: number[];
-  specialty_names?: string[];
+  /** The trades this technician works. Together with `sections` these are the
+   *  `(section, sub_section)` pairs `scoped_ticket_qs` matches on — a
+   *  technician sees a ticket only where both halves line up. Served by the
+   *  /technicians/ roster. */
+  sub_sections?: number[];
+  sub_section_names?: string[];
   campus_name: string | null;          // primary_campus.name — plain name e.g. "Nairobi"
   primary_campus_id: number | null;
   primary_campus_display: string | null; // Campus.__str__() e.g. "KSG-NRB: Nairobi"

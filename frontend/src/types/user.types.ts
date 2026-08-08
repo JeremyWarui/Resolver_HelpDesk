@@ -46,34 +46,33 @@ export interface UpdateUserPayload extends Partial<User> {
 export interface RoleAssignment {
   id: number;
   role: UserRole;
-  is_primary: boolean;
   campus_id: number | null;
   campus_name: string | null;
   department_id: number | null;
   department_name: string | null;
   section_id: number | null;
   section_name: string | null;
+  /** Technician only — the trades they work in that section. */
+  sub_section_ids: number[];
   assigned_by_username: string | null;
   assigned_at: string;
-  valid_until: string | null;
 }
 
 export type BackendRoleAssignment = RoleAssignment;
 
+/** POST /users/{id}/role-assignments/ — a user has one role, so this replaces
+ *  whatever they had. No is_primary and no valid_until: there is no cover to
+ *  arrange, and the fields are what would let time-boxed roles back in.
+ *
+ *  `sub_section_ids` is technician-only and REQUIRED for technicians — the
+ *  server syncs the SectionTechnician rows from it, and a technician with a
+ *  role but no trades would see no tickets at all. */
 export interface CreateRoleAssignmentPayload {
   role: UserRole;
-  is_primary?: boolean;
   campus_id?: number | null;
   department_id?: number | null;
   section_id?: number | null;
-  valid_until?: string | null;
-}
-
-export interface UpdateRoleAssignmentPayload {
-  is_primary?: boolean;
-  campus_id?: number | null;
-  department_id?: number | null;
-  section_id?: number | null;
+  sub_section_ids?: number[];
 }
 
 export interface UsersResponse {

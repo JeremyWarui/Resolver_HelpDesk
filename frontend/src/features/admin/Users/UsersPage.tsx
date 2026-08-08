@@ -4,7 +4,7 @@ import {
   flexRender, getCoreRowModel, getFilteredRowModel,
   getSortedRowModel, useReactTable,
 } from '@tanstack/react-table';
-import { Users, Pencil, Trash2, ShieldCheck, Plus, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Users, Pencil, Trash2, Plus, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -23,7 +23,6 @@ import type { User, UserRole } from '@/types';
 import { ROLE_LABELS, ROLE_BADGE_STYLES, ROLE_ORDER } from './constants';
 import { useUsersData } from './useUsersData';
 import { UserFormDialog } from './UserFormDialog';
-import { RoleAssignmentModal } from './RoleAssignmentModal';
 
 function formatJoinedDate(iso?: string): string {
   if (!iso) return '—';
@@ -50,7 +49,6 @@ const UsersPage = () => {
   const [formState, setFormState] = useState<{ editing: User | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [roleAssignTarget, setRoleAssignTarget] = useState<User | null>(null);
 
   const nameHeader = useSortableColumn('Name');
   const emailHeader = useSortableColumn('Email');
@@ -153,15 +151,6 @@ const UsersPage = () => {
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setFormState({ editing: user })} title="Edit user">
               <Pencil className="h-3.5 w-3.5 text-gray-500" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-primary hover:text-primary/80"
-              onClick={() => setRoleAssignTarget(user)}
-              title="Manage role assignments"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
@@ -385,14 +374,6 @@ const UsersPage = () => {
           editing={formState.editing}
           onSuccess={() => { setFormState(null); refresh(); }}
           onClose={() => setFormState(null)}
-        />
-      )}
-
-      {/* Role Assignment Modal */}
-      {roleAssignTarget && (
-        <RoleAssignmentModal
-          user={roleAssignTarget}
-          onClose={() => { setRoleAssignTarget(null); refresh(); }}
         />
       )}
 

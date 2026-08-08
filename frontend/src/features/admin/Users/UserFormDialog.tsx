@@ -156,13 +156,12 @@ export function UserFormDialog({
         try {
           await createRoleAssignment(userId, {
             role: form.role,
-            is_primary: true,
             campus_id: form.campus_id ? Number(form.campus_id) : null,
             department_id: form.department_id ? Number(form.department_id) : null,
             section_id: form.section_id ? Number(form.section_id) : null,
           });
         } catch (roleError) {
-          handleDRFError(roleError, { fallbackMessage: 'User saved, but the role update failed — use the role assignment button to fix it.' });
+          handleDRFError(roleError, { fallbackMessage: 'User saved, but the role update failed — reopen this dialog to retry.' });
           onSuccess();
           return;
         }

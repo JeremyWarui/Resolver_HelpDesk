@@ -8,7 +8,7 @@
 // adapter hook); non-React modules use useAuthStore.getState().
 
 import { create } from 'zustand';
-import type { User, UserRole } from '@/types';
+import type { User } from '@/types';
 
 const TOKEN_KEY = 'authToken';
 const USER_KEY = 'currentUser';
@@ -37,7 +37,6 @@ interface AuthState {
   setToken: (token: string) => void;
   clearUser: () => void;
   getToken: () => string | null;
-  switchRole: (role: UserRole) => void;
 }
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
@@ -63,14 +62,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   getToken: () => get().token,
-
-  // Updates the active role in the store (future multi-role support).
-  // Does not make an API call — caller is responsible for re-fetching scope.
-  switchRole: (role) => {
-    set((state) => ({
-      user: state.user ? { ...state.user, role } : null,
-    }));
-  },
 }));
 
 // Cross-tab sync: the storage event only fires in OTHER tabs, so logging out

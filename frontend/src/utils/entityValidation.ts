@@ -22,7 +22,10 @@ export const createTechnicianSchema = z.object({
   last_name: z.string().min(1, { message: 'Last name is required' }),
   email: z.string().email({ message: 'Valid email required' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-  sections: z.array(z.number()).optional(),
+  section_id: z.number({ message: 'A section is required' }),
+  // At least one trade: a technician scoped to no trade sees no tickets, which
+  // the server refuses rather than creating a silently useless account.
+  sub_section_ids: z.array(z.number()).min(1, { message: 'Pick at least one trade' }),
   primary_department_id: z.number().nullable().optional(),
 });
 
