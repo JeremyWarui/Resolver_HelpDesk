@@ -24,6 +24,12 @@ from django.utils import timezone
 from apps.tickets.models import Ticket, TicketLog, TicketFeedback, TicketLocation
 
 ACTIVE_STATUSES = ("open", "assigned", "in_progress", "pending")
+# Active *and* running: `pending` freezes the SLA timer (R9), so a paused
+# ticket is still open work but its deadline is not moving. Anything that asks
+# "is this late?" must use this, not ACTIVE_STATUSES — otherwise a ticket
+# waiting on parts nobody can order turns red for a delay the section was told
+# to take, and the breach count stops meaning anything.
+RUNNING_STATUSES = ("open", "assigned", "in_progress")
 TERMINAL_STATUSES = ("resolved", "closed")
 AT_RISK_WINDOW = timedelta(hours=4)
 
@@ -228,12 +234,12 @@ def technician_load(scoped_qs):
 
 # Generic group-by for the remaining dimensions — one helper, a field map, no
 # per-dimension duplication. Each row: {key, label, + standard metric set}.
+# Dimensions a breakdown may group by. `department` and `section_type` are
+# deliberately absent: with one department and one section type they would
+# return a single bucket — a chart that renders, reconciles against the totals,
+# and tells the reader nothing. `sub_section` is the trade split that replaced
+# them and is the headline dimension of this system.
 _GENERIC_GROUP_BY = {
-    "department": (
-        F("section__campus_department__department__id"),
-        F("section__campus_department__department__name"),
-    ),
-    "section_type": (F("section__section_type__id"), F("section__section_type__name")),
     "sub_section": (
         F("sub_section__id"),
         F("sub_section__name"),
@@ -337,8 +343,8 @@ def aggregate(
         date_range: Dict from resolve_date_range().
         group_by:   Optional breakdown dimension. Bespoke shapes:
                     'section' | 'campus' | 'campus_department' | 'technician'.
-                    Generic {key,label,+metrics} shapes: 'department' |
-                    'section_type' | 'sub_section' | 'service_item' |
+                    Generic {key,label,+metrics} shapes: 'sub_section' |
+                    'service_item' |
                     'priority' | 'facility_type' | 'facility' | 'status'.
                     'time' returns the per-day flow_trend.
 
@@ -387,6 +393,7 @@ def aggregate(
         status__in=TERMINAL_STATUSES,
     )
     _q_active = Q(status__in=ACTIVE_STATUSES)
+    _q_running = Q(status__in=RUNNING_STATUSES)
     _q_resolved_due = _q_resolved & Q(resolution_due_at__isnull=False)
     _q_prior_resolved_due = _q_prior_resolved & Q(resolution_due_at__isnull=False)
     _q_met = Q(resolved_at__lte=F("resolution_due_at"))
@@ -403,7 +410,7 @@ def aggregate(
         prior_resolution_sla_met=Count("id", filter=_q_prior_resolved_due & _q_met),
         at_risk=Count(
             "id",
-            filter=_q_active
+            filter=_q_running
             & Q(
                 resolution_due_at__isnull=False,
                 resolution_due_at__gt=now,
@@ -412,7 +419,7 @@ def aggregate(
         ),
         breached=Count(
             "id",
-            filter=_q_active
+            filter=_q_running
             & Q(
                 resolution_due_at__isnull=False,
                 resolution_due_at__lt=now,

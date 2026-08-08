@@ -143,7 +143,13 @@ class TicketReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_is_breaching(self, ticket):
-        if ticket.status in ("resolved", "closed"):
+        """Whether the ticket is past its resolution deadline right now.
+
+        A paused ticket never is (R9): its clock is frozen, so the stored
+        deadline drifts into the past while it waits and would otherwise show
+        red for a delay the section was told to take.
+        """
+        if ticket.status in ("resolved", "closed", "pending"):
             return False
         if ticket.resolution_due_at is None:
             return False

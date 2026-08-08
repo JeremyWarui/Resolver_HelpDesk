@@ -15,8 +15,17 @@ from datetime import timedelta
 from django.db.models import Count, F
 from django.utils import timezone
 
-from apps.analytics.services import ACTIVE_STATUSES, TERMINAL_STATUSES, _percentile
+from apps.analytics.services import (
+    ACTIVE_STATUSES,
+    RUNNING_STATUSES,
+    TERMINAL_STATUSES,
+    _percentile,
+)
 from apps.tickets.models import TicketFeedback
+
+# How long a ticket can sit paused before the pause is the problem rather than
+# the fix. A week covers ordering parts or waiting on another department.
+LONG_PAUSE = timedelta(days=7)
 
 # Tuning knobs (kept here so they're easy to find / adjust).
 RECURRING_FAULT_MIN = 3  # occurrences of (facility, service_item) to flag
@@ -130,32 +139,45 @@ def _bottleneck(scoped_qs, date_range):
 
 
 def _sla_leak(scoped_qs):
-    """Classify currently-breached tickets by cause — each points to a different fix."""
+    """Classify currently-breached tickets by cause — each points to a different fix.
+
+    Counts only tickets whose clock is running (R9). A paused ticket has a
+    frozen deadline and is not breaching, so including it here would both
+    overstate the leak and disagree with the `breached` headline KPI — two
+    numbers on one dashboard that never reconcile.
+
+    Long-parked tickets are still a real problem, so they are surfaced as their
+    own cause rather than dropped: they are stuck, just not late.
+    """
     now = timezone.now()
     breached = scoped_qs.filter(
-        status__in=ACTIVE_STATUSES,
+        status__in=RUNNING_STATUSES,
         resolution_due_at__isnull=False,
         resolution_due_at__lt=now,
     )
     total = breached.count()
-    if total == 0:
+
+    # Parked past the point where the pause is the problem, not the fix.
+    parked = scoped_qs.filter(
+        status="pending", paused_at__lt=now - LONG_PAUSE
+    ).count()
+
+    if total == 0 and parked == 0:
         return []
 
     # Mutually exclusive causes.
     unassigned = breached.filter(assigned_to__isnull=True).count()
-    assigned = breached.filter(assigned_to__isnull=False)
-    paused = assigned.filter(status="pending").count()
-    slow = assigned.exclude(status="pending").count()
+    slow = breached.filter(assigned_to__isnull=False).count()
 
     causes = {
         "unassigned_too_long": unassigned,
-        "paused_too_long": paused,
         "slow_resolution": slow,
+        "parked_too_long": parked,
     }
     labels = {
         "unassigned_too_long": "tickets left unassigned (a triage gap)",
-        "paused_too_long": "tickets stuck paused on a dependency",
         "slow_resolution": "slow active resolution (a capacity/skill gap)",
+        "parked_too_long": "tickets parked on a dependency for over a week",
     }
     dominant = max(causes, key=causes.get)
     return [
@@ -163,6 +185,7 @@ def _sla_leak(scoped_qs):
             "type": "sla_leak",
             "severity": "high" if total >= 10 else "med",
             "breached_total": total,
+            "parked_total": parked,
             "causes": causes,
             "dominant_cause": dominant,
             "message": (

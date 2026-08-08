@@ -21,8 +21,6 @@ GROUP_BY_DIMENSIONS = (
     "section",
     "campus",
     "campus_department",
-    "department",
-    "section_type",
     "sub_section",
     "service_item",
     "priority",
@@ -43,9 +41,10 @@ INSIGHT_TYPES = (
 
 ROLE_VIEWS = {
     "admin": {
-        "default_group_by": "department",
+        # Campus, not department: there is one department, so grouping by it
+        # would put every ticket in a single bar.
+        "default_group_by": "campus",
         "allowed_group_by": [
-            "department",
             "campus",
             "campus_department",
             "section",
@@ -74,10 +73,10 @@ ROLE_VIEWS = {
         "comparison": True,
     },
     "manager": {
-        "default_group_by": "campus_department",
+        "default_group_by": "campus",
         "allowed_group_by": [
-            "campus_department",
-            "section",
+            "campus",
+            "sub_section",
             "service_item",
             "priority",
             "facility",
@@ -95,9 +94,11 @@ ROLE_VIEWS = {
         "comparison": True,
     },
     "hod": {
-        "default_group_by": "section",
+        # An HOD has exactly one Maintenance section, so the useful split
+        # within their campus is the trade.
+        "default_group_by": "sub_section",
         "allowed_group_by": [
-            "section",
+            "sub_section",
             "service_item",
             "priority",
             "facility",
@@ -117,7 +118,13 @@ ROLE_VIEWS = {
     },
     "hos": {
         "default_group_by": "technician",
-        "allowed_group_by": ["technician", "service_item", "priority", "facility"],
+        "allowed_group_by": [
+            "technician",
+            "sub_section",
+            "service_item",
+            "priority",
+            "facility",
+        ],
         "headline": ["sla_resolution_pct", "unassigned", "open_backlog", "csat"],
         "insights": ["bottleneck", "recurring_fault", "sla_leak"],
         "facilities": True,

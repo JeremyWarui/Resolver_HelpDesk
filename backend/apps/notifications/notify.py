@@ -175,20 +175,14 @@ def emit_ticket_resolved(ticket) -> None:
 
 def emit_comment_added(ticket, comment) -> None:
     author = comment.author
-    payload = {
-        "ticketId": ticket.id,
-        "commentId": comment.id,
-        "authorName": (author.get_full_name() or author.username) if author else "",
-        "preview": (comment.body or "")[:100],
-    }
-    emit_ws_event(f"user_{ticket.raised_by_id}", "comment_added", payload)
-
     if author and author.id != ticket.raised_by_id:
+        author_name = author.get_full_name() or author.username
+        preview = (comment.body or "")[:100]
         _notify_users(
             [ticket.raised_by_id],
             "comment_added",
             "New comment on your ticket",
-            f"{payload['authorName']} commented on #{ticket.ticket_no}: {payload['preview']}",
+            f"{author_name} commented on #{ticket.ticket_no}: {preview}",
             ticket,
         )
 

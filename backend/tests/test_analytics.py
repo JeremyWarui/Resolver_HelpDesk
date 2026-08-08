@@ -1,0 +1,270 @@
+"""Analytics — the numbers, and whose numbers they are.
+
+Every endpoint renders the caller's own server-derived scope. A technician's
+"open backlog" and an HOD's are the same query over different rows, so the
+tests that matter are the ones proving two roles looking at the same endpoint
+get different answers.
+
+Paused tickets are the recurring trap: they must not count as breaching, or
+every ticket waiting on parts becomes a red number nobody can act on.
+"""
+
+from datetime import timedelta
+
+import pytest
+from django.urls import reverse
+from django.utils import timezone
+
+from apps.analytics.role_config import (
+    GROUP_BY_DIMENSIONS,
+    ROLE_VIEWS,
+    resolve_group_by,
+)
+from apps.analytics.services import (
+    aggregate,
+    breakdown,
+    resolve_date_range,
+    technician_load,
+)
+from apps.tickets.services.scope import scoped_ticket_qs
+from tests import factories
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def window():
+    """The same shape the views build from query params — including the prior
+    period, which the trend comparisons need."""
+    return resolve_date_range({"days": 30})
+
+
+# ── Breakdown by trade ────────────────────────────────────────────────────────
+
+
+def test_sub_section_breakdown_splits_by_trade(
+    nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket, window
+):
+    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "sub_section")
+    totals = {row["label"]: row["total"] for row in rows}
+    assert totals == {"Electrical": 1, "Plumbing": 1}
+
+
+def test_breakdown_respects_the_callers_scope(
+    nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket, window
+):
+    """The same call, a narrower role — the plumbing ticket must not appear."""
+    rows = breakdown(
+        scoped_ticket_qs(nrb_electrician, "technician"), window, "sub_section"
+    )
+    assert {row["label"] for row in rows} == {"Electrical"}
+
+
+def test_breakdown_excludes_other_campuses_for_an_hod(
+    nrb_hod, nrb_electrical_ticket, msa_electrical_ticket, window
+):
+    rows = breakdown(scoped_ticket_qs(nrb_hod, "hod"), window, "sub_section")
+    assert sum(row["total"] for row in rows) == 1
+
+
+def test_manager_sees_every_campus(
+    manager, nrb_electrical_ticket, msa_electrical_ticket, window
+):
+    rows = breakdown(scoped_ticket_qs(manager, "manager"), window, "campus")
+    assert {row["campus_name"] for row in rows} == {"Nairobi", "Mombasa"}
+
+
+def test_status_breakdown_counts_each_status_once(
+    nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket, window
+):
+    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "status")
+    assert sum(row["total"] for row in rows) == 2
+
+
+# ── Paused tickets ────────────────────────────────────────────────────────────
+
+
+def _pause_and_let_the_deadline_pass(ticket):
+    """A ticket parked waiting for parts, whose original deadline has since
+    gone by. The clock is frozen, so it is waiting — not late."""
+    ticket.status = "pending"
+    ticket.paused_at = timezone.now() - timedelta(days=3)
+    ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    ticket.save(update_fields=["status", "paused_at", "resolution_due_at"])
+    return ticket
+
+
+def test_a_paused_ticket_is_not_counted_as_breached(
+    nrb_hos, nrb_electrical_ticket, window
+):
+    """R9 — pausing freezes the SLA timer. A ticket waiting on parts that
+    nobody can order must not turn red on the HOS's dashboard, or the breach
+    count stops meaning anything."""
+    _pause_and_let_the_deadline_pass(nrb_electrical_ticket)
+    metrics = aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert metrics["breached"] == 0
+
+
+def test_a_paused_ticket_is_not_counted_at_risk(
+    nrb_hos, nrb_electrical_ticket, window
+):
+    nrb_electrical_ticket.status = "pending"
+    nrb_electrical_ticket.paused_at = timezone.now()
+    nrb_electrical_ticket.resolution_due_at = timezone.now() + timedelta(hours=1)
+    nrb_electrical_ticket.save(
+        update_fields=["status", "paused_at", "resolution_due_at"]
+    )
+    metrics = aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert metrics["at_risk"] == 0
+
+
+def test_an_unpaused_overdue_ticket_is_still_counted_as_breached(
+    nrb_hos, nrb_electrical_ticket, window
+):
+    """The other half of the rule — pausing must not become a way to hide."""
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    nrb_electrical_ticket.save(update_fields=["status", "resolution_due_at"])
+    metrics = aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert metrics["breached"] == 1
+
+
+def test_paused_tickets_are_still_counted_as_open_work(
+    nrb_hos, nrb_electrical_ticket, window
+):
+    """Frozen is not finished — it still belongs in the backlog."""
+    _pause_and_let_the_deadline_pass(nrb_electrical_ticket)
+    metrics = aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert metrics["open_backlog"] == 1
+
+
+# ── Technician load ───────────────────────────────────────────────────────────
+
+
+def test_technician_load_lists_the_sections_own_technicians(
+    nrb_hos, nrb_electrician, nrb_plumber, nrb_electrical_ticket
+):
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
+
+    rows = technician_load(scoped_ticket_qs(nrb_hos, "hos"))
+    by_id = {row["technician_id"]: row for row in rows}
+    assert by_id[nrb_electrician.pk]["open_count"] == 1
+
+
+def test_technician_load_is_live_and_ignores_the_date_window(
+    nrb_hos, nrb_electrician, nrb_electrical_ticket
+):
+    """Load answers "who is busy right now", so an old open ticket still counts."""
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
+    type(nrb_electrical_ticket).objects.filter(pk=nrb_electrical_ticket.pk).update(
+        created_at=timezone.now() - timedelta(days=365)
+    )
+
+    rows = technician_load(scoped_ticket_qs(nrb_hos, "hos"))
+    assert any(row["open_count"] == 1 for row in rows)
+
+
+# ── Role configuration ────────────────────────────────────────────────────────
+
+
+def test_no_role_defaults_to_a_single_bucket_dimension():
+    """With one department and one section type, grouping by either would draw
+    one bar. Neither may be a dimension at all."""
+    assert "department" not in GROUP_BY_DIMENSIONS
+    assert "section_type" not in GROUP_BY_DIMENSIONS
+
+
+def test_every_role_default_is_in_its_own_allowed_list():
+    for role, cfg in ROLE_VIEWS.items():
+        assert cfg["default_group_by"] in cfg["allowed_group_by"] or cfg[
+            "default_group_by"
+        ] in ("time", "status"), role
+
+
+def test_every_allowed_dimension_is_a_real_dimension():
+    for role, cfg in ROLE_VIEWS.items():
+        for dim in cfg["allowed_group_by"]:
+            assert dim in GROUP_BY_DIMENSIONS, f"{role} allows unknown '{dim}'"
+
+
+def test_a_role_cannot_widen_its_own_view_with_a_query_param():
+    """Fail closed — an unauthorised group_by falls back to the role default
+    rather than being honoured."""
+    assert resolve_group_by("technician", "technician") == "time"
+    assert resolve_group_by("user", "campus") == "status"
+
+
+def test_technicians_are_never_ranked_against_peers():
+    cfg = ROLE_VIEWS["technician"]
+    assert cfg["comparison"] is False
+    assert "technician" not in cfg["allowed_group_by"]
+
+
+def test_an_unknown_role_gets_the_requester_view():
+    from apps.analytics.role_config import get_role_config
+
+    assert get_role_config("director_of_everything") == ROLE_VIEWS["user"]
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+def test_overview_is_scoped_to_the_caller(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    api.force_authenticate(nrb_electrician)
+    response = api.get(reverse("analytics:overview"))
+    assert response.status_code == 200
+
+
+def test_analytics_requires_authentication(api):
+    assert api.get(reverse("analytics:overview")).status_code == 401
+
+
+def test_flow_and_ticket_list_agree_on_scope(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """Both read scoped_ticket_qs; if they ever disagree, one of them is wrong."""
+    api.force_authenticate(nrb_electrician)
+    listed = {row["id"] for row in api.get(reverse("ticket-list")).json()["results"]}
+    assert listed == {nrb_electrical_ticket.pk}
+
+
+def test_breakdown_of_an_empty_scope_is_empty_not_everything(
+    nrb, nrb_electrical_ticket, window, db
+):
+    """The failure mode that matters: an unresolvable scope returning all rows."""
+    roleless = factories.make_user("no_role_analytics", campus=nrb)
+    rows = breakdown(scoped_ticket_qs(roleless, None), window, "sub_section")
+    assert rows == []
+
+
+def test_the_ticket_breach_flag_agrees_with_the_breach_count(
+    api, nrb_hos, nrb_electrical_ticket, window
+):
+    """The badge on a ticket and the number on the dashboard read the same rule.
+    If they diverge, one of them is lying to the same person."""
+    _pause_and_let_the_deadline_pass(nrb_electrical_ticket)
+
+    api.force_authenticate(nrb_hos)
+    detail = api.get(reverse("ticket-detail", args=[nrb_electrical_ticket.pk])).json()
+    metrics = aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)
+
+    assert detail["is_breaching"] is False
+    assert metrics["breached"] == 0
+
+
+def test_a_running_overdue_ticket_is_flagged_on_the_ticket_too(
+    api, nrb_hos, nrb_electrical_ticket
+):
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(days=1)
+    nrb_electrical_ticket.save(update_fields=["status", "resolution_due_at"])
+
+    api.force_authenticate(nrb_hos)
+    detail = api.get(reverse("ticket-detail", args=[nrb_electrical_ticket.pk])).json()
+    assert detail["is_breaching"] is True

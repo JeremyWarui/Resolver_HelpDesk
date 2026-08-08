@@ -10,8 +10,10 @@ so two tests asking for `campus("NRB")` get the same row.
 """
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 from apps.accounts.models import RoleAssignment, UserProfile
+from apps.sla.services.due_dates import compute_due_dates
 from apps.org.models import (
     Campus,
     CampusDepartment,
@@ -163,6 +165,11 @@ def make_ticket(raised_by, section, sub_section, service_item=None, **kwargs):
     kwargs.setdefault("requester_campus", section.campus_department.campus)
     kwargs.setdefault("description", "test ticket")
     kwargs.setdefault("contact_phone", raised_by.phone_number)
+    # Due dates come from the same helper production uses. Leaving them null
+    # would quietly disable every SLA assertion downstream.
+    response_due, resolution_due = compute_due_dates(kwargs["priority"], timezone.now())
+    kwargs.setdefault("response_due_at", response_due)
+    kwargs.setdefault("resolution_due_at", resolution_due)
     return Ticket.objects.create(
         raised_by=raised_by,
         section=section,
