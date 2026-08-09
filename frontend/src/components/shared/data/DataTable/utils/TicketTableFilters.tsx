@@ -6,7 +6,7 @@ import * as FilterUtils from './FilterUtils';
  */
 export interface FilterOptionsConfig {
   includeStatus?: boolean;
-  includeSection?: boolean;
+  includeTrade?: boolean;
   includeTechnician?: boolean;
   includeUser?: boolean;
 }
@@ -23,7 +23,7 @@ export interface FilterOptionsConfig {
  * const table = useTicketTable({ role: 'admin', fetchTechnicians: true, fetchUsers: true });
  * const filters = createTicketTableFilters(table, {
  *   includeStatus: true,
- *   includeSection: true,
+ *   includeTrade: true,
  *   includeTechnician: true,
  *   includeUser: true
  * });
@@ -34,7 +34,7 @@ export function createTicketTableFilters(
 ) {
   const {
     includeStatus = true,
-    includeSection = true,
+    includeTrade = true,
     includeTechnician = false,
     includeUser = false,
   } = config;
@@ -42,14 +42,14 @@ export function createTicketTableFilters(
   const {
     statusFilter,
     setStatusFilter,
-    sectionFilter,
-    setSectionFilter,
+    tradeFilter,
+    setTradeFilter,
     technicianFilter,
     setTechnicianFilter,
     userFilter,
     setUserFilter,
     setPageIndex,
-    sections,
+    trades,
     technicians,
     users,
     allStatuses,
@@ -69,14 +69,14 @@ export function createTicketTableFilters(
     );
   }
 
-  // Section filter
-  if (includeSection) {
+  // Trade filter
+  if (includeTrade) {
     filters.push(
-      FilterUtils.createSectionFilter(
-        sectionFilter || 'all',
+      FilterUtils.createTradeFilter(
+        tradeFilter || 'all',
         (value) =>
-          setSectionFilter(value === null ? null : typeof value === 'number' ? value : Number(value)),
-        sections,
+          setTradeFilter(value === null ? null : typeof value === 'number' ? value : Number(value)),
+        trades,
         setPageIndex
       )
     );

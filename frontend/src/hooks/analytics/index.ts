@@ -6,6 +6,7 @@ export {
   useSLACompliance,
   usePerformanceTechnicians,
   usePerformanceSections,
+  usePerformanceTrades,
   usePerformanceCampusDepts,
 } from './useTicketAnalytics';
 export { default as useTechnicianAnalytics } from './useTechnicianAnalytics';

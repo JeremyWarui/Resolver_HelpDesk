@@ -48,7 +48,7 @@ export function createTicketTableColumns(config: TicketColumnsConfig): ColumnDef
     TableUtils.ticketTitleColumn('Title'),
     TableUtils.descriptionColumn('Description'),
     TableUtils.facilityColumn('Facility'),
-    TableUtils.sectionColumn('Section'),
+    TableUtils.tradeColumn('Trade'),
     TableUtils.raisedByColumn('Raised By'),
     TableUtils.statusColumn('Status'),
     TableUtils.createdAtColumn('Created At'),
@@ -91,7 +91,7 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
     TableUtils.ticketNoColumn('ID'),
     TableUtils.ticketTitleColumn('Title'),
     TableUtils.descriptionColumn('Description'),
-    TableUtils.sectionColumn('Section'),
+    TableUtils.tradeColumn('Trade'),
     TableUtils.facilityColumn('Facility'),
     TableUtils.raisedByColumn('Raised By'),
     TableUtils.statusColumn('Status'),
@@ -130,7 +130,7 @@ export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string
   compact: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false,
-    ticket_no: false, sectionName: false, raised_by: false, assigned_to: false, created_at: false,
+    ticket_no: false, tradeName: false, raised_by: false, assigned_to: false, created_at: false,
     rate_actions: false,
   },
   sla: {

@@ -23,7 +23,7 @@ const ManagerTickets = ({ userId, onTicketSelect }: { userId?: number; onTicketS
 
   const filters = createTicketTableFilters(table, {
     includeStatus: true,
-    includeSection: true,
+    includeTrade: true,
     includeTechnician: true,
     includeUser: false,
   });

@@ -41,7 +41,7 @@ const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTe
     setIsTicketDialogOpen: table.setIsTicketDialogOpen,
   }), [table.allStatuses, table.setSelectedTicket, table.setIsTicketDialogOpen]);
 
-  const filters = createTicketTableFilters(table, { includeStatus: true, includeSection: true });
+  const filters = createTicketTableFilters(table, { includeStatus: true, includeTrade: true });
 
   const columnVisibility = createTicketColumnVisibility({
     role: 'technician',

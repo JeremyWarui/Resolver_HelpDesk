@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import useTickets from './useTickets';
 import useUpdateTicket from './useUpdateTicket';
 import { useSections } from '@/hooks/sections/useSections';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { useFacilities } from '@/hooks/facilities/useFacilities';
 import { extractWritableFields } from '@/utils/ticketHelpers';
 import { formatSectionDisplay } from '@/utils/formatSection';
@@ -36,13 +37,13 @@ export interface UseTicketTableResult {
 
   // Filter State
   statusFilter: string;
-  sectionFilter: number | null;
+  tradeFilter: number | null;
   technicianFilter: number | null;
   userFilter: number | null;
   unassignedFilter: boolean;
   overdueFilter: boolean;
   setStatusFilter: (status: string) => void;
-  setSectionFilter: (section: number | null) => void;
+  setTradeFilter: (subSection: number | null) => void;
   setTechnicianFilter: (technician: number | null) => void;
   setUserFilter: (user: number | null) => void;
   setUnassignedFilter: (unassigned: boolean) => void;
@@ -58,6 +59,8 @@ export interface UseTicketTableResult {
   tickets: Ticket[];
   totalTickets: number;
   sections: Section[];
+  /** Trades in the caller's scope — the ticket-table filter's options. */
+  trades: Array<{ id: number; name: string }>;
   facilities: Facility[];
   technicians: Technician[];
   users: User[];
@@ -125,10 +128,10 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   // -updated_at, a mutable sort key, which rules out cursor pagination by design.
   const [pageIndex, setPageIndexRaw] = useState(0);
 
-  // Filter state (section/technician/user/overdue filters are kept as UI state;
+  // Filter state (trade/technician/user/overdue filters are kept as UI state;
   // the backend scopes results by JWT role, not by these query params)
   const [statusFilter, setStatusFilterRaw] = useState<string>(defaultStatusFilter);
-  const [sectionFilter, setSectionFilterRaw] = useState<number | null>(null);
+  const [tradeFilter, setTradeFilterRaw] = useState<number | null>(null);
   const [technicianFilter, setTechnicianFilterRaw] = useState<number | null>(null);
   const [userFilter, setUserFilterRaw] = useState<number | null>(null);
   const [unassignedFilter, setUnassignedFilter] = useState<boolean>(false);
@@ -144,8 +147,8 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     resetToFirstPage();
   }, [resetToFirstPage]);
 
-  const setSectionFilter = useCallback((section: number | null) => {
-    setSectionFilterRaw(section);
+  const setTradeFilter = useCallback((subSection: number | null) => {
+    setTradeFilterRaw(subSection);
     resetToFirstPage();
   }, [resetToFirstPage]);
 
@@ -168,11 +171,11 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     page: pageIndex + 1,
     page_size: pageSize,
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-    ...(sectionFilter ? { section: sectionFilter } : {}),
+    ...(tradeFilter ? { sub_section: tradeFilter } : {}),
     ...(technicianFilter ? { assigned_to: technicianFilter } : {}),
     ...(userFilter ? { raised_by: userFilter } : {}),
     ...(fixedParams ?? {}),
-  }), [pageIndex, pageSize, statusFilter, sectionFilter, technicianFilter, userFilter, fixedParams]);
+  }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, fixedParams]);
 
   const skipInitialFetch = initialData != null && pageIndex === 0;
 
@@ -204,6 +207,7 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   }, [skipInitialFetch, ticketsLoading, fetchedTickets, fetchedTotalTickets, onDataFetched]);
 
   const { sections: fetchedSections } = useSections();
+  const { subSections: trades } = useTicketFilterOptions();
   const { facilities: fetchedFacilities, loading: facilitiesLoadingRaw } = useFacilities();
 
   const sections = externalSections ?? fetchedSections;
@@ -283,13 +287,13 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
 
     // Filters
     statusFilter,
-    sectionFilter,
+    tradeFilter,
     technicianFilter,
     userFilter,
     unassignedFilter,
     overdueFilter,
     setStatusFilter,
-    setSectionFilter,
+    setTradeFilter,
     setTechnicianFilter,
     setUserFilter,
     setUnassignedFilter,
@@ -305,6 +309,7 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     tickets,
     totalTickets,
     sections,
+    trades,
     facilities: allFacilitiesData,
     technicians: allTechniciansData,
     users: allUsersData,

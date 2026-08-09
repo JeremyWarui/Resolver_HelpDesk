@@ -1,7 +1,7 @@
 // SLATrackingView — SLA-focused ticket tracking for section heads and HODs.
-// Classifies in-scope tickets into breached / at_risk / on_track / met — see
-// `slaState` for why settled tickets are judged differently from running ones.
-// Breached rows always sort to top (pre-sort before passing to TicketTable).
+// Classifies in-scope tickets into overdue / at_risk / on_track / met / missed
+// — see `slaState` for why settled tickets are judged differently from running
+// ones. Overdue rows always sort to top (pre-sort before passing to TicketTable).
 // Auto-refreshes every 60 seconds via setInterval on the refetch callback.
 // Narrowing is by trade, not section: a HOD/HOS scope holds one section.
 
@@ -26,8 +26,8 @@ import type { FilterPill, Ticket } from '@/types';
 
 const AT_RISK_MS = 24 * 60 * 60 * 1000;
 
-type SlaFilter = 'all' | 'breached' | 'at_risk' | 'on_track' | 'met';
-type SlaState  = 'breached' | 'at_risk' | 'on_track' | 'met' | 'no_sla';
+type SlaFilter = 'all' | 'overdue' | 'at_risk' | 'on_track' | 'met' | 'missed';
+type SlaState  = 'overdue' | 'at_risk' | 'on_track' | 'met' | 'missed' | 'no_sla';
 
 const SETTLED: ReadonlySet<Ticket['status']> = new Set(['resolved', 'closed']);
 
@@ -41,6 +41,12 @@ const SETTLED: ReadonlySet<Ticket['status']> = new Set(['resolved', 'closed']);
  * date passes, however early it was actually resolved: a ticket resolved two
  * days inside target was being reported as a breach, and the compliance figure
  * fell a little further every day nobody touched the system.
+ *
+ * Hence two names for a miss rather than one. `overdue` is a live ticket past
+ * its target — work to chase now, and exactly what `analytics.services` counts
+ * as `breached` (it gates on `_q_running`). `missed` is a settled ticket that
+ * finished late — history, not a queue. Collapsing them into one "Breached"
+ * card left this page reporting 5 next to the Analytics page's 4.
  */
 function slaState(ticket: Ticket): SlaState {
   if (!ticket.resolution_due_at) return 'no_sla';
@@ -49,22 +55,23 @@ function slaState(ticket: Ticket): SlaState {
   if (SETTLED.has(ticket.status)) {
     const finished = ticket.resolved_at ?? ticket.closed_at;
     if (!finished) return 'no_sla';
-    return new Date(finished).getTime() > due ? 'breached' : 'met';
+    return new Date(finished).getTime() > due ? 'missed' : 'met';
   }
 
   if (ticket.paused_at) return 'on_track'; // SLA frozen while pending (R9)
   const remaining = due - Date.now();
-  if (remaining <= 0) return 'breached';
+  if (remaining <= 0) return 'overdue';
   if (remaining < AT_RISK_MS) return 'at_risk';
   return 'on_track';
 }
 
 const SLA_ORDER: Record<SlaState, number> = {
-  breached: 0,
+  overdue:  0,
   at_risk:  1,
   on_track: 2,
-  met:      3,
-  no_sla:   4,
+  missed:   3,
+  met:      4,
+  no_sla:   5,
 };
 
 function sortBySla(tickets: Ticket[]): Ticket[] {
@@ -79,9 +86,11 @@ function sortBySla(tickets: Ticket[]): Ticket[] {
 }
 
 function breachClass(ticket: Ticket): string {
-  return slaState(ticket) === 'breached'
-    ? 'border-l-2 border-status-escalated bg-status-escalated/5'
-    : '';
+  const state = slaState(ticket);
+  if (state === 'overdue') return 'border-l-2 border-status-escalated bg-status-escalated/5';
+  // A settled miss is history — worth marking, not worth alarming about.
+  if (state === 'missed') return 'border-l-2 border-status-escalated/40';
+  return '';
 }
 
 interface SLATrackingViewProps { onTicketSelect?: (id: number) => void; }
@@ -112,45 +121,47 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
   }, [tickets, tradeId]);
 
   const counts = useMemo(() => {
-    let breached = 0, at_risk = 0, on_track = 0, met = 0;
+    let overdue = 0, at_risk = 0, on_track = 0, met = 0, missed = 0;
     for (const t of sorted) {
       const s = slaState(t);
-      if (s === 'breached') breached++;
+      if (s === 'overdue') overdue++;
       else if (s === 'at_risk') at_risk++;
       else if (s === 'on_track') on_track++;
       else if (s === 'met') met++;
+      else if (s === 'missed') missed++;
     }
-    return { breached, at_risk, on_track, met };
+    return { overdue, at_risk, on_track, met, missed };
   }, [sorted]);
 
   const pills = useMemo((): FilterPill[] => [
     { key: 'all',      label: 'All',      count: sorted.length },
-    { key: 'breached', label: 'Breached', count: counts.breached, variant: 'danger'  },
+    { key: 'overdue',  label: 'Overdue',  count: counts.overdue,  variant: 'danger'  },
     { key: 'at_risk',  label: 'At Risk',  count: counts.at_risk,  variant: 'warning' },
     { key: 'on_track', label: 'On Track', count: counts.on_track, variant: 'success' },
     { key: 'met',      label: 'Met',      count: counts.met,      variant: 'success' },
+    { key: 'missed',   label: 'Missed',   count: counts.missed,   variant: 'danger'  },
   ], [sorted.length, counts]);
 
   const visibleTickets = useMemo(() => {
     if (slaFilter === 'all') return sorted;
     return sorted.filter((t) => {
       const s = slaState(t);
-      if (slaFilter === 'breached') return s === 'breached';
+      if (slaFilter === 'overdue') return s === 'overdue';
       if (slaFilter === 'at_risk')  return s === 'at_risk';
       if (slaFilter === 'met')      return s === 'met';
+      if (slaFilter === 'missed')   return s === 'missed';
       if (slaFilter === 'on_track') return s === 'on_track' || s === 'no_sla';
       return true;
     });
   }, [sorted, slaFilter]);
 
   /**
-   * Compliance over tickets whose outcome is known: met, or breached (settled
-   * late, or still running past due). Tickets still inside their target have
-   * no outcome yet and would otherwise be counted as successes they have not
-   * earned.
+   * Compliance over tickets whose outcome is known: met, missed, or already
+   * overdue. Tickets still inside their target have no outcome yet and would
+   * otherwise be counted as successes they have not earned.
    */
   const compliance = useMemo(() => {
-    const decided = counts.met + counts.breached;
+    const decided = counts.met + counts.missed + counts.overdue;
     if (!decided) return 100;
     return Math.round((counts.met / decided) * 100);
   }, [counts]);
@@ -161,8 +172,7 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
 
   const handleRefresh = useCallback(() => refetch(), [refetch]);
 
-  // Not breached+at_risk+on_track — a settled ticket that missed its target is
-  // still counted as breached, and it is not running.
+  // Not overdue+at_risk+on_track — `missed` tickets are settled, not running.
   const live = sorted.filter((t) => !SETTLED.has(t.status)).length;
   const subtitle = loading
     ? 'Loading…'
@@ -219,8 +229,8 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
         </Card>
         <KpiCard
           icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
-          label="Breached"
-          value={counts.breached}
+          label="Overdue"
+          value={counts.overdue}
           loading={loading}
           colorClass="bg-red-50 border-red-200"
         />
@@ -240,8 +250,9 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
         />
         <KpiCard
           icon={<CheckCheck className="h-5 w-5 text-gray-500" />}
-          label="Met (closed)"
+          label="Met / Missed"
           value={counts.met}
+          secondary={counts.missed > 0 ? `${counts.missed} missed` : undefined}
           loading={loading}
           colorClass="bg-gray-50 border-gray-200"
         />
@@ -264,14 +275,14 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
         onRowClick={handleRowClick}
         rowClassName={breachClass}
         emptyMessage={
-          slaFilter === 'breached' ? 'No breached tickets'
+          slaFilter === 'overdue' ? 'No overdue tickets'
           : slaFilter === 'at_risk' ? 'No at-risk tickets'
           : 'No tickets found'
         }
         emptyDescription={
           slaFilter === 'all'
-            ? 'No active tickets are tracked for SLA'
-            : 'All tracked tickets are within SLA targets'
+            ? 'No tickets are tracked for SLA'
+            : 'Nothing in this bucket'
         }
       />
 
@@ -285,12 +296,14 @@ function KpiCard({
   value,
   loading,
   colorClass,
+  secondary,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   loading: boolean;
   colorClass: string;
+  secondary?: string;
 }) {
   return (
     <Card className={`border ${colorClass}`}>
@@ -303,6 +316,9 @@ function KpiCard({
             <p className="text-2xl font-bold">{value}</p>
           )}
           <p className="text-xs text-muted-foreground">{label}</p>
+          {secondary && !loading && (
+            <p className="text-xs text-status-escalated mt-0.5">{secondary}</p>
+          )}
         </div>
       </CardContent>
     </Card>

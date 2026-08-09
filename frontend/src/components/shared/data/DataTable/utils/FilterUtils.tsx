@@ -22,30 +22,38 @@ export const createStatusFilter = (
   },
 });
 
-export const createSectionFilter = (
-  sectionFilter: string | number,
-  setSectionFilter: (value: number | null | string) => void,
-  allSections: Array<{ id: number; name: string } | string>,
+/**
+ * Filter by trade — Plumbing, Electrical, Carpentry, …
+ *
+ * Replaces the section filter, which offered a single choice ("Maintenance")
+ * to every role because Maintenance is the only section type. Options come
+ * from `/tickets/filter-options/`, so they are built from the caller's own
+ * rows and cannot advertise a trade whose tickets they would be refused.
+ */
+export const createTradeFilter = (
+  tradeFilter: string | number,
+  setTradeFilter: (value: number | null | string) => void,
+  allTrades: Array<{ id: number; name: string } | string>,
   setPageIndex?: (index: number) => void
 ): FilterOption => ({
-  label: "Filter by section",
-  defaultValue: String(sectionFilter),
-  value: String(sectionFilter), // Add value for controlled component
+  label: "Filter by trade",
+  defaultValue: String(tradeFilter),
+  value: String(tradeFilter), // Add value for controlled component
   options: [
-    { label: "All Sections", value: "all" },
-    ...allSections.map((section) => ({
-      label: typeof section === "string" ? section : section.name,
-      value: typeof section === "string" ? section : String(section.id),
+    { label: "All Trades", value: "all" },
+    ...allTrades.map((trade) => ({
+      label: typeof trade === "string" ? trade : trade.name,
+      value: typeof trade === "string" ? trade : String(trade.id),
     })),
   ],
   onFilterChange: (value: string) => {
     // Convert "all" to null, numbers to numbers, keep strings as strings
     if (value === "all") {
-      setSectionFilter(null);
+      setTradeFilter(null);
     } else if (!isNaN(Number(value))) {
-      setSectionFilter(Number(value));
+      setTradeFilter(Number(value));
     } else {
-      setSectionFilter(value);
+      setTradeFilter(value);
     }
     if (setPageIndex) setPageIndex(0);
   },

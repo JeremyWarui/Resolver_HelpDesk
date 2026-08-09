@@ -421,3 +421,55 @@ def test_neither_hod_nor_hos_may_group_by_section():
     for role in ("hod", "hos"):
         assert "section" not in ROLE_VIEWS[role]["allowed_group_by"], role
         assert ROLE_VIEWS[role]["default_group_by"] in ("sub_section", "technician")
+
+
+# ── Trade breakdown endpoint ──────────────────────────────────────────────────
+
+
+def test_trades_breakdown_splits_by_craft(
+    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """`/performance/trades/` is the breakdown-only counterpart to
+    `/performance/sections/`, which for an HOD or HOS returns a single row."""
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("analytics:performance-trades")).json()
+
+    rows = {r["label"]: r["total"] for r in body["breakdown"]}
+    assert rows == {"Electrical": 1, "Plumbing": 1}
+
+
+def test_trades_breakdown_carries_the_standard_metrics(
+    api, nrb_hos, nrb_electrical_ticket
+):
+    api.force_authenticate(nrb_hos)
+    row = api.get(reverse("analytics:performance-trades")).json()["breakdown"][0]
+
+    for field in (
+        "key",
+        "label",
+        "total",
+        "open_count",
+        "resolved_count",
+        "escalated_count",
+        "resolution_sla_met",
+        "total_resolved_with_due",
+    ):
+        assert field in row, field
+
+
+def test_trades_breakdown_is_scoped(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """A technician sees only their own trade — the endpoint scopes through
+    `scoped_ticket_qs` like every other analytics view."""
+    api.force_authenticate(nrb_electrician)
+    body = api.get(reverse("analytics:performance-trades")).json()
+    assert [r["label"] for r in body["breakdown"]] == ["Electrical"]
+
+
+def test_trades_breakdown_does_not_leak_another_campus(
+    api, nrb_hos, nrb_electrical_ticket, msa_electrical_ticket
+):
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("analytics:performance-trades")).json()
+    assert sum(r["total"] for r in body["breakdown"]) == 1

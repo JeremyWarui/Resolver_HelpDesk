@@ -135,6 +135,35 @@ export const sectionColumn = <T,>(header: string = "Section"): ColumnDef<T> => (
   cell: ({ row }) => <div>{(row.getValue("sectionName") as string) || "N/A"}</div>,
 });
 
+/**
+ * Trade (sub_section) — Plumbing, Electrical, Carpentry, …
+ *
+ * The column ticket tables should carry instead of `section`. Maintenance is
+ * the only section type, so the section column printed the same word on every
+ * row of every table; the trade is what distinguishes one ticket from the next.
+ */
+export const tradeColumn = <T,>(header: string = "Trade"): ColumnDef<T> => ({
+  id: "tradeName",
+  accessorFn: (row) => {
+    const r = row as Record<string, unknown>;
+    const s = r.sub_section as { name?: string } | undefined;
+    return s?.name ?? '';
+  },
+  header: ({ column }) => (
+    <div className="flex items-center space-x-1">
+      <span>{header}</span>
+      <Button
+        variant="ghost"
+        onClick={() => column.toggleSorting()}
+        className="p-0 h-4 w-4"
+      >
+        <ChevronDown className="h-3 w-3" />
+      </Button>
+    </div>
+  ),
+  cell: ({ row }) => <div>{(row.getValue("tradeName") as string) || "N/A"}</div>,
+});
+
 export const raisedByColumn = <T,>(header: string = "Raised By"): ColumnDef<T> => ({
   id: "raised_by",
   accessorFn: (row) => {

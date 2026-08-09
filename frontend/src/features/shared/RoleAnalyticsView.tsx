@@ -1,7 +1,6 @@
 import { useState, type ComponentType } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import {
   AdminStatsCards,
   ManagerStatsCards,
@@ -22,7 +21,7 @@ import {
   useFlow,
   useQuality,
   usePerformanceTechnicians,
-  usePerformanceSections,
+  usePerformanceTrades,
   usePerformanceCampusDepts,
   useAnalytics,
 } from '@/hooks/analytics';
@@ -60,7 +59,7 @@ const ROLE_CONFIG: Record<AnalyticsRole, RoleAnalyticsConfig> = {
   hod: {
     StatCards: HODStatsCards,
     title: 'Campus Department Analytics',
-    subtitle: 'Sections within your campus department',
+    subtitle: 'Trades within your campus department',
   },
   hos: {
     StatCards: SectionHeadStatsCards,
@@ -88,7 +87,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
   const { data: flow, loading: flowLoading } = useFlow({ ...params, granularity });
   const { data: quality } = useQuality(params);
   const { data: perfTechs, loading: perfTechsLoading } = usePerformanceTechnicians(params);
-  const { data: perfSections, loading: perfSectionsLoading } = usePerformanceSections(params);
+  const { data: perfTrades, loading: perfTradesLoading } = usePerformanceTrades(params);
 
   // Manager analytics adds a per-campus performance table (department grouped by
   // campus). Skipped for other roles. Server-scoped by JWT.
@@ -103,7 +102,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
   // (campus for managers, section otherwise).
   const { data: analyticsEnvelope } = useAnalytics({
     ...params,
-    group_by: isManager ? 'campus_department' : 'section',
+    group_by: isManager ? 'campus_department' : 'sub_section',
   });
 
   const resolutionKPIs: KPIMetric[] = [
@@ -147,10 +146,10 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
     value: p.count,
   }));
 
-  // HOD section-distribution donut — reuses the perfSections breakdown (no new hook).
-  const sectionDistData = (perfSections?.breakdown ?? []).map(s => ({
-    name: s.section_type_name,
-    value: s.total,
+  // Trade-distribution donut — reuses the perfTrades breakdown (no new hook).
+  const tradeDistData = (perfTrades?.breakdown ?? []).map(t => ({
+    name: t.label,
+    value: t.total,
   }));
 
   const headlineKPIs: KPIMetric[] = [
@@ -231,13 +230,13 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
             granularity={granularity}
           />
           {role === 'hod' ? (
-            <ChartCard title="Section Distribution" description="Tickets by section">
-              {perfSectionsLoading || !perfSections ? (
+            <ChartCard title="Trade Distribution" description="Tickets by trade">
+              {perfTradesLoading || !perfTrades ? (
                 <Skeleton className="h-[400px] w-full" />
-              ) : sectionDistData.length === 0 ? (
+              ) : tradeDistData.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No data</p>
               ) : (
-                <AppPieChart data={sectionDistData} height={400} innerRadius={95} outerRadius={155} />
+                <AppPieChart data={tradeDistData} height={400} innerRadius={95} outerRadius={155} />
               )}
             </ChartCard>
           ) : (
@@ -307,26 +306,28 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
         </Card>
       </LazyMount>
 
-      {/* Section Performance — hidden for HOS (single section) */}
-      {role !== 'hos' && (
+      {/* Trade Performance — shown for every role, HOS included.
+          As a section table this was hidden for HOS (they have one section) and
+          told the other roles nothing either: one row per campus's Maintenance
+          section, restating the Campus Performance table below. Per trade it
+          answers the question the page exists for — which craft is behind. */}
       <LazyMount minHeight={420}>
         <Card className="overflow-hidden">
           <CardHeader className="pb-4 pt-6 px-6">
-            <CardTitle className="text-base">Section Performance</CardTitle>
-            <CardDescription>Ticket load and SLA per section</CardDescription>
+            <CardTitle className="text-base">Trade Performance</CardTitle>
+            <CardDescription>Ticket load and SLA per trade</CardDescription>
           </CardHeader>
           <CardContent className="px-6 pb-6 pt-0">
-            {perfSectionsLoading || !perfSections ? (
+            {perfTradesLoading || !perfTrades ? (
               <SectionSkeleton />
-            ) : perfSections.breakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No section data</p>
+            ) : perfTrades.breakdown.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No trade data</p>
             ) : (
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-sm bg-card">
                   <thead>
                     <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground uppercase tracking-wide">
-                      <th className="px-3 py-3 font-medium">Section</th>
-                      <th className="px-3 py-3 font-medium">Campus</th>
+                      <th className="px-3 py-3 font-medium">Trade</th>
                       <th className="px-3 py-3 font-medium text-right">Total</th>
                       <th className="px-3 py-3 font-medium text-right">Open</th>
                       <th className="px-3 py-3 font-medium text-right">Resolved</th>
@@ -335,23 +336,19 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {perfSections.breakdown.map((s) => {
-                      const slaPct = s.total_resolved_with_due > 0
-                        ? Math.round((s.resolution_sla_met / s.total_resolved_with_due) * 100)
+                    {perfTrades.breakdown.map((t) => {
+                      const slaPct = t.total_resolved_with_due > 0
+                        ? Math.round((t.resolution_sla_met / t.total_resolved_with_due) * 100)
                         : null;
                       return (
-                        <tr key={s.section_id}>
-                          <td className="px-3 py-2.5 font-medium">{s.section_type_name}</td>
-                          <td className="px-3 py-2.5 text-muted-foreground">
-                            <span>{s.campus_name}</span>
-                            <Badge variant="outline" className="ml-2 text-xs">{s.campus_code}</Badge>
-                          </td>
-                          <td className="px-3 py-2.5 text-right">{s.total}</td>
-                          <td className="px-3 py-2.5 text-right text-status-open">{s.open_count}</td>
-                          <td className="px-3 py-2.5 text-right text-status-resolved">{s.resolved_count}</td>
+                        <tr key={t.key}>
+                          <td className="px-3 py-2.5 font-medium">{t.label}</td>
+                          <td className="px-3 py-2.5 text-right">{t.total}</td>
+                          <td className="px-3 py-2.5 text-right text-status-open">{t.open_count}</td>
+                          <td className="px-3 py-2.5 text-right text-status-resolved">{t.resolved_count}</td>
                           <td className="px-3 py-2.5 text-right">
-                            <span className={s.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
-                              {s.escalated_count}
+                            <span className={t.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
+                              {t.escalated_count}
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-right">
@@ -371,7 +368,6 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
           </CardContent>
         </Card>
       </LazyMount>
-      )}
 
       {/* Campus Performance (manager only) — ticket load per campus */}
       {isManager && (

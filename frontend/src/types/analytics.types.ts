@@ -191,6 +191,27 @@ export interface PerformanceSectionsResponse {
   breakdown: SectionBreakdownItem[];
 }
 
+/**
+ * A trade (sub_section) row. Comes from the generic breakdown, so the
+ * dimension is carried as `key`/`label` rather than named columns.
+ */
+export interface TradeBreakdownItem {
+  key: number;
+  label: string;
+  total: number;
+  open_count: number;
+  resolved_count: number;
+  escalated_count: number;
+  resolution_sla_met: number;
+  total_resolved_with_due: number;
+}
+
+// GET /analytics/performance/trades/
+export interface PerformanceTradesResponse {
+  date_range: DateRange;
+  breakdown: TradeBreakdownItem[];
+}
+
 // GET /analytics/performance/campus-departments/
 export interface CampusDeptBreakdownItem {
   cd_id: number;

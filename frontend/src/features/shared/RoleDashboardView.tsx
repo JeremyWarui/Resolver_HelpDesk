@@ -32,7 +32,7 @@ import InsightsPanel from "@/components/shared/data/InsightsPanel";
 import LazyMount from "@/components/shared/LazyMount";
 import reportsService from "@/lib/api/reports";
 import type { GenerateReportParams } from "@/lib/api/reports";
-import { useTicketAnalytics, useRoleAnalytics, usePerformanceCampusDepts, usePerformanceSections, useAnalytics } from "@/hooks/analytics";
+import { useTicketAnalytics, useRoleAnalytics, usePerformanceCampusDepts, usePerformanceTrades, useAnalytics } from "@/hooks/analytics";
 import { getDemand } from "@/lib/api/analytics";
 
 export type DashboardRole = "admin" | "manager" | "hod" | "hos";
@@ -114,21 +114,26 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
     name: c.campus_name,
     total: c.total,
   }));
-  // Section volume/distribution is a "total tickets per section" view, not a
-  // time series, so it uses a wide window (independent of the Tickets-Raised
-  // timeframe dropdown) to reflect each section's overall load.
-  const { data: perfSections, loading: sectionsLoading } = usePerformanceSections(
+  // Trade volume/distribution is a "total tickets per trade" view, not a time
+  // series, so it uses a wide window (independent of the Tickets-Raised
+  // timeframe dropdown) to reflect each trade's overall load.
+  //
+  // This was grouped by section. Maintenance is the only section type, so an
+  // HOD got a single bar covering their entire scope, and a manager got one
+  // bar per campus — an exact restatement of the Campus Distribution chart
+  // directly above it. The trade is the dimension that actually varies.
+  const { data: perfTrades, loading: tradesLoading } = usePerformanceTrades(
     isEnriched ? { days: 365 } : undefined,
     { enabled: isEnriched }
   );
-  const sectionVolume = (perfSections?.breakdown ?? []).map((s) => ({
-    name: s.section_type_name,
-    total: s.total,
+  const tradeVolume = (perfTrades?.breakdown ?? []).map((t) => ({
+    name: t.label,
+    total: t.total,
   }));
-  // Section volume shaped for the HOD AppBarChart ({ name, tickets }).
-  const sectionVolumeBar = (perfSections?.breakdown ?? []).map((s) => ({
-    name: s.section_type_name,
-    tickets: s.total,
+  // Same rows shaped for the HOD AppBarChart ({ name, tickets }).
+  const tradeVolumeBar = (perfTrades?.breakdown ?? []).map((t) => ({
+    name: t.label,
+    tickets: t.total,
   }));
   // Unified envelope for the manager insights panel (only fired for the manager
   // dashboard; HOS insights live on the HOS analytics page, not the dashboard).
@@ -245,16 +250,16 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
               emptyLabel="No campus data available"
             />
           </LazyMount>
-          {/* Per-section distribution + volume */}
+          {/* Per-trade distribution + volume */}
           <LazyMount minHeight={340}>
             <DistributionCharts
-              data={sectionVolume}
-              loading={sectionsLoading}
-              distributionTitle="Section Distribution Breakdown"
-              distributionDescription="Percentage of total tickets by section"
-              volumeTitle="Section Ticket Volume"
-              volumeDescription="Number of tickets by section"
-              emptyLabel="No section data available"
+              data={tradeVolume}
+              loading={tradesLoading}
+              distributionTitle="Trade Distribution Breakdown"
+              distributionDescription="Percentage of total tickets by trade"
+              volumeTitle="Trade Ticket Volume"
+              volumeDescription="Number of tickets by trade"
+              emptyLabel="No trade data available"
             />
           </LazyMount>
           {/* Facility demand + technician workload (department-scoped) */}
@@ -292,15 +297,15 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
           <LazyMount minHeight={420}>
             <div className="grid grid-cols-2 gap-2 mb-2">
               <ChartCard
-                title="Section Ticket Volume"
-                description="Tickets by section in your campus department"
+                title="Trade Ticket Volume"
+                description="Tickets by trade in your campus department"
               >
-                {sectionsLoading ? (
-                  <ChartPlaceholder message="Loading section data..." />
-                ) : sectionVolumeBar.length === 0 ? (
-                  <ChartPlaceholder message="No section data available" />
+                {tradesLoading ? (
+                  <ChartPlaceholder message="Loading trade data..." />
+                ) : tradeVolumeBar.length === 0 ? (
+                  <ChartPlaceholder message="No trade data available" />
                 ) : (
-                  <AppBarChart data={sectionVolumeBar} dataKey="tickets" height={375} />
+                  <AppBarChart data={tradeVolumeBar} dataKey="tickets" height={375} />
                 )}
               </ChartCard>
               <FacilityChart

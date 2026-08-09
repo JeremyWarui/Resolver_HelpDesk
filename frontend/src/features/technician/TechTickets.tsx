@@ -70,7 +70,7 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
 
   const filters = createTicketTableFilters(table, {
     includeStatus: true,
-    includeSection: false,
+    includeTrade: false,
     includeTechnician: false,
     includeUser: false,
   });

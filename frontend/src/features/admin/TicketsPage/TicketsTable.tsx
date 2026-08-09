@@ -4,7 +4,7 @@ import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import {
-  createSectionFilter,
+  createTradeFilter,
   createTechnicianFilter,
   createUserFilter,
 } from '@/components/shared/data/DataTable/utils/FilterUtils';
@@ -48,23 +48,24 @@ function AllTicketsTable({
 
   // Scoped filter options (sections / technicians / requesters that appear in
   // the caller's tickets). One server-scoped source serves every role.
-  const { sections, technicians, requesters } = useTicketFilterOptions();
+  const { technicians, requesters } = useTicketFilterOptions();
 
   // Build the dropdowns from the scoped {id,name} lists and wire each to the
-  // server-side filter setters on useTicketTable. Section is omitted for HOS
-  // (single section). Computed inline (no useMemo): the result is only mapped to
-  // render the dropdowns in DataTable — nothing keys on its identity.
+  // server-side filter setters on useTicketTable. Computed inline (no useMemo):
+  // the result is only mapped to render the dropdowns in DataTable — nothing
+  // keys on its identity.
+  //
+  // This was a section filter, skipped for HOS because they have one section —
+  // but every other role was in the same position for a different reason: one
+  // section type means one option. The trade filter is useful to all of them,
+  // HOS included, so there is no role exclusion here.
   const filterOptions: FilterOption[] = [
-    ...(role !== 'hos'
-      ? [
-          createSectionFilter(
-            table.sectionFilter ?? 'all',
-            (v) => table.setSectionFilter(v == null ? null : Number(v)),
-            sections,
-            table.setPageIndex,
-          ),
-        ]
-      : []),
+    createTradeFilter(
+      table.tradeFilter ?? 'all',
+      (v) => table.setTradeFilter(v == null ? null : Number(v)),
+      table.trades,
+      table.setPageIndex,
+    ),
     createTechnicianFilter(
       String(table.technicianFilter ?? 'all'),
       (v) => table.setTechnicianFilter(v === 'all' ? null : Number(v)),

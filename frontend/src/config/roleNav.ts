@@ -48,7 +48,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
       dashboard: 'Dashboard',
       tickets: 'Tickets',
       technicians: 'Technicians',
-      sections: 'Sections',
+      sections: 'Trades',
       analytics: 'Analytics',
       reports: 'Reports',
       feedback: 'Feedback',

@@ -286,6 +286,29 @@ class PerformanceSectionsView(BaseAnalyticsView):
         )
 
 
+class PerformanceTradesView(BaseAnalyticsView):
+    """Breakdown by trade (sub_section) — the useful split below a section.
+
+    Maintenance is the only section type, so a HOD or HOS grouping by section
+    gets a single bar covering their whole scope. The craft is what actually
+    varies: Plumbing, Electrical, Carpentry, Masonry, Painting. `role_config`
+    already reflects this (HOD defaults to sub_section and is not allowed
+    section at all); this gives the breakdown-only charts the same dimension.
+    """
+
+    def get(self, request):
+        role = self.get_role(request)
+        scoped_qs = self.get_scoped_qs(request, role)
+        date_range = resolve_date_range(request.query_params)
+        # breakdown-only: skip the ~40-query headline (see services.breakdown()).
+        return Response(
+            {
+                "date_range": _date_range_meta(date_range),
+                "breakdown": breakdown(scoped_qs, date_range, group_by="sub_section"),
+            }
+        )
+
+
 class PerformanceCampusDepartmentsView(BaseAnalyticsView):
     def get(self, request):
         role = self.get_role(request)

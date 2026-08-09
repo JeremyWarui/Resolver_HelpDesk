@@ -6,6 +6,7 @@ import {
   getSLACompliance,
   getPerformanceTechnicians,
   getPerformanceSections,
+  getPerformanceTrades,
   getPerformanceCampusDepts,
 } from '@/lib/api/analytics';
 import type {
@@ -15,6 +16,7 @@ import type {
   SLAComplianceResponse,
   PerformanceTechniciansResponse,
   PerformanceSectionsResponse,
+  PerformanceTradesResponse,
   PerformanceCampusDeptsResponse,
   AnalyticsParams,
 } from '@/types';
@@ -80,6 +82,24 @@ export function usePerformanceSections(
   const { data, isLoading, error, refetch } = useQuery<PerformanceSectionsResponse>({
     queryKey: ['analytics', 'performance', 'sections', params],
     queryFn: () => getPerformanceSections(params),
+    staleTime: 2 * 60 * 1000,
+    enabled: options?.enabled ?? true,
+  });
+  return { data: data ?? null, loading: isLoading, error, refetch };
+}
+
+/**
+ * Ticket breakdown by trade. The section equivalent returns one row for a
+ * HOD/HOS — one Maintenance section each — so this is the dimension their
+ * charts should bind to.
+ */
+export function usePerformanceTrades(
+  params?: AnalyticsParams,
+  options?: { enabled?: boolean },
+) {
+  const { data, isLoading, error, refetch } = useQuery<PerformanceTradesResponse>({
+    queryKey: ['analytics', 'performance', 'trades', params],
+    queryFn: () => getPerformanceTrades(params),
     staleTime: 2 * 60 * 1000,
     enabled: options?.enabled ?? true,
   });

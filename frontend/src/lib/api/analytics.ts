@@ -11,6 +11,7 @@ import type {
   DemandResponse,
   PerformanceTechniciansResponse,
   PerformanceSectionsResponse,
+  PerformanceTradesResponse,
   PerformanceCampusDeptsResponse,
 } from '@/types';
 
@@ -69,6 +70,13 @@ export async function getPerformanceSections(
   return data;
 }
 
+export async function getPerformanceTrades(
+  params?: AnalyticsParams
+): Promise<PerformanceTradesResponse> {
+  const { data } = await apiClient.get('/analytics/performance/trades/', { params });
+  return data;
+}
+
 export async function getPerformanceCampusDepts(
   params?: AnalyticsParams
 ): Promise<PerformanceCampusDeptsResponse> {
@@ -108,6 +116,7 @@ const analyticsService = {
   getDemand,
   getPerformanceTechnicians,
   getPerformanceSections,
+  getPerformanceTrades,
   getPerformanceCampusDepts,
   getOrganisationAnalytics,
   getHODAnalytics,

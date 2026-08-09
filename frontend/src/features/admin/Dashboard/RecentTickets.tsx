@@ -1,6 +1,6 @@
 import { useTicketTable } from "@/hooks/tickets";
 import { useTicketFilterOptions } from "@/hooks/tickets/useTicketFilterOptions";
-import { createStatusFilter, createSectionFilter, createTechnicianFilter, createUserFilter } from "@/components/shared/data/DataTable/utils/FilterUtils";
+import { createStatusFilter, createTradeFilter, createTechnicianFilter, createUserFilter } from "@/components/shared/data/DataTable/utils/FilterUtils";
 import { createTicketTableColumns } from "@/components/shared/data/DataTable/utils/TicketTableColumns";
 import { createTicketColumnVisibility } from "@/components/shared/data/DataTable/utils/TicketColumnVisibility";
 import type { FilterOption } from "@/components/shared/data/DataTable/DataTable";
@@ -16,7 +16,7 @@ interface RecentTicketsTableProps {
 
 export default function RecentTicketsTable({ role = 'admin', onTicketSelect }: RecentTicketsTableProps) {
   const table = useTicketTable({ role, defaultPageSize: 25 });
-  const { sections, technicians, requesters } = useTicketFilterOptions();
+  const { technicians, requesters } = useTicketFilterOptions();
 
   const columns = createTicketTableColumns({
     role,
@@ -28,10 +28,10 @@ export default function RecentTicketsTable({ role = 'admin', onTicketSelect }: R
 
   const filters: FilterOption[] = [
     createStatusFilter(table.statusFilter, table.setStatusFilter, table.allStatuses, table.setPageIndex),
-    createSectionFilter(
-      table.sectionFilter ?? 'all',
-      (v) => table.setSectionFilter(v == null ? null : Number(v)),
-      sections,
+    createTradeFilter(
+      table.tradeFilter ?? 'all',
+      (v) => table.setTradeFilter(v == null ? null : Number(v)),
+      table.trades,
       table.setPageIndex,
     ),
     createTechnicianFilter(
