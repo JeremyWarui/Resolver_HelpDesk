@@ -57,15 +57,17 @@ export interface TicketFilterOption {
 
 export interface TicketFilterOptions {
   sections: TicketFilterOption[];
+  /** Trades — Plumbing, Electrical, Carpentry, … */
+  sub_sections: TicketFilterOption[];
   technicians: TicketFilterOption[];
   requesters: TicketFilterOption[];
 }
 
 /**
- * Sections / technicians / requesters that appear in the caller's role-scoped
- * tickets — used to populate the tickets-table filter dropdowns. Scoped
- * server-side by JWT role (admin = all, manager = department, hod/hos = their
- * sections), so the options always match what the filters can return.
+ * Sections / trades / technicians / requesters that appear in the caller's
+ * role-scoped tickets — used to populate the tickets-table filter dropdowns.
+ * Scoped server-side by JWT role (admin = all, manager = department, hod/hos =
+ * their sections), so the options always match what the filters can return.
  */
 export async function getTicketFilterOptions(): Promise<TicketFilterOptions> {
   const { data } = await apiClient.get<TicketFilterOptions>('/tickets/filter-options/');

@@ -98,7 +98,9 @@ export interface Ticket {
   // Timestamps
   created_at: string;
   updated_at: string;
+  /** When work finished. Settled SLA outcomes are judged against this, not the clock. */
   resolved_at?: string | null;
+  closed_at?: string | null;
 
   // Pending reason (required when transitioning to 'pending')
   pending_reason?: string | null;

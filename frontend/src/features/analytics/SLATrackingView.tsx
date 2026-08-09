@@ -1,14 +1,14 @@
 // SLATrackingView — SLA-focused ticket tracking for section heads and HODs.
-// Classifies all in-scope tickets into breached / at_risk / on_track client-side.
+// Classifies in-scope tickets into breached / at_risk / on_track / met — see
+// `slaState` for why settled tickets are judged differently from running ones.
 // Breached rows always sort to top (pre-sort before passing to TicketTable).
 // Auto-refreshes every 60 seconds via setInterval on the refetch callback.
-// Section selector is shown for hod role only (HOS has a single section scope).
+// Narrowing is by trade, not section: a HOD/HOS scope holds one section.
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { AlertTriangle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
-import { useRoleContext } from '@/lib/auth/roleContext';
+import { AlertTriangle, CheckCheck, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import useTickets from '@/hooks/tickets/useTickets';
-import { useSections } from '@/hooks/sections/useSections';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import { SLAComplianceGauge } from '@/components/shared/data/SLAComplianceGauge';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
@@ -26,13 +26,34 @@ import type { FilterPill, Ticket } from '@/types';
 
 const AT_RISK_MS = 24 * 60 * 60 * 1000;
 
-type SlaFilter = 'all' | 'breached' | 'at_risk' | 'on_track';
-type SlaState  = 'breached' | 'at_risk' | 'on_track' | 'no_sla';
+type SlaFilter = 'all' | 'breached' | 'at_risk' | 'on_track' | 'met';
+type SlaState  = 'breached' | 'at_risk' | 'on_track' | 'met' | 'no_sla';
 
+const SETTLED: ReadonlySet<Ticket['status']> = new Set(['resolved', 'closed']);
+
+/**
+ * A ticket's SLA outcome.
+ *
+ * The distinction that matters is settled vs running. Once a ticket is
+ * resolved its SLA outcome is fixed, and it is judged against `resolved_at` —
+ * *not* against the clock. Comparing a finished ticket's due date to
+ * `Date.now()` marks every ticket ever closed as breached the moment its due
+ * date passes, however early it was actually resolved: a ticket resolved two
+ * days inside target was being reported as a breach, and the compliance figure
+ * fell a little further every day nobody touched the system.
+ */
 function slaState(ticket: Ticket): SlaState {
   if (!ticket.resolution_due_at) return 'no_sla';
+  const due = new Date(ticket.resolution_due_at).getTime();
+
+  if (SETTLED.has(ticket.status)) {
+    const finished = ticket.resolved_at ?? ticket.closed_at;
+    if (!finished) return 'no_sla';
+    return new Date(finished).getTime() > due ? 'breached' : 'met';
+  }
+
   if (ticket.paused_at) return 'on_track'; // SLA frozen while pending (R9)
-  const remaining = new Date(ticket.resolution_due_at).getTime() - Date.now();
+  const remaining = due - Date.now();
   if (remaining <= 0) return 'breached';
   if (remaining < AT_RISK_MS) return 'at_risk';
   return 'on_track';
@@ -42,7 +63,8 @@ const SLA_ORDER: Record<SlaState, number> = {
   breached: 0,
   at_risk:  1,
   on_track: 2,
-  no_sla:   3,
+  met:      3,
+  no_sla:   4,
 };
 
 function sortBySla(tickets: Ticket[]): Ticket[] {
@@ -57,22 +79,18 @@ function sortBySla(tickets: Ticket[]): Ticket[] {
 }
 
 function breachClass(ticket: Ticket): string {
-  if (ticket.resolution_due_at && !ticket.paused_at && new Date(ticket.resolution_due_at).getTime() < Date.now()) {
-    return 'border-l-2 border-status-escalated bg-status-escalated/5';
-  }
-  return '';
+  return slaState(ticket) === 'breached'
+    ? 'border-l-2 border-status-escalated bg-status-escalated/5'
+    : '';
 }
 
 interface SLATrackingViewProps { onTicketSelect?: (id: number) => void; }
 
 export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
-  const { role } = useRoleContext();
-  const isHod = role === 'hod';
-
   const [slaFilter, setSlaFilter]   = useState<SlaFilter>('all');
-  const [sectionId, setSectionId]   = useState<number | null>(null);
+  const [tradeId, setTradeId]       = useState<number | null>(null);
 
-  const { sections } = useSections();
+  const { subSections } = useTicketFilterOptions();
 
   const ticketParams = useMemo(() => ({ page_size: 100 }), []);
 
@@ -84,17 +102,25 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
     return () => clearInterval(id);
   }, [refetch]);
 
-  const sorted = useMemo(() => sortBySla(tickets), [tickets]);
+  // The trade filter narrows everything downstream — counts, compliance and
+  // table alike — so the pills always describe the set actually on screen.
+  const sorted = useMemo(() => {
+    const scoped = tradeId == null
+      ? tickets
+      : tickets.filter((t) => t.sub_section?.id === tradeId);
+    return sortBySla(scoped);
+  }, [tickets, tradeId]);
 
   const counts = useMemo(() => {
-    let breached = 0, at_risk = 0, on_track = 0;
+    let breached = 0, at_risk = 0, on_track = 0, met = 0;
     for (const t of sorted) {
       const s = slaState(t);
       if (s === 'breached') breached++;
       else if (s === 'at_risk') at_risk++;
       else if (s === 'on_track') on_track++;
+      else if (s === 'met') met++;
     }
-    return { breached, at_risk, on_track };
+    return { breached, at_risk, on_track, met };
   }, [sorted]);
 
   const pills = useMemo((): FilterPill[] => [
@@ -102,6 +128,7 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
     { key: 'breached', label: 'Breached', count: counts.breached, variant: 'danger'  },
     { key: 'at_risk',  label: 'At Risk',  count: counts.at_risk,  variant: 'warning' },
     { key: 'on_track', label: 'On Track', count: counts.on_track, variant: 'success' },
+    { key: 'met',      label: 'Met',      count: counts.met,      variant: 'success' },
   ], [sorted.length, counts]);
 
   const visibleTickets = useMemo(() => {
@@ -110,29 +137,38 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
       const s = slaState(t);
       if (slaFilter === 'breached') return s === 'breached';
       if (slaFilter === 'at_risk')  return s === 'at_risk';
+      if (slaFilter === 'met')      return s === 'met';
       if (slaFilter === 'on_track') return s === 'on_track' || s === 'no_sla';
       return true;
     });
   }, [sorted, slaFilter]);
 
+  /**
+   * Compliance over tickets whose outcome is known: met, or breached (settled
+   * late, or still running past due). Tickets still inside their target have
+   * no outcome yet and would otherwise be counted as successes they have not
+   * earned.
+   */
   const compliance = useMemo(() => {
-    const withDue = sorted.filter((t) => t.resolution_due_at);
-    if (!withDue.length) return 100;
-    const ok = withDue.filter((t) => slaState(t) !== 'breached').length;
-    return Math.round((ok / withDue.length) * 100);
-  }, [sorted]);
+    const decided = counts.met + counts.breached;
+    if (!decided) return 100;
+    return Math.round((counts.met / decided) * 100);
+  }, [counts]);
 
   const handleRowClick = useCallback((ticket: Ticket) => {
     onTicketSelect?.(ticket.id);
-  }, []);
+  }, [onTicketSelect]);
 
   const handleRefresh = useCallback(() => refetch(), [refetch]);
 
+  // Not breached+at_risk+on_track — a settled ticket that missed its target is
+  // still counted as breached, and it is not running.
+  const live = sorted.filter((t) => !SETTLED.has(t.status)).length;
   const subtitle = loading
     ? 'Loading…'
     : totalTickets > 100
-      ? `Showing 100 of ${totalTickets} tracked tickets`
-      : `${sorted.length} active ticket${sorted.length !== 1 ? 's' : ''} tracked`;
+      ? `Showing 100 of ${totalTickets} tickets`
+      : `${sorted.length} ticket${sorted.length !== 1 ? 's' : ''} in scope · ${live} still running`;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 bg-background space-y-4">
@@ -143,17 +179,17 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          {isHod && sections.length > 0 && (
+          {subSections.length > 1 && (
             <Select
-              value={sectionId ? String(sectionId) : 'all'}
-              onValueChange={(v) => setSectionId(v === 'all' ? null : Number(v))}
+              value={tradeId ? String(tradeId) : 'all'}
+              onValueChange={(v) => setTradeId(v === 'all' ? null : Number(v))}
             >
               <SelectTrigger className="w-44 h-8 text-sm">
-                <SelectValue placeholder="All sections" />
+                <SelectValue placeholder="All trades" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All sections</SelectItem>
-                {sections.map((s) => (
+                <SelectItem value="all">All trades</SelectItem>
+                {subSections.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>
                     {s.name}
                   </SelectItem>
@@ -175,7 +211,7 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card className="col-span-2 sm:col-span-1 flex flex-col items-center justify-center py-4">
           <CardContent className="p-0">
             <SLAComplianceGauge value={compliance} loading={loading} size={100} />
@@ -201,6 +237,13 @@ export function SLATrackingView({ onTicketSelect }: SLATrackingViewProps) {
           value={counts.on_track}
           loading={loading}
           colorClass="bg-green-50 border-green-200"
+        />
+        <KpiCard
+          icon={<CheckCheck className="h-5 w-5 text-gray-500" />}
+          label="Met (closed)"
+          value={counts.met}
+          loading={loading}
+          colorClass="bg-gray-50 border-gray-200"
         />
       </div>
 

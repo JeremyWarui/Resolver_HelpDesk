@@ -51,6 +51,7 @@ venv/
 .env
 *.env
 
+
 # 🔑 API Test Files with Secrets
 # Local copies of test request files may contain tokens
 docs/api/test-requests.http
