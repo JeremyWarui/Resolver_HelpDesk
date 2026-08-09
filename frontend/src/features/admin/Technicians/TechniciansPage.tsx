@@ -27,12 +27,24 @@ import type { Technician } from '@/types';
  * Trades with nobody in them still appear. A trade with no technician at a
  * campus still routes tickets there — they simply have nobody to be assigned
  * to, and that gap is the most useful thing this page can show.
+ *
+ * Every data source here (`useScopedTechnicians`, `useSubSections`,
+ * `usePerformanceTechnicians`) is scoped server-side from the JWT, so the same
+ * component serves an HOD or HOS unchanged — they simply see fewer rows. Only
+ * the create/edit affordances are admin-only, which is what `manage` gates.
+ * HOD/HOS previously had their own page listing names and usernames and
+ * nothing else: no trade, no load, no campus.
  */
+
+interface TechniciansPageProps {
+  /** Show create/edit controls. Admin only — HOD and HOS read the same roster. */
+  manage?: boolean;
+}
 
 const UNASSIGNED = -1;
 const ALL = 0;
 
-export default function TechniciansPage() {
+export default function TechniciansPage({ manage = true }: TechniciansPageProps = {}) {
   const { technicians, loading, refetch } = useScopedTechnicians();
   const { subSections, loading: tradesLoading } = useSubSections();
   // Live open-load per technician. Not fatal if it fails — the roster is the
@@ -200,14 +212,16 @@ export default function TechniciansPage() {
               {search && ' matching your search'}
             </p>
           </div>
-          <Button
-            size="sm"
-            className="gap-1.5 shrink-0"
-            onClick={() => { setEditing(null); setFormOpen(true); }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Technician
-          </Button>
+          {manage && (
+            <Button
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => { setEditing(null); setFormOpen(true); }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Technician
+            </Button>
+          )}
         </div>
 
         <div className="p-6 space-y-6">
@@ -236,7 +250,7 @@ export default function TechniciansPage() {
                       openCount={loadKnown ? (openCountById.get(tech.id) ?? 0) : undefined}
                       showTrades={selectedTradeId === ALL || selectedTradeId === UNASSIGNED}
                       onView={() => setViewing(tech)}
-                      onEdit={() => { setEditing(tech); setFormOpen(true); }}
+                      onEdit={manage ? () => { setEditing(tech); setFormOpen(true); } : undefined}
                     />
                   ))}
                 </div>
@@ -246,18 +260,20 @@ export default function TechniciansPage() {
         </div>
       </div>
 
-      <TechnicianForm
-        isOpen={formOpen}
-        onOpenChange={(open) => { setFormOpen(open); if (!open) setEditing(null); }}
-        technician={editing}
-        onSuccess={() => { setFormOpen(false); setEditing(null); refetch(); }}
-      />
+      {manage && (
+        <TechnicianForm
+          isOpen={formOpen}
+          onOpenChange={(open) => { setFormOpen(open); if (!open) setEditing(null); }}
+          technician={editing}
+          onSuccess={() => { setFormOpen(false); setEditing(null); refetch(); }}
+        />
+      )}
 
       <TechnicianDetails
         isOpen={viewing !== null}
         onOpenChange={(open) => { if (!open) setViewing(null); }}
         technician={viewing}
-        onUpdated={refetch}
+        onUpdated={manage ? refetch : undefined}
       />
     </div>
   );
@@ -322,7 +338,8 @@ function TechnicianRow({
   openCount?: number;
   showTrades: boolean;
   onView: () => void;
-  onEdit: () => void;
+  /** Omitted for read-only viewers — the Edit button is not rendered at all. */
+  onEdit?: () => void;
 }) {
   const initials = name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const trades = tech.sub_section_names ?? [];
@@ -370,9 +387,11 @@ function TechnicianRow({
         </Badge>
       )}
 
-      <Button variant="ghost" size="sm" className="shrink-0 text-xs h-7" onClick={onEdit}>
-        Edit
-      </Button>
+      {onEdit && (
+        <Button variant="ghost" size="sm" className="shrink-0 text-xs h-7" onClick={onEdit}>
+          Edit
+        </Button>
+      )}
     </div>
   );
 }
