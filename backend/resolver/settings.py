@@ -367,12 +367,12 @@ WHITENOISE_MIMETYPES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CORS Configuration
-# Allow frontend running on localhost:5173 to make requests
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://127.0.0.1:5173",
-#     "https://resolver-zeta.vercel.app",
-# ]
+#
+# Deployment-specific origins belong in the CORS_ALLOWED_ORIGINS env var, not
+# here — the defaults below are the local dev and preview ports only. A commit
+# that hard-codes a deployment hostname makes local and deployed builds diverge
+# silently, which is how a local production build ended up posting to the live
+# backend (see frontend/.env.production).
 
 CORS_ALLOWED_ORIGINS = [
     o.strip()

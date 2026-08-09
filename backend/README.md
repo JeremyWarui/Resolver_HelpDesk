@@ -1,8 +1,16 @@
-# Django Resolver — Multi-Campus Service Desk API
+# Resolver HelpDesk — Maintenance API
 
-Backend for the Kenya School of Government service desk system. A multi-campus ticket lifecycle API with role-scoped analytics, Excel report generation, and real-time event streaming.
+Backend for the Kenya School of Government maintenance helpdesk: ticket
+lifecycle, trade-scoped assignment, escalation, and role-scoped analytics and
+reports.
 
-**Stack:** Django 6.0 · DRF 3.16 · PostgreSQL (Neon) · JWT · Django Channels · pytest (343 tests, 1 xfail)
+**Stack:** Django 6.0 · DRF 3.16 · PostgreSQL (local; deployment configured
+entirely by env vars) · JWT · pytest
+
+Notifications are polled over REST — there are no WebSockets, no Channels and
+no web push. See `../docs/architecture/target-architecture.md` for the as-built
+architecture; this app was ported from the enterprise Service Desk, whose
+reference implementation lives outside this repo.
 
 ---
 
