@@ -24,6 +24,7 @@ SEED_DEFAULT_PASSWORD='<demo password>' ../.venv/bin/python manage.py seed   # i
 npx tsc -b --noEmit     # the fast check — run it after any type or API change
 npm run build
 npm run dev
+E2E_PASSWORD='<seed password>' npm run test:e2e   # Playwright; starts both servers
 ```
 
 `seed` refuses to run without `SEED_DEFAULT_PASSWORD`. It seeds 5 campuses, 5
@@ -116,6 +117,12 @@ out-of-scope id matches nothing rather than reaching past the caller.
   (SOT §7a) — comparing trailing slashes **exactly**, since `APPEND_SLASH`
   turns a slashless POST into a 405. That check found a live 404 behind four
   roles' Feedback tab, and normalising slashes hid a broken "Mark all read".
+- **A green `tsc` says nothing about what renders.** Every UI bug found in this
+  port was invisible to it — a mislabelled column, dead quick-access cards, an
+  empty chart, a search box filtering on a property its rows lacked. Run the
+  Playwright suite (SOT §7a) after UI changes, and drive the page when adding
+  one. `e2e/ticket-lifecycle.spec.ts` is the template: it asserts through the
+  UI what the backend tests assert directly, including a scope negative.
 - **Notifications are polled, not pushed.** `useNotifications()` is the single
   source; the emitters in `apps/notifications/notify.py` write the rows and are
   wrapped so they can never break the ticket update that triggered them.

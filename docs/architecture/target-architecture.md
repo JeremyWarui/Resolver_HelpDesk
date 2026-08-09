@@ -370,6 +370,29 @@ normalised them on both sides, which hid a real bug: the client posted to
 "Mark all read" answers 405. A path that differs only by a slash is a
 mismatch, not a match.
 
+### The other half: render it
+
+The route diff catches calls to endpoints that do not exist. It says nothing
+about a call that succeeds and a page that then renders the answer wrongly, and
+that class has been the more common one here — a mislabelled column, a dead
+quick-access card, a chart with no data behind it, a search box that filtered on
+a property its rows did not carry. `tsc` is green for all of them.
+
+`frontend/e2e/` is the repeatable version of that check:
+
+| Spec | What it protects |
+|---|---|
+| `admin-navigation` | every sidebar entry changes URL *and* content; the My Requests context switch |
+| `catalogue` | Section Type → Trade → Item CRUD, and cascade delete |
+| `users` | user CRUD |
+| `ticket-lifecycle` | raise → route → claim → resolve, plus a same-campus/different-trade negative |
+
+Run it with `E2E_PASSWORD=<seed password> npm run test:e2e`. Both servers start
+automatically; the backend command points at **`../backend`**, which is worth
+checking if the suite ever starts behaving like a different application — it
+pointed at the reference repo for the whole first part of this port, so the
+suite was testing the enterprise Service Desk.
+
 ## 8. Target app layout
 
 ```

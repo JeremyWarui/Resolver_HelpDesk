@@ -64,6 +64,23 @@ this project does not yet version releases.
 - Chart tooltips (ten definitions across seven files) and the chart palette
   (five copies) each collapsed to one definition.
 
+### Changed — e2e
+
+- **The suite was booting the wrong application.** `playwright.config.ts` started
+  its backend from `../../django_resolver`, the reference repo, so
+  `npm run test:e2e` tested the enterprise Service Desk. Now `../backend`.
+- **Catalogue spec rewritten** for the shape this app actually has: Section Type
+  → **Trade** → Service Item, where it drove Section Type → Service Category, a
+  model deleted in the port. It could never have passed here.
+- **New `ticket-lifecycle` spec** — the path the product exists to serve, and
+  the one with no coverage: a requester raises a ticket through the wizard with
+  an office-block location, it routes to the plumbing technician at that campus,
+  who claims it (`open → assigned → in_progress` in one action) and resolves it,
+  and the requester sees it resolved. Ends on a negative: a technician on the
+  same campus but a different trade cannot see it — the case that fails if scope
+  is ever reduced to campus alone.
+- One login helper for every seeded role, taking a single `E2E_PASSWORD`.
+
 ### Removed
 
 - WebSockets, Channels, Daphne, Redis, web push, and the frontend WS client and
@@ -96,3 +113,12 @@ this project does not yet version releases.
   that triggered them.
 - `check_sla` raised `ImportError` on every run — it still imported the deleted
   `emit_ws_event`. A test now imports every management command.
+- **Ticket search emptied the table instead of searching it** wherever
+  `TicketTable` was used directly — My Tickets, the requester dashboard, the
+  admin ticket list, SLA tracking. The search box filters a hidden `searchField`
+  column, and only tables built through `useTicketTable` had that property on
+  their rows; everywhere else the accessor read `undefined`, so any query
+  matched nothing. `searchField` is an extra property, so TypeScript never had
+  an opinion, and the technician queue searching correctly is what made it look
+  fine. Now derived inside `TicketTable`, from ticket number, service item and
+  description — the columns the box claims to search.

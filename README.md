@@ -81,8 +81,18 @@ cd frontend
 npm install
 cp .env.example .env
 npm run dev
-npm run test:e2e              # Playwright
+npx tsc -b --noEmit           # the fast check
+
+# Playwright. Both servers start automatically; needs a seeded database.
+E2E_PASSWORD=<seed password> npm run test:e2e
 ```
+
+The e2e suite covers admin navigation, catalogue and user CRUD, and the whole
+ticket lifecycle — a requester raising a ticket through the wizard, the
+technician it routes to claiming and resolving it, and a technician on the same
+campus but a different trade being unable to see it. It creates and deletes its
+own catalogue and user rows; tickets are append-only, so the ones it raises stay
+put and are labelled `E2E`.
 
 ## Scope
 

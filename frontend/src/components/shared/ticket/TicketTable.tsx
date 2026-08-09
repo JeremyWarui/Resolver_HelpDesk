@@ -75,10 +75,34 @@ export function TicketTable({
 
   const columnVisibility = VARIANT_COLUMN_VISIBILITY[variant];
 
+  // DataTable's search box filters a hidden `searchField` column. Callers pass
+  // plain Ticket objects, which have no such property, so the accessor read
+  // `undefined` and *any* non-empty query matched no row — the box emptied the
+  // table instead of searching it. `useTicketTable` builds this field for the
+  // tables that go through it, which is why the technician queue searched fine
+  // and My Tickets did not; only an e2e run comparing the two showed it, since
+  // `searchField` is an extra property and TypeScript never had an opinion.
+  //
+  // Derived here so every consumer of TicketTable gets a working search box
+  // rather than each one remembering to map it.
+  const rows = useMemo(
+    () =>
+      tickets.map((ticket) => ({
+        ...ticket,
+        // ID and "title" as the box promises — a ticket has no title field,
+        // so the Title column shows `service_item.name` and this matches it.
+        searchField: [ticket.ticket_no, ticket.service_item?.name, ticket.description]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase(),
+      })),
+    [tickets],
+  );
+
   return (
     <DataTable
       columns={columns}
-      data={tickets}
+      data={rows}
       variant="admin"
       title={title}
       loading={loading}
