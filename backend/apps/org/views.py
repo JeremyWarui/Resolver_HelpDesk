@@ -198,7 +198,11 @@ class SectionViewSet(viewsets.ModelViewSet):
             "section_type",
             "hos",
         )
-        .annotate(technician_count=Count("technician_links", distinct=True))
+        # People, not assignments. `distinct=True` on the link rows dedupes
+        # links, which are already unique — a technician working two trades in
+        # one section has two links and was counted twice, so Nairobi reported
+        # 7 technicians while listing 6 names.
+        .annotate(technician_count=Count("technician_links__user", distinct=True))
         .order_by(
             "campus_department__campus__name",
             "campus_department__department__name",

@@ -60,6 +60,10 @@ export interface Section {
   campus?: { id: number; name: string; code: string } | null
   campus_name?: string | null
   head_of_section: number | null
+  /** What the API actually returns for the head — `head_of_section` is the
+   *  older client-side name and does not appear in the payload. */
+  hos?: number | null
+  hos_name?: string | null
   name: string
   code: string | null
   description?: string

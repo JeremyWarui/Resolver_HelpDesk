@@ -153,6 +153,7 @@ class SectionSerializer(serializers.ModelSerializer):
     department = serializers.SerializerMethodField()
     technician_count = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    hos_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
@@ -165,6 +166,7 @@ class SectionSerializer(serializers.ModelSerializer):
             "section_type",
             "campus_department",
             "hos",
+            "hos_name",
             "is_active",
             "technician_count",
             "description",
@@ -193,6 +195,18 @@ class SectionSerializer(serializers.ModelSerializer):
 
     def get_description(self, obj):
         return ""
+
+    def get_hos_name(self, obj):
+        """Who heads this section, by name.
+
+        `hos` alone is a user id, so every caller that wanted to show the head
+        had to fetch the user list and join it client-side. The viewset already
+        select_relates hos, so this costs no extra query.
+        """
+        if not obj.hos_id:
+            return None
+        full_name = f"{obj.hos.first_name} {obj.hos.last_name}".strip()
+        return full_name or obj.hos.username
 
 
 class SectionTechnicianSerializer(serializers.ModelSerializer):

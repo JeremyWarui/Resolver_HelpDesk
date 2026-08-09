@@ -212,3 +212,33 @@ def test_filter_options_offer_only_trades_the_caller_can_see(
     api.force_authenticate(nrb_electrician)
     options = api.get(reverse("ticket-filter-options")).json()
     assert [row["name"] for row in options["sub_sections"]] == ["Electrical"]
+
+
+def test_section_technician_count_counts_people_not_assignments(
+    api, admin_user, nrb_section, nrb_electrician, carpentry
+):
+    """A technician working two trades in one section is still one technician.
+
+    The annotation deduped link rows — which are unique by construction — so a
+    multi-trade technician was counted once per trade, and the section reported
+    more technicians than it could name.
+    """
+    SectionTechnician.objects.create(
+        user=nrb_electrician, section=nrb_section, sub_section=carpentry
+    )
+
+    links = SectionTechnician.objects.filter(section=nrb_section).count()
+    people = (
+        SectionTechnician.objects.filter(section=nrb_section)
+        .values("user")
+        .distinct()
+        .count()
+    )
+    assert links > people, "fixture must produce the double-link case"
+
+    from django.urls import reverse
+
+    api.force_authenticate(admin_user)
+    response = api.get(reverse("section-list"))
+    row = next(s for s in response.data["results"] if s["id"] == nrb_section.pk)
+    assert row["technician_count"] == people
