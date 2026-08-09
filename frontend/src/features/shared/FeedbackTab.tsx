@@ -1,4 +1,5 @@
-import { MessageSquare } from 'lucide-react';
+import { useMemo } from 'react';
+import { MessageSquare, Star } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
@@ -29,6 +30,24 @@ const SUBTITLES: Partial<Record<UserRole, string>> = {
 export function FeedbackTab({ role }: { role: UserRole }) {
   const { feedback, loading, error } = useFeedback();
 
+  // Summary is derived from the rows on screen rather than from
+  // /analytics/quality/, whose csat is computed over a 30-day window. Two
+  // averages over different populations sitting on one page is worse than no
+  // average at all.
+  const summary = useMemo(() => {
+    if (feedback.length === 0) return null;
+    const total = feedback.reduce((sum, r) => sum + r.rating, 0);
+    const histogram = [5, 4, 3, 2, 1].map((star) => ({
+      star,
+      count: feedback.filter((r) => r.rating === star).length,
+    }));
+    return {
+      average: total / feedback.length,
+      count: feedback.length,
+      histogram,
+    };
+  }, [feedback]);
+
   return (
     <div className="p-6 space-y-4">
       <div>
@@ -37,6 +56,40 @@ export function FeedbackTab({ role }: { role: UserRole }) {
           {SUBTITLES[role] ?? 'Submitted ratings and comments'}
         </p>
       </div>
+
+      {summary && (
+        <Card className="p-4 flex flex-col sm:flex-row sm:items-center gap-6">
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-3xl font-semibold text-gray-900 tabular-nums">
+              {summary.average.toFixed(1)}
+            </span>
+            <div>
+              <RatingStars rating={Math.round(summary.average)} />
+              <p className="text-xs text-gray-500 mt-1">
+                {summary.count} rating{summary.count === 1 ? '' : 's'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0 space-y-1">
+            {summary.histogram.map(({ star, count }) => (
+              <div key={star} className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-3 tabular-nums">{star}</span>
+                <Star className="h-3 w-3 text-amber-400 shrink-0" />
+                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-400 rounded-full"
+                    style={{ width: `${(count / summary.count) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-400 w-4 text-right tabular-nums">
+                  {count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="p-4">
@@ -62,39 +115,38 @@ export function FeedbackTab({ role }: { role: UserRole }) {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Ticket meta left, stars right, comment beneath only when there
+                  is one. The comment used to own a fixed half of every card,
+                  so most rows spent half their width saying "No comment left". */}
               {feedback.map((row) => (
                 <div
                   key={row.id}
-                  className="grid grid-cols-1 sm:grid-cols-2 gap-4 border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+                  className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
-                      {row.ticket_no} · {row.service_item}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {row.assigned_to
-                        ? (row.assigned_to.full_name || row.assigned_to.username)
-                        : 'Unassigned'}{' '}
-                      · {row.section}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {row.resolved_at
-                        ? `Resolved ${formatDate(row.resolved_at)}`
-                        : formatDate(row.created_at)}
-                    </p>
-                    <div className="mt-2">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {row.ticket_no} · {row.service_item}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {row.assigned_to
+                          ? (row.assigned_to.full_name || row.assigned_to.username)
+                          : 'Unassigned'}{' '}
+                        · {row.resolved_at
+                          ? `resolved ${formatDate(row.resolved_at)}`
+                          : formatDate(row.created_at)}
+                      </p>
+                    </div>
+                    <div className="shrink-0">
                       <RatingStars rating={row.rating} />
                     </div>
                   </div>
-                  <div className="sm:border-l sm:border-gray-100 sm:pl-4">
-                    {row.comment ? (
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">
-                        &ldquo;{row.comment}&rdquo;
-                      </p>
-                    ) : (
-                      <p className="text-xs text-gray-400 italic">No comment left.</p>
-                    )}
-                  </div>
+
+                  {row.comment && (
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap mt-2.5 pl-3 border-l-2 border-gray-200">
+                      {row.comment}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
