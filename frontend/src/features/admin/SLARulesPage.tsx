@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Clock, ChevronDown, ChevronUp, Pencil, Check, X,
-  Plus, Trash2, AlertTriangle,
+  Plus, Trash2, AlertTriangle, ArrowRight,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,22 @@ import {
   type SLAPriority,
   type EscalationRule,
 } from '@/lib/api/sla';
+
+/**
+ * The severity colour for a priority, from its position in the ladder.
+ *
+ * Deliberately position-based rather than name-based. `getPriorityStyle()`
+ * keys off the name and falls back to the "low" palette for anything it does
+ * not recognise, so a custom "Urgent" at the top of the ladder would be
+ * painted as the calmest thing on the page. Position is always true: the
+ * highest rank is the most urgent, whatever it is called.
+ */
+function severityStyle(index: number, total: number): React.CSSProperties {
+  const tokens = ['--priority-low', '--priority-medium', '--priority-high', '--priority-critical'];
+  const slot = total <= 1 ? 0 : Math.round((index / (total - 1)) * (tokens.length - 1));
+  const base = tokens[Math.min(slot, tokens.length - 1)];
+  return { backgroundColor: `var(${base}-text)` };
+}
 
 function fmtMins(m: number): string {
   if (m < 60) return `${m}min`;
@@ -304,12 +320,17 @@ function PriorityRow({
   onUpdatePriority,
   onDeletePriority,
   isDefault,
+  index,
+  total,
 }: {
   priority: SLAPriority;
   onUpdatePriority: (updated: SLAPriority) => void;
   onDeletePriority: (id: number) => void;
   /** Lowest rank — what `Priority.default()` gives every new ticket. */
   isDefault: boolean;
+  /** Position in the rank-sorted ladder, for the severity colour. */
+  index: number;
+  total: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [addingRule, setAddingRule] = useState(false);
@@ -341,6 +362,14 @@ function PriorityRow({
       <tr className="border-b hover:bg-gray-50 group">
         <td className="px-5 py-3">
           <div className="flex items-center gap-2">
+            {/* Severity at a glance. Four rows of identical black text made
+                Critical look no different from Low on a page whose whole
+                subject is how different they are. */}
+            <span
+              className="h-2 w-2 rounded-full shrink-0"
+              style={severityStyle(index, total)}
+              aria-hidden
+            />
             <InlineTextInput
               value={priority.name}
               placeholder="Priority name"
@@ -386,12 +415,33 @@ function PriorityRow({
           />
         </td>
         <td className="px-3 py-3">
+          {/* The ladder itself, not a count of it. "2 rules" meant expanding
+              every row in turn to answer "when does a High ticket reach the
+              HOD?" — the one question this column exists for. */}
           <button
             onClick={() => { setExpanded(!expanded); setAddingRule(false); }}
-            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors group/esc"
+            title="Click to edit escalation rules"
           >
-            <span>{priority.escalation_rules.length} rule{priority.escalation_rules.length !== 1 ? 's' : ''}</span>
-            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {priority.escalation_rules.length === 0 ? (
+              <span className="text-gray-400 italic">never escalates</span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <span className="text-gray-400">Technician</span>
+                {[...priority.escalation_rules]
+                  .sort((a, b) => a.threshold_minutes - b.threshold_minutes)
+                  .map((rule) => (
+                    <span key={rule.id} className="flex items-center gap-1">
+                      <ArrowRight className="h-3 w-3 text-gray-300" />
+                      <span className="font-medium text-gray-700 uppercase">{rule.to_level}</span>
+                      <span className="text-gray-400">{fmtMins(rule.threshold_minutes)}</span>
+                    </span>
+                  ))}
+              </span>
+            )}
+            {expanded
+              ? <ChevronUp className="h-3.5 w-3.5 shrink-0" />
+              : <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-0 group-hover/esc:opacity-100 transition-opacity" />}
           </button>
         </td>
         <td className="px-3 py-3 text-right">
@@ -695,11 +745,13 @@ export default function SLARulesPage() {
                   {priorities
                     .slice()
                     .sort((a, b) => a.rank - b.rank)
-                    .map((p, index) => (
+                    .map((p, index, sorted) => (
                       <PriorityRow
                         key={p.id}
                         priority={p}
                         isDefault={index === 0}
+                        index={index}
+                        total={sorted.length}
                         onUpdatePriority={updated =>
                           setPriorities(prev => prev.map(pr => pr.id === updated.id ? updated : pr))
                         }
