@@ -98,9 +98,23 @@ export default function AuditLogPage() {
     {
       accessorKey: 'actor',
       header: actorHeader,
-      cell: ({ row }) => (
-        <span className="text-sm font-medium text-gray-800">{row.getValue('actor')}</span>
-      ),
+      // Name first, handle underneath. An audit log is scanned for "who did
+      // this", and `tech.nrb.plumb` needs a lookup before it answers that.
+      // The username stays visible because names are not unique and it is the
+      // handle you would search or report by.
+      cell: ({ row }) => {
+        const entry = row.original;
+        return (
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-gray-800 truncate">
+              {entry.actor ?? <span className="text-gray-400 italic">System</span>}
+            </div>
+            {entry.actor_username && (
+              <div className="text-xs text-gray-400 font-mono truncate">@{entry.actor_username}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'action',

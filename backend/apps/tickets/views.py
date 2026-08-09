@@ -9,7 +9,7 @@ from rest_framework.generics import get_object_or_404
 import os
 
 from django.core.files.base import ContentFile
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 
 from apps.tickets.models import (
     Ticket,
@@ -633,6 +633,7 @@ class TicketDetailView(generics.RetrieveAPIView):
 class AuditLogSerializer(drf_serializers.Serializer):
     id = drf_serializers.IntegerField(read_only=True)
     actor = drf_serializers.SerializerMethodField()
+    actor_username = drf_serializers.SerializerMethodField()
     action = drf_serializers.SerializerMethodField()
     target_type = drf_serializers.SerializerMethodField()
     ticket_no = drf_serializers.SerializerMethodField()
@@ -643,6 +644,18 @@ class AuditLogSerializer(drf_serializers.Serializer):
     created_at = drf_serializers.DateTimeField(read_only=True)
 
     def get_actor(self, obj):
+        """The person, by name — an audit log is read by humans looking for who.
+
+        `tech.nrb.plumb` tells a reader nothing without a lookup; "Brian
+        Ochieng" does. The username still travels as `actor_username` because
+        two people can share a name and it is the stable handle.
+        """
+        if not obj.actor:
+            return None
+        full_name = f"{obj.actor.first_name} {obj.actor.last_name}".strip()
+        return full_name or obj.actor.username
+
+    def get_actor_username(self, obj):
         return obj.actor.username if obj.actor else None
 
     def get_action(self, obj):
@@ -803,7 +816,14 @@ class AdminAuditLogView(generics.ListAPIView):
 
         params = self.request.query_params
         if actor := params.get("actor"):
-            qs = qs.filter(actor__username__icontains=actor)
+            # Search what the column shows. The list displays real names now, so
+            # filtering on username alone made a search for "Brian" return
+            # nothing while his rows sat in view.
+            qs = qs.filter(
+                Q(actor__username__icontains=actor)
+                | Q(actor__first_name__icontains=actor)
+                | Q(actor__last_name__icontains=actor)
+            )
         if action := params.get("action"):
             qs = qs.filter(event_type=action)
         if target_type := params.get("target_type"):

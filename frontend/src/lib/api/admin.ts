@@ -7,7 +7,10 @@ import apiClient from './client';
 
 export interface AuditLogEntry {
   id: number;
-  actor: string;
+  /** Display name — "Esther Wairimu". Null for system-generated entries. */
+  actor: string | null;
+  /** The stable handle behind that name; names are not unique. */
+  actor_username: string | null;
   action: string;
   target_type: string;
   ticket_no: string | null;

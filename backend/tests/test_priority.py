@@ -104,3 +104,28 @@ def test_assignment_without_priority_leaves_it_unchanged(
     assert not TicketLog.objects.filter(
         ticket=nrb_electrical_ticket, event_type="priority_changed"
     ).exists()
+
+
+def test_deleting_a_priority_in_use_is_refused_with_a_reason(
+    api, admin_user, low_priority, nrb_electrical_ticket
+):
+    """PROTECT already stops this; the point is that it says so in words.
+
+    The unhandled ProtectedError surfaced as a 500, which tells an admin the
+    app is broken rather than that the priority is in use.
+    """
+    api.force_authenticate(admin_user)
+    response = api.delete(reverse("priority-detail", args=[low_priority.pk]))
+
+    assert response.status_code == 409
+    assert "cannot be deleted" in response.data["detail"]
+    assert "1 ticket" in response.data["detail"]
+    low_priority.refresh_from_db()  # still there
+
+
+def test_an_unused_priority_can_still_be_deleted(api, admin_user, critical_priority):
+    api.force_authenticate(admin_user)
+    assert not Ticket.objects.filter(priority=critical_priority).exists()
+
+    response = api.delete(reverse("priority-detail", args=[critical_priority.pk]))
+    assert response.status_code == 204

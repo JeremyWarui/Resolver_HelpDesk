@@ -303,10 +303,13 @@ function PriorityRow({
   priority,
   onUpdatePriority,
   onDeletePriority,
+  isDefault,
 }: {
   priority: SLAPriority;
   onUpdatePriority: (updated: SLAPriority) => void;
   onDeletePriority: (id: number) => void;
+  /** Lowest rank — what `Priority.default()` gives every new ticket. */
+  isDefault: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [addingRule, setAddingRule] = useState(false);
@@ -322,8 +325,11 @@ function PriorityRow({
       await apiClient.delete(`/priorities/${priority.id}/`);
       onDeletePriority(priority.id);
       toast.success(`Priority "${priority.name}" deleted`);
-    } catch {
-      toast.error('Failed to delete priority');
+    } catch (err: unknown) {
+      // The server answers 409 with how many tickets still use it — show that
+      // rather than "Failed", which leaves the admin with nothing to act on.
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail ?? 'Failed to delete priority');
     } finally {
       setDeleting(false);
       setDeleteOpen(false);
@@ -334,15 +340,29 @@ function PriorityRow({
     <>
       <tr className="border-b hover:bg-gray-50 group">
         <td className="px-5 py-3">
-          <InlineTextInput
-            value={priority.name}
-            placeholder="Priority name"
-            onSave={async (name) => {
-              await updatePriority(priority.id, { name } as Parameters<typeof updatePriority>[1]);
-              onUpdatePriority({ ...priority, name });
-              toast.success('Priority name updated');
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <InlineTextInput
+              value={priority.name}
+              placeholder="Priority name"
+              onSave={async (name) => {
+                await updatePriority(priority.id, { name } as Parameters<typeof updatePriority>[1]);
+                onUpdatePriority({ ...priority, name });
+                toast.success('Priority name updated');
+              }}
+            />
+            {/* `Priority.default()` returns the lowest rank, so reordering ranks
+                silently changes what every future ticket opens at. That is too
+                load-bearing to leave implicit. */}
+            {isDefault && (
+              <Badge
+                variant="outline"
+                className="shrink-0 text-[10px] font-normal border-primary/30 text-primary bg-primary/5"
+                title="Tickets are created at this priority. The HOS sets the real one when assigning."
+              >
+                new tickets open here
+              </Badge>
+            )}
+          </div>
         </td>
         <td className="px-3 py-3 text-xs text-gray-400 text-center">{priority.rank}</td>
         <td className="px-3 py-3">
@@ -675,10 +695,11 @@ export default function SLARulesPage() {
                   {priorities
                     .slice()
                     .sort((a, b) => a.rank - b.rank)
-                    .map(p => (
+                    .map((p, index) => (
                       <PriorityRow
                         key={p.id}
                         priority={p}
+                        isDefault={index === 0}
                         onUpdatePriority={updated =>
                           setPriorities(prev => prev.map(pr => pr.id === updated.id ? updated : pr))
                         }
