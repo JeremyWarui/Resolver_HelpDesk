@@ -46,12 +46,23 @@ was therefore removed from the reports page for every role, and admin and manage
 — whose scopes both resolve to the whole organisation, there being one department
 — were given the same tab list.
 
-Only the tab went. `PerformanceBreakdownReport` keeps its `section` dimension,
-`usePerformanceSections` still exists, and `/analytics/performance/sections/` is
-still served and still tested. Adding a second section type therefore needs no
-new plumbing: seed the `SectionType`, then restore the tab in
-`RoleReportsPage` — a `TabId` member, a label, an icon, the role's `tabs` entry
-and a view block passing `dimension="section"`, about twenty lines.
+The same collapse applies everywhere else the section was a display dimension,
+and those followed later: the dashboard volume/distribution charts, the analytics
+donut and performance table, the HOD "Sections" page, and the ticket tables'
+Section column and filter now all group by **trade** (`sub_section`). A HOD had
+been reading "Section Ticket Volume: Maintenance 11" and a donut at 100%
+Maintenance; a manager's section chart restated the campus chart directly above
+it. `role_config` had encoded this from the start — HOD defaults to `sub_section`
+and is not allowed `section` — so this only brought the UI into line with the
+role config. Backing endpoint: `/analytics/performance/trades/`.
+
+The section plumbing is intact underneath. `PerformanceBreakdownReport` keeps its
+`section` dimension, `usePerformanceSections` still exists, and
+`/analytics/performance/sections/` is still served and still tested. Adding a
+second section type therefore needs no new plumbing: seed the `SectionType`, then
+restore the tab in `RoleReportsPage` — a `TabId` member, a label, an icon, the
+role's `tabs` entry and a view block passing `dimension="section"`, about twenty
+lines — and switch the charts back where a section split becomes meaningful.
 
 ## 2. Catalogue
 

@@ -99,6 +99,17 @@ out-of-scope id matches nothing rather than reaching past the caller.
   endpoints. Direct `Ticket` columns only — join fan-out here previously caused
   500s and timeouts on Neon. Breakdown-only endpoints must **not** call
   `aggregate()`; use `breakdown()` or `technician_load()`.
+- **Group by trade, never by section.** Maintenance is the only section type, so
+  a section breakdown draws one bar for an HOD/HOS and one bar per campus for a
+  manager — a restatement of the campus chart beside it. `role_config` already
+  refuses `section` for hod/hos; charts, tables and filter dropdowns must follow
+  (`/analytics/performance/trades/`, `tradeColumn`, `createTradeFilter`).
+- **SLA: settled ≠ running.** A finished ticket's outcome is judged against
+  `resolved_at`, never against the clock — comparing its due date to "now" marks
+  every ticket ever closed as breached once that date passes. The UI splits the
+  two names: **Overdue** = live and past target (matches `aggregate()`'s
+  `breached`, which gates on `_q_running`), **Missed** = settled late. One card
+  labelled "Breached" covering both made SLA Tracking disagree with Analytics.
 - **`TYPE_SPECS`** (`apps/facilities/validators.py`) is the location contract and
   is mirrored in `TicketCreationWizard.tsx::FACILITY_FORMS`. Change both in the
   same commit.
