@@ -9,7 +9,6 @@ import {
   Download,
   TrendingUp,
   BarChart3,
-  PieChart,
   Activity,
   FileSpreadsheet,
   Clock,
@@ -34,7 +33,7 @@ import type { AnalyticsParams } from '@/types';
 
 type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos' | 'technician';
 
-type TabId = 'overview' | 'tickets' | 'technicians' | 'sections' | 'campus' | 'export';
+type TabId = 'overview' | 'tickets' | 'technicians' | 'campus' | 'export';
 
 interface RoleCopy {
   /** Heading on the Overview tab's key-metrics block. */
@@ -50,19 +49,41 @@ interface RoleCopy {
 //
 // The underlying numbers are JWT-scoped server-side, so the same tab shows
 // each role only what they may see — admin's copy stays exactly as it was.
+// There is no 'sections' tab for anyone. A section is a campus × section type,
+// and with Maintenance the only section type, sections map 1:1 to campuses —
+// Section Analysis and Campus Performance drew the same five rows from two
+// endpoints, the section one labelling them "NBI · Maintenance" where the
+// campus one said "Nairobi". Two tabs that agree are worse than one: the reader
+// has to work out whether the difference is real. Campus rows also carry
+// `open_count`, which section rows do not.
+//
+// Adding a second section type (Security, Transport) makes the split real
+// again — 5 campuses × 2 types is 10 sections against 5 campuses, and the two
+// views stop agreeing. Restoring the tab is roughly twenty lines here: the
+// `TabId` member, a TAB_LABEL and TAB_ICON row, the role's `tabs` entry and a
+// view block passing `dimension="section"`. Nothing below the page changes —
+// `PerformanceBreakdownReport` keeps its `section` spec in DIMENSIONS,
+// `usePerformanceSections` and `/analytics/performance/sections/` are still
+// there and still tested. What was removed is the tab, not the capability.
+//
+// Admin and manager see the whole organisation — one department, so the
+// manager's scope filter and the admin's "everything" resolve to the same
+// rows — and now get the same tabs. They previously differed: admin had
+// Section Analysis but *not* Campus Performance, so the one role that can see
+// every campus was the only one without the per-campus view.
 const ROLE_COPY: Record<ReportsRole, RoleCopy> = {
   admin: {
     overviewHeading: 'System Overview',
-    tabs: ['overview', 'tickets', 'technicians', 'sections', 'export'],
+    tabs: ['overview', 'tickets', 'technicians', 'campus', 'export'],
   },
   manager: {
     overviewHeading: 'Department Overview',
-    tabs: ['overview', 'tickets', 'technicians', 'sections', 'campus', 'export'],
+    tabs: ['overview', 'tickets', 'technicians', 'campus', 'export'],
   },
-  // No 'sections' tab for either: an HOD has one Maintenance section per
-  // campus and an HOS has exactly one, so the report could only ever draw a
-  // single 100% slice. `role_config.py` reaches the same conclusion from the
-  // other side — neither role may group by section, and both default to
+  // An HOD sees one Maintenance section per campus and an HOS exactly one, so
+  // a per-campus breakdown is a single 100% slice for the HOS and duplicates
+  // the Overview for the HOD. `role_config.py` reaches the same conclusion from
+  // the other side — neither role may group by section, and both default to
   // `sub_section`. The trade split they actually need is on the Tickets tab.
   hod: {
     overviewHeading: 'Campus Department Overview',
@@ -86,7 +107,6 @@ const TAB_LABEL: Record<TabId, string> = {
   overview: 'Overview',
   tickets: 'Ticket Analytics',
   technicians: 'Technician Performance',
-  sections: 'Section Analysis',
   campus: 'Campus Performance',
   export: 'Export Reports',
 };
@@ -95,7 +115,6 @@ const TAB_ICON: Record<TabId, typeof Activity> = {
   overview: Activity,
   tickets: FileText,
   technicians: Users,
-  sections: Building2,
   campus: MapPin,
   export: Download,
 };
@@ -233,9 +252,9 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
             {/* Quick Access Report Cards */}
             <div>
               <h2 className="text-lg font-semibold mb-4 text-foreground">Quick Access Reports</h2>
-              <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
-                ['tickets', 'technicians', 'sections', 'campus'].filter((t) => has(t as TabId)).length >= 4
-                  ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+              {/* Three cards at most now that Section Analysis is gone, so the
+                  column count is fixed rather than counted from the tab list. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Ticket Lifecycle */}
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('tickets')}>
                   <CardHeader className="pb-4 pt-6">
@@ -282,32 +301,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                   </CardContent>
                 </Card>
 
-                {/* Section Analysis */}
-                {has('sections') && (
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('sections')}>
-                  <CardHeader className="pb-4 pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                        <PieChart className="h-6 w-6 text-purple-600" />
-                      </div>
-                      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                        Updated
-                      </Badge>
-                    </div>
-                    <CardTitle className="mt-6">Section Performance</CardTitle>
-                    <CardDescription className="mt-2">
-                      Department-wise distribution and efficiency
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-6">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-purple-600 hover:text-purple-700 hover:bg-purple-50">
-                      View Report →
-                    </Button>
-                  </CardContent>
-                </Card>
-                )}
-
-                {/* Campus Performance (manager only) */}
+                {/* Campus Performance */}
                 {has('campus') && (
                   <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveView('campus')}>
                     <CardHeader className="pb-4 pt-6">
@@ -321,7 +315,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                       </div>
                       <CardTitle className="mt-6">Campus Performance</CardTitle>
                       <CardDescription className="mt-2">
-                        Ticket load and SLA per campus across your department
+                        Ticket load and SLA per campus
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-0 pb-6">
@@ -475,30 +469,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
           </Card>
         )}
 
-        {/* Section Performance View */}
-        {activeView === 'sections' && (
-          <Card>
-            <CardHeader className="pb-6 pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="pb-2 flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-status-assigned" />
-                    Section Performance Analysis
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    Department-wise ticket distribution, technician assignments, and service quality ratings
-                  </CardDescription>
-                </div>
-                <Badge variant="outline" className="bg-purple-50 text-purple-700">Updated</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-6 pb-6">
-              <PerformanceBreakdownReport dimension="section" params={params} />
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Campus Performance View (manager only) */}
+        {/* Campus Performance View */}
         {has('campus') && activeView === 'campus' && (
           <Card>
             <CardHeader className="pb-6 pt-6">
@@ -509,7 +480,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
                     Campus Performance Analysis
                   </CardTitle>
                   <CardDescription className="mt-1">
-                    Ticket load, escalations, and SLA compliance per campus across your department
+                    Ticket load, escalations, and SLA compliance per campus
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="bg-orange-50 text-orange-700">Updated</Badge>

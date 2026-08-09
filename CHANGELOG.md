@@ -42,6 +42,28 @@ this project does not yet version releases.
   their campus offers, recent activity below, and a rating prompt that appears
   only when resolved tickets are actually waiting on them.
 
+### Changed — reports
+
+- **One reports page for all five roles.** `RoleReportsPage` drives its tabs from
+  a `ROLE_COPY` table rather than JSX conditionals; the technician's separate
+  page and its own report component were deleted in favour of a row in that
+  table plus `MyPerformancePanel`, their own numbers ordered by what they can
+  act on.
+- **Section and Campus performance merged** into one
+  `PerformanceBreakdownReport` taking a `dimension` prop — two files, 262 and
+  259 lines, that differed on 29 of them.
+- **Section Analysis removed for every role.** A Section is a campus × section
+  type, and Maintenance is the only section type, so it drew the same five rows
+  as Campus Performance from a second endpoint with worse labels. Admin and
+  manager now get identical tab lists — both scopes resolve to the whole
+  organisation — where admin previously had Section Analysis but not Campus
+  Performance, leaving the one role that can see every campus without the
+  per-campus view. Only the tab went: the `section` dimension, its hook and its
+  endpoint all remain, so a second section type restores the split without new
+  plumbing.
+- Chart tooltips (ten definitions across seven files) and the chart palette
+  (five copies) each collapsed to one definition.
+
 ### Removed
 
 - WebSockets, Channels, Daphne, Redis, web push, and the frontend WS client and
@@ -63,3 +85,14 @@ this project does not yet version releases.
   to call the wrong person.
 - An N+1 on the ticket list: adding `sub_section` to the read serializer left
   the `?mine=1` branch's `select_related` behind.
+- Four report bugs that only a rendered page showed, the typecheck being green
+  throughout: dead quick-access cards pointing at tabs their role did not have,
+  an empty chart, a tab that could only ever draw one row, and a technician
+  table column headed "Pending" that rendered `escalated_count` — there is no
+  `pending_count` on the row. It survived because the mislabelled table lived on
+  a different page from the correct one, so the two were never read together.
+- The notification bell had no writer left after the WebSocket removal; the
+  emitters now write rows and are wrapped so they cannot break the ticket update
+  that triggered them.
+- `check_sla` raised `ImportError` on every run — it still imported the deleted
+  `emit_ws_event`. A test now imports every management command.

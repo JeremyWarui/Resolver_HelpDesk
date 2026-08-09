@@ -39,6 +39,20 @@ Security, Transport, Telephone Exchange, Staff Housing and Cleaning each become 
 Guarding, CCTV, Access Control) and their own HOS per campus. **Seed data only —
 no schema change.**
 
+One reporting consequence, recorded here because it is invisible from the code:
+with Maintenance the only section type, a Section *is* a campus, so a per-section
+breakdown and a per-campus breakdown draw the same rows. The Section Analysis tab
+was therefore removed from the reports page for every role, and admin and manager
+— whose scopes both resolve to the whole organisation, there being one department
+— were given the same tab list.
+
+Only the tab went. `PerformanceBreakdownReport` keeps its `section` dimension,
+`usePerformanceSections` still exists, and `/analytics/performance/sections/` is
+still served and still tested. Adding a second section type therefore needs no
+new plumbing: seed the `SectionType`, then restore the tab in
+`RoleReportsPage` — a `TabId` member, a label, an icon, the role's `tabs` entry
+and a view block passing `dimension="section"`, about twenty lines.
+
 ## 2. Catalogue
 
 `catalog.ServiceCategory` is deleted; `ServiceItem.category` becomes

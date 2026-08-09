@@ -108,11 +108,14 @@ export default function PerformanceBreakdownReport({
   const spec = DIMENSIONS[dimension];
   const window = params ?? { days: 30 };
 
-  // Both hooks always run — React forbids calling one conditionally — but each
-  // is a cached query, so the unused one costs a single extra request per
-  // window and is shared with the other tab that needs it.
-  const sections = usePerformanceSections(window);
-  const campuses = usePerformanceCampusDepts(window);
+  // Both hooks are *called* unconditionally — React forbids otherwise — but
+  // only the active dimension is enabled, so the other fires no request. This
+  // used to fetch both on the theory that the second tab would want the cache;
+  // there is no second tab now (Section Analysis is gone — see ROLE_COPY in
+  // RoleReportsPage), so the eager fetch was one wasted round trip per window
+  // change on every reports page in the app.
+  const sections = usePerformanceSections(window, { enabled: dimension === 'section' });
+  const campuses = usePerformanceCampusDepts(window, { enabled: dimension === 'campus' });
   const { data, loading, error } = dimension === 'section' ? sections : campuses;
 
   if (loading) {
