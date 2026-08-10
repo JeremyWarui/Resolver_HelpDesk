@@ -1,4 +1,7 @@
-export type FacilityTypeValue = 'office_block' | 'building' | 'equipment' | 'residential' | 'grounds';
+// Enumerated once, in constants/facilityTypes.ts — re-exported here so
+// `import type { FacilityTypeValue } from '@/types'` keeps working.
+export type { FacilityTypeValue } from '@/constants/facilityTypes';
+import type { FacilityTypeValue } from '@/constants/facilityTypes';
 
 export interface Facility {
   id: number;

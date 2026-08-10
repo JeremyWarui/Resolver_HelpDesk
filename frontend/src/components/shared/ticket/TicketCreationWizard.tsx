@@ -39,6 +39,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { createTicket } from '@/lib/api/tickets';
 import { useCatalog, useCampusFacilities } from '@/hooks/catalog/useCatalog';
 import type { CatalogItem, CatalogSubSection } from '@/lib/api/catalogue';
+import type { FacilityTypeValue } from '@/constants/facilityTypes';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ interface FacilityForm {
   optional: string[];
 }
 
-const FACILITY_FORMS: Record<string, FacilityForm> = {
+const FACILITY_FORMS: Record<FacilityTypeValue, FacilityForm> = {
   office_block: { label: 'Office',     Icon: Building2, needsFacility: true,  required: ['floor', 'room'], optional: ['area'] },
   hostel:       { label: 'Hostel',     Icon: BedDouble, needsFacility: true,  required: ['room_number'],   optional: ['area'] },
   building:     { label: 'Building',   Icon: Warehouse, needsFacility: true,  required: [],                optional: ['room', 'area'] },
@@ -94,8 +95,11 @@ const FACILITY_FORMS: Record<string, FacilityForm> = {
   grounds:      { label: 'Grounds',    Icon: TreePine,  needsFacility: false, required: ['zone'],          optional: ['landmark'] },
 };
 
-/** Order the tiles are drawn in, most-used first. */
-const FACILITY_ORDER = ['office_block', 'hostel', 'building', 'residential', 'equipment', 'grounds'];
+/** Order the tiles are drawn in, most-used first. Typed against the shared
+ *  code list, so a type added there without a form here fails to compile. */
+const FACILITY_ORDER: FacilityTypeValue[] = [
+  'office_block', 'hostel', 'building', 'residential', 'equipment', 'grounds',
+];
 
 const FIELD_LABELS: Record<string, { label: string; placeholder: string }> = {
   floor:       { label: 'Floor',       placeholder: 'e.g. Ground, 1st' },
@@ -159,11 +163,12 @@ function OptionCard({ selected, onClick, title, description, badge }: {
   );
 }
 
-/** The one-row icon tile picker, used for both trades and facility types. */
-function TileRow({ items, selected, onSelect, columns }: {
-  items: { key: string; label: string; Icon: LucideIcon }[];
+/** The one-row icon tile picker, used for both trades and facility types.
+ *  Generic in the key so the facility tiles keep their narrow code type. */
+function TileRow<K extends string>({ items, selected, onSelect, columns }: {
+  items: { key: K; label: string; Icon: LucideIcon }[];
   selected: string | null;
-  onSelect: (key: string) => void;
+  onSelect: (key: K) => void;
   columns: string;
 }) {
   return (
@@ -213,7 +218,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   const [description, setDescription]       = useState('');
   const [contactPhone, setContactPhone]     = useState('');
   const [attachments, setAttachments]       = useState<File[]>([]);
-  const [typeCode, setTypeCode]             = useState<string | null>(null);
+  const [typeCode, setTypeCode]             = useState<FacilityTypeValue | null>(null);
   const [facilityId, setFacilityId]         = useState<number | null>(null);
   const [locationValues, setLocationValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting]         = useState(false);
@@ -310,7 +315,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
     setLocationValues((prev) => ({ ...prev, [key]: val }));
   }
 
-  function pickType(code: string) {
+  function pickType(code: FacilityTypeValue) {
     setTypeCode(code);
     setFacilityId(null);
     setLocationValues({});

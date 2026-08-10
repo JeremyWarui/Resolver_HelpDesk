@@ -1,3 +1,5 @@
+import { FACILITY_TYPE_OPTIONS } from '@/constants/facilityTypes';
+
 export type DetailSheetFieldType = 'text' | 'textarea' | 'select' | 'readonly' | 'sections' | 'related-list';
 
 export interface DetailSheetField {
@@ -65,18 +67,10 @@ export const DETAILS_SHEET_CONFIG: Record<string, DetailSheetConfig> = {
     ],
     editFields: [
       { name: 'name', label: 'Name', type: 'text', placeholder: 'Facility name' },
-      { name: 'type', label: 'Type', type: 'select', options: [
-        { label: 'Office', value: 'Office' },
-        { label: 'Housing', value: 'Housing' },
-        { label: 'Industrial', value: 'Industrial' },
-        { label: 'Mixed Use', value: 'Mixed Use' },
-        { label: 'Conference', value: 'Conference' },
-        { label: 'Technical', value: 'Technical' },
-        { label: 'Parking', value: 'Parking' },
-        { label: 'Food Service', value: 'Food Service' },
-        { label: 'Reception', value: 'Reception' },
-        { label: 'Landscape', value: 'Landscape' },
-      ]},
+      // Codes, not display names — the API round-trips FacilityType.code.
+      { name: 'type', label: 'Type', type: 'select', options: FACILITY_TYPE_OPTIONS.map(
+        (t) => ({ label: t.label, value: t.value }),
+      )},
       { name: 'location', label: 'Location', type: 'text', placeholder: 'Facility location' },
     ],
     sheetWidth: 'sm:w-[450px] lg:w-[500px] xl:w-[600px]',

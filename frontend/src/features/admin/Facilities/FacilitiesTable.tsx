@@ -50,14 +50,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Facility } from "@/types";
-
-const FACILITY_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'office_block', label: 'Office Block' },
-  { value: 'building',     label: 'Building' },
-  { value: 'equipment',    label: 'Facility / Equipment' },
-  { value: 'residential',  label: 'Residential' },
-  { value: 'grounds',      label: 'Grounds' },
-];
+import { FACILITY_TYPE_OPTIONS, facilityTypeLabel } from "@/constants/facilityTypes";
 
 function FacilitiesTable() {
   // TanStack Table's useReactTable() returns an interior-mutable table instance whose
@@ -163,8 +156,7 @@ function FacilitiesTable() {
       header: "Type",
       cell: ({ row }) => {
         const t = row.getValue("type") as string | undefined;
-        const label = FACILITY_TYPE_OPTIONS.find((o) => o.value === t)?.label ?? t ?? '—';
-        return <span className="text-sm text-muted-foreground">{label}</span>;
+        return <span className="text-sm text-muted-foreground">{facilityTypeLabel(t)}</span>;
       },
     },
     {
@@ -377,7 +369,7 @@ function FacilitiesTable() {
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by type">
-                  {typeFilter === "all" || !typeFilter ? "All Types" : typeFilter}
+                  {typeFilter === "all" || !typeFilter ? "All Types" : facilityTypeLabel(typeFilter)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>

@@ -10,20 +10,13 @@ import { FormDialog } from '@/components/shared/forms/FormDialog';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import useManageFacilities from '@/hooks/facilities/useManageFacilities';
 import { createFacilitySchema, type CreateFacilityFormValues } from '@/utils/entityValidation';
+import { FACILITY_TYPE_OPTIONS } from '@/constants/facilityTypes';
 
 interface FacilityFormProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
 }
-
-const FACILITY_TYPES: { value: string; label: string }[] = [
-  { value: 'office_block', label: 'Office Block' },
-  { value: 'building',     label: 'Building' },
-  { value: 'equipment',    label: 'Facility / Equipment' },
-  { value: 'residential',  label: 'Residential' },
-  { value: 'grounds',      label: 'Grounds' },
-];
 
 const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -113,7 +106,7 @@ const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) =>
               </SelectTrigger>
             </FormControl>
             <SelectContent>
-              {FACILITY_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              {FACILITY_TYPE_OPTIONS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
             </SelectContent>
           </Select>
           <FormMessage />
