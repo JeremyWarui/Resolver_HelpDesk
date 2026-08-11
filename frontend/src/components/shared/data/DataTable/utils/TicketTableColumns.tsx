@@ -81,10 +81,20 @@ export interface VariantColumnsConfig {
   setSelectedTicket?: (ticket: Ticket | null) => void;
   setIsTicketDialogOpen?: (open: boolean) => void;
   onRate?: (ticket: Ticket) => void;
+  /** 'pending' variant — clear the hold, or re-code it without clearing it. */
+  onResume?: (ticket: Ticket) => void;
+  onChangeReason?: (ticket: Ticket) => void;
 }
 
 export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ticket>[] {
-  const { variant, setSelectedTicket, setIsTicketDialogOpen, onRate } = config;
+  const {
+    variant,
+    setSelectedTicket,
+    setIsTicketDialogOpen,
+    onRate,
+    onResume,
+    onChangeReason,
+  } = config;
 
   // Shared pool — all possible columns
   const all: ColumnDef<Ticket>[] = [
@@ -101,11 +111,15 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
     TableUtils.updatedAtColumn('Updated'),
     TableUtils.dueDateColumn('Due By'),
     TableUtils.slaCountdownColumn('SLA'),
+    TableUtils.pendingReasonColumn('Reason'),
+    TableUtils.pendingForColumn('Pending for'),
     TableUtils.searchFieldColumn(),
   ];
 
   // Actions column — varies by variant
-  if (variant === 'my-tickets' && onRate) {
+  if (variant === 'pending' && onResume && onChangeReason) {
+    all.push(TableUtils.resumeActionColumn({ onResume, onChangeReason }));
+  } else if (variant === 'my-tickets' && onRate) {
     all.push(TableUtils.rateAndCloseColumn({ onRate }));
   } else if (['queue', 'admin'].includes(variant) && setSelectedTicket && setIsTicketDialogOpen) {
     all.push(TableUtils.technicianViewColumn({ setSelectedTicket, setIsTicketDialogOpen }));
@@ -122,27 +136,42 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
 // "resolution_due_at" — not "due_date". (Previously this map used the wrong key and the
 // Due By column was never actually hidden.)
 // Variants may additionally hide columns that aren't relevant to their context.
+// `pending_reason` and `pending_for` are meaningless off the Pending Work view —
+// every other variant lists rows whose `paused_at` is null, where both would
+// render an em dash in every cell.
 export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string, boolean>> = {
   queue: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false, raised_by: false,
+    pending_reason: false, pending_for: false,
   },
   compact: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false,
     ticket_no: false, tradeName: false, raised_by: false, assigned_to: false, created_at: false,
-    rate_actions: false,
+    rate_actions: false, pending_reason: false, pending_for: false,
   },
   sla: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false, raised_by: false, rate_actions: false,
+    pending_reason: false, pending_for: false,
   },
   admin: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false,
+    pending_reason: false, pending_for: false,
   },
   'my-tickets': {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
     priority: false, updated_at: false, raised_by: false, actions: false,
+    pending_reason: false, pending_for: false,
+  },
+  // Everything here is on hold, so `status` is the same word on every row and
+  // the SLA columns are frozen — none of the three tells the reader anything.
+  // Facility stays visible: "which building" is half the chasing decision.
+  pending: {
+    searchField: false, status: false, resolution_due_at: false, sla_countdown: false,
+    updated_at: false, raised_by: false, description: false, rate_actions: false,
+    actions: false,
   },
 };

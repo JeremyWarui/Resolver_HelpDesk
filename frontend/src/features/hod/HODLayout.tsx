@@ -5,6 +5,7 @@ import HODDashboard from './HODDashboard';
 import HODTechnicians from './HODTechnicians';
 import HODSections from './HODSections';
 import RoleTicketsPage from '@/features/shared/RoleTicketsPage';
+import PendingWorkView from '@/features/shared/PendingWorkView';
 import RoleAnalyticsView from '@/features/shared/RoleAnalyticsView';
 import RoleReportsPage from '@/features/shared/RoleReportsPage';
 import { SLATrackingView } from '@/features/analytics/SLATrackingView';
@@ -16,6 +17,7 @@ const HODLayout = () => (
     sections={({ onTicketSelect }) => ({
       dashboard: <HODDashboard onTicketSelect={onTicketSelect} />,
       tickets: <RoleTicketsPage role="hod" onTicketSelect={onTicketSelect} />,
+      pending: <PendingWorkView role="hod" onTicketSelect={onTicketSelect} />,
       technicians: <HODTechnicians />,
       sections: <HODSections />,
       analytics: <RoleAnalyticsView role="hod" />,

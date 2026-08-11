@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { type ColumnDef } from "@tanstack/react-table";
-import { ChevronDown, Eye, Edit } from "lucide-react";
+import { ChevronDown, Eye, Edit, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/ticket/StatusBadge";
@@ -90,21 +90,47 @@ export const descriptionColumn = <T,>(header: string = "Description"): ColumnDef
   enableSorting: false,
 });
 
+/**
+ * Where the job is.
+ *
+ * Reads `location`, not a top-level `facility` — a Ticket has never had one, so
+ * this column printed an em dash on every row of every table. It was hidden in
+ * every variant, which is why nobody saw it; making it visible on Pending Work
+ * is what surfaced it.
+ *
+ * Half the location types have no Facility row by design (`building_dropdown:
+ * false` in the backend's TYPE_SPECS — staff quarters, equipment, grounds), so
+ * a null facility is normal rather than missing data. Those fall back to the
+ * type name, with `values` carrying the detail that identifies the place.
+ */
 export const facilityColumn = <T,>(header: string = "Location"): ColumnDef<T> => ({
-  accessorKey: "facility",
+  id: "facility",
+  accessorFn: (row) => {
+    const loc = (row as unknown as Ticket).location;
+    if (!loc) return '';
+    return loc.facility?.name ?? loc.facility_type?.name ?? '';
+  },
   header,
   cell: ({ row }) => {
-    const val = row.getValue("facility");
-    const facilityName = typeof val === 'object' && val !== null
-      ? (val as { name: string }).name
-      : (val as string | undefined);
-    if (!facilityName) return <div className="text-muted-foreground text-xs">—</div>;
-    const ticket = row.original as Record<string, unknown>;
-    const sub = (ticket.room_name as string | null) || (ticket.location_detail as string | null);
+    const loc = (row.original as unknown as Ticket).location;
+    const primary = loc?.facility?.name ?? loc?.facility_type?.name;
+    if (!primary) return <div className="text-muted-foreground text-xs">—</div>;
+    // e.g. {floor: "2", room: "204"} → "2, 204". Order comes from the server,
+    // which only ever sends the keys that type declares.
+    const detail = Object.values(loc?.values ?? {})
+      .filter((v) => v !== null && v !== undefined && v !== '')
+      .join(', ');
     return (
       <div>
-        <div className="text-sm font-medium leading-tight">{facilityName}</div>
-        {sub && <div className="text-xs text-muted-foreground leading-tight truncate max-w-[140px]">{sub}</div>}
+        <div className="text-sm font-medium leading-tight">{primary}</div>
+        {detail && (
+          <div
+            className="max-w-[160px] truncate text-xs leading-tight text-muted-foreground"
+            title={detail}
+          >
+            {detail}
+          </div>
+        )}
       </div>
     );
   },
@@ -306,6 +332,105 @@ export const assignedToColumn = <T,>(header: string = "Assigned To"): ColumnDef<
   },
   enableSorting: false,
 });
+
+// ─── Pending work ─────────────────────────────────────────────────────────────
+
+/** Why the job is stopped. Label comes from the server — no vocabulary here. */
+export const pendingReasonColumn = <T,>(header: string = "Reason"): ColumnDef<T> => ({
+  id: "pending_reason",
+  accessorFn: (row) => (row as unknown as Ticket).pending_reason_display ?? "",
+  header,
+  cell: ({ row }) => {
+    const t = row.original as unknown as Ticket;
+    if (!t.pending_reason_display) return <div className="text-muted-foreground">—</div>;
+    return (
+      <div className="min-w-0">
+        <div className="font-medium">{t.pending_reason_display}</div>
+        {t.pending_reason_note && (
+          <div className="truncate text-xs text-muted-foreground" title={t.pending_reason_note}>
+            {t.pending_reason_note}
+          </div>
+        )}
+      </div>
+    );
+  },
+  enableSorting: false,
+});
+
+/**
+ * How long the job has been on hold.
+ *
+ * Derived in the browser from `paused_at`, which is already in the payload —
+ * no extra field, no extra query. Colour escalates with age because age is the
+ * actionable part, and it is paired with the number so colour never carries the
+ * meaning on its own.
+ */
+export const pendingForColumn = <T,>(header: string = "Pending for"): ColumnDef<T> => ({
+  id: "pending_for",
+  accessorFn: (row) => {
+    const pausedAt = (row as unknown as Ticket).paused_at;
+    return pausedAt ? Date.now() - new Date(pausedAt).getTime() : 0;
+  },
+  header,
+  cell: ({ row }) => {
+    const pausedAt = (row.original as unknown as Ticket).paused_at;
+    if (!pausedAt) return <div className="text-muted-foreground">—</div>;
+    const days = Math.floor((Date.now() - new Date(pausedAt).getTime()) / 86_400_000);
+    const tone =
+      days >= 30 ? "text-status-escalated"
+      : days >= 7 ? "text-status-progress"
+      : "text-foreground";
+    return (
+      <div className={`font-medium tabular-nums ${tone}`}>
+        {days === 0 ? "Today" : days === 1 ? "1 day" : `${days} days`}
+      </div>
+    );
+  },
+});
+
+/**
+ * Resume, and change-reason, on the row itself.
+ *
+ * The whole point of this table is that the HOS chases the blocker and then
+ * clears it. Making them open the ticket to do that is four clicks to undo one
+ * fact they already know.
+ */
+export function resumeActionColumn<T>(options: {
+  onResume: (ticket: T) => void;
+  onChangeReason: (ticket: T) => void;
+}): ColumnDef<T> {
+  return {
+    id: "resume_actions",
+    header: "Actions",
+    cell: ({ row }) => (
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            options.onResume(row.original);
+          }}
+        >
+          <Play className="mr-1 h-3.5 w-3.5" />
+          Resume
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Still blocked, but for a different reason"
+          onClick={(e) => {
+            e.stopPropagation();
+            options.onChangeReason(row.original);
+          }}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    ),
+    enableSorting: false,
+  };
+}
 
 export const searchFieldColumn = <T,>(header: string = "Search Field"): ColumnDef<T> => ({
   accessorKey: "searchField",

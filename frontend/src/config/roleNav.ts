@@ -36,6 +36,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     sectionFromPath: {
       '': 'dashboard',
       tickets: 'tickets',
+      pending: 'pending',
       technicians: 'technicians',
       sections: 'sections',
       analytics: 'analytics',
@@ -47,6 +48,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     headerTitle: {
       dashboard: 'Dashboard',
       tickets: 'Tickets',
+      pending: 'Pending Work',
       technicians: 'Technicians',
       sections: 'Trades',
       analytics: 'Analytics',
@@ -61,6 +63,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     sectionFromPath: {
       '': 'dashboard',
       tickets: 'tickets',
+      pending: 'pending',
       technicians: 'technicians',
       analytics: 'analytics',
       reports: 'reports',
@@ -71,6 +74,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     headerTitle: {
       dashboard: 'Dashboard',
       tickets: 'Tickets',
+      pending: 'Pending Work',
       technicians: 'Technicians',
       analytics: 'Analytics',
       reports: 'Reports',
@@ -84,6 +88,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     sectionFromPath: {
       '': 'dashboard',
       tickets: 'tickets',
+      pending: 'pending',
       analytics: 'analytics',
       reports: 'reports',
       feedback: 'feedback',
@@ -92,6 +97,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     headerTitle: {
       dashboard: 'Dashboard',
       tickets: 'Department Tickets',
+      pending: 'Pending Work',
       analytics: 'Analytics',
       reports: 'Reports',
       feedback: 'Feedback',

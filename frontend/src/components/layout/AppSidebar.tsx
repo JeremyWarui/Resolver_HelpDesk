@@ -24,6 +24,7 @@ const SECTION_PATH: Record<string, string> = {
   assignedTickets: '/assigned',
   report:         '/reports',
   tickets:        '/tickets',
+  pending:        '/pending',
   technicians:    '/technicians',
   sections:       '/sections',
   reports:        '/reports',

@@ -34,7 +34,8 @@ export type TicketTableVariant =
   | 'compact'     // Dashboard preview widgets — fewer columns, no bulk
   | 'sla'         // SLA tracking — replaces date cols with countdown bar
   | 'admin'       // Admin view — all columns including internal fields
-  | 'my-tickets'; // User's own ticket history — mid-density
+  | 'my-tickets'  // User's own ticket history — mid-density
+  | 'pending';    // Work on hold — why, for how long, and who to ask
 
 // ─── Filter pills ─────────────────────────────────────────────────────────────
 

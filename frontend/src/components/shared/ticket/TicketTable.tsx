@@ -28,6 +28,9 @@ export interface TicketTableProps {
   onOpenTicket?: (ticket: Ticket | null) => void;
   onOpenTicketDialog?: (open: boolean) => void;
   onRate?: (ticket: Ticket) => void;
+  /** 'pending' variant only — clear the hold, or re-code it without clearing it. */
+  onResume?: (ticket: Ticket) => void;
+  onChangeReason?: (ticket: Ticket) => void;
   pagination?: {
     total: number;
     pageIndex: number;
@@ -53,6 +56,8 @@ export function TicketTable({
   onOpenTicket,
   onOpenTicketDialog,
   onRate,
+  onResume,
+  onChangeReason,
   pagination,
   selectedRowId = null,
   rowClassName,
@@ -69,8 +74,10 @@ export function TicketTable({
         setSelectedTicket: onOpenTicket,
         setIsTicketDialogOpen: onOpenTicketDialog,
         onRate,
+        onResume,
+        onChangeReason,
       }),
-    [variant, onOpenTicket, onOpenTicketDialog, onRate],
+    [variant, onOpenTicket, onOpenTicketDialog, onRate, onResume, onChangeReason],
   );
 
   const columnVisibility = VARIANT_COLUMN_VISIBILITY[variant];
