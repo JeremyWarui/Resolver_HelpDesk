@@ -68,13 +68,13 @@ export function TicketVolumeChart({
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 13 }}
                   dy={10}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 13 }}
                   width={30}
                   allowDecimals={false}
                 />

@@ -240,8 +240,8 @@ export default function PerformanceBreakdownReport({
                     layout="vertical"
                     verticalAlign="middle"
                     align="right"
-                    wrapperStyle={{ fontSize: '12px' }}
-                    formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
+                    wrapperStyle={{ fontSize: '13px' }}
+                    formatter={(value) => <span style={{ fontSize: '12px' }}>{value}</span>}
                   />
                   <Tooltip content={<PieTooltip />} />
                 </PieChart>
@@ -264,8 +264,8 @@ export default function PerformanceBreakdownReport({
                   barCategoryGap={50}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edebe9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 13 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} />
                   <Tooltip content={<BarTooltip />} />
                   <Bar dataKey="tickets" fill={COLORS[0]} radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>

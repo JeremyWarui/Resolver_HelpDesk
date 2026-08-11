@@ -87,8 +87,8 @@ export default function DistributionCharts({
                     layout="vertical"
                     verticalAlign="middle"
                     align="right"
-                    wrapperStyle={{ fontSize: '12px' }}
-                    formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
+                    wrapperStyle={{ fontSize: '13px' }}
+                    formatter={(value) => <span style={{ fontSize: '12px' }}>{value}</span>}
                   />
                   <RechartsTooltip content={<PieTooltip />} />
                 </PieChart>
@@ -114,7 +114,7 @@ export default function DistributionCharts({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={barData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 60 }}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 16 }}
                   barCategoryGap={50}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edebe9" />
@@ -122,16 +122,14 @@ export default function DistributionCharts({
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11 }}
-                    angle={-45}
-                    textAnchor="end"
+                    tick={{ fontSize: 13 }}
                     interval={0}
-                    dy={10}
+                    dy={8}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 13 }}
                     width={30}
                     allowDecimals={false}
                   />

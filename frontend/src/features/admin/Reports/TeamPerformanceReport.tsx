@@ -130,13 +130,13 @@ export default function TeamPerformanceReport({ params }: Props) {
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 13 }}
                   angle={-45}
                   textAnchor="end"
                   dy={10}
                   interval={0}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} />
                 <Tooltip content={<SeriesTooltip />} />
                 <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '12px' }} />
                 <Bar dataKey="Resolved" stackId="stack" fill="#107c10" maxBarSize={45} />

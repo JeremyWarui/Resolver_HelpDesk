@@ -106,7 +106,7 @@ export function FacilityTradeChart({ params, enabled = true, limit = 8 }: Props)
               <XAxis
                 type="number"
                 allowDecimals={false}
-                tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                tick={{ fontSize: 13, fill: 'var(--muted-foreground)' }}
                 axisLine={false}
                 tickLine={false}
               />
@@ -114,7 +114,7 @@ export function FacilityTradeChart({ params, enabled = true, limit = 8 }: Props)
                 type="category"
                 dataKey="facility"
                 width={190}
-                tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                tick={{ fontSize: 13, fill: 'var(--muted-foreground)' }}
                 axisLine={false}
                 tickLine={false}
               />

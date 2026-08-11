@@ -179,8 +179,8 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     layout="vertical"
                     verticalAlign="middle"
                     align="right"
-                    wrapperStyle={{ fontSize: '12px' }}
-                    formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
+                    wrapperStyle={{ fontSize: '13px' }}
+                    formatter={(value) => <span style={{ fontSize: '12px' }}>{value}</span>}
                   />
                   <Tooltip content={<PieTooltip />} />
                 </PieChart>
@@ -208,10 +208,10 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 13 }}
                     dy={10}
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} />
                   <Tooltip content={<BarTooltip />} />
                   <Bar dataKey="tickets" fill="#0078d4" radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>
@@ -268,13 +268,13 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     dataKey="date"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 13 }}
                     angle={-45}
                     textAnchor="end"
                     dy={10}
                     interval={Math.floor(trendData.length / 8)}
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} />
                   <Tooltip content={<BarTooltip />} />
                   <Bar dataKey="tickets" fill="#0078d4" radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>
@@ -317,8 +317,8 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     layout="vertical"
                     verticalAlign="middle"
                     align="right"
-                    wrapperStyle={{ fontSize: '12px' }}
-                    formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
+                    wrapperStyle={{ fontSize: '13px' }}
+                    formatter={(value) => <span style={{ fontSize: '12px' }}>{value}</span>}
                   />
                   <Tooltip content={<PieTooltip />} />
                 </PieChart>
@@ -346,10 +346,10 @@ export default function TicketMetricsReport({ params: externalParams }: Props) {
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 13 }}
                     dy={10}
                   />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} width={30} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} />
                   <Tooltip content={<BarTooltip />} />
                   <Bar dataKey="tickets" fill="#0078d4" radius={[4, 4, 0, 0]} barSize={20} />
                 </BarChart>
