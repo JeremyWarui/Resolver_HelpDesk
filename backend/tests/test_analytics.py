@@ -25,6 +25,7 @@ from apps.analytics.services import (
     breakdown,
     resolve_date_range,
     technician_load,
+    technician_trade_mix,
 )
 from apps.tickets.services.lifecycle import transition_status
 from apps.tickets.services.scope import scoped_ticket_qs
@@ -551,3 +552,88 @@ def test_pending_reason_breakdown_does_not_leak_another_campus(
         scoped_ticket_qs(nrb_hos, "hos"), resolve_date_range({}), "pending_reason"
     )
     assert [r["label"] for r in rows] == ["Materials not in store"]
+
+
+# ── Technician trade mix ──────────────────────────────────────────────────────
+
+
+def test_trade_mix_splits_one_technician_across_their_trades(
+    nrb_hos, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket, window
+):
+    """The point of the cross-tab: a technician holding two trades shows a share
+    of each, not one undifferentiated count."""
+    for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
+        t.assigned_to = nrb_electrician
+        t.save(update_fields=["assigned_to"])
+
+    rows = technician_trade_mix(scoped_ticket_qs(nrb_hos, "hos"), window)
+
+    assert len(rows) == 1
+    assert rows[0]["total"] == 2
+    assert {t["trade"]: t["share"] for t in rows[0]["trades"]} == {
+        "Electrical": 0.5,
+        "Plumbing": 0.5,
+    }
+
+
+def test_trade_mix_shares_sum_to_one(
+    nrb_hos, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket, window
+):
+    """A share that does not total 100% is a chart nobody can reconcile."""
+    for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
+        t.assigned_to = nrb_electrician
+        t.save(update_fields=["assigned_to"])
+
+    for tech in technician_trade_mix(scoped_ticket_qs(nrb_hos, "hos"), window):
+        assert abs(sum(t["share"] for t in tech["trades"]) - 1.0) < 0.001
+
+
+def test_trade_mix_does_not_split_a_technician_per_ticket(
+    nrb_hos, nrb_electrician, nrb_electrical_ticket
+):
+    """`Ticket.Meta.ordering` is `-updated_at`, and an ordering field joins the
+    GROUP BY even when it is absent from values() — which would return one row
+    per ticket instead of one per (technician, trade)."""
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+    extra = factories.make_ticket(
+        raised_by=nrb_electrician,
+        section=nrb_electrical_ticket.section,
+        sub_section=nrb_electrical_ticket.sub_section,
+        service_item=nrb_electrical_ticket.service_item,
+    )
+    extra.assigned_to = nrb_electrician
+    extra.save(update_fields=["assigned_to"])
+
+    # Resolved here, not from the `window` fixture: that stamps `date_to` at
+    # fixture setup, before this test creates its second ticket, which would
+    # then fall outside the range and make the assertion pass for the wrong
+    # reason.
+    rows = technician_trade_mix(
+        scoped_ticket_qs(nrb_hos, "hos"), resolve_date_range({"days": 30})
+    )
+
+    assert len(rows) == 1
+    assert len(rows[0]["trades"]) == 1
+    assert rows[0]["trades"][0]["total"] == 2
+
+
+def test_trade_mix_is_scoped(
+    nrb_hos, msa_hos, nrb_electrician, msa_electrician,
+    nrb_electrical_ticket, msa_electrical_ticket, window,
+):
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+    msa_electrical_ticket.assigned_to = msa_electrician
+    msa_electrical_ticket.save(update_fields=["assigned_to"])
+
+    rows = technician_trade_mix(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert [r["technician_id"] for r in rows] == [nrb_electrician.pk]
+
+
+def test_a_technician_cannot_see_the_peer_trade_mix(api, nrb_electrician):
+    """Same reason `technician` is not an allowed group_by for them: this is a
+    peer ranking with a second axis."""
+    api.force_authenticate(nrb_electrician)
+    response = api.get(reverse("analytics:performance-trade-mix"))
+    assert response.status_code == 403

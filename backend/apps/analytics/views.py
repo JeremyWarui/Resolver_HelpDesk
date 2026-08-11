@@ -28,6 +28,7 @@ from .services import (
     config_health,
     resolve_date_range,
     technician_load,
+    technician_trade_mix,
 )
 
 
@@ -268,6 +269,32 @@ class PerformanceTechniciansView(BaseAnalyticsView):
                 "date_range": _date_range_meta(date_range),
                 "technician_load": technician_load(scoped_qs),
                 "breakdown": breakdown(scoped_qs, date_range, group_by="technician"),
+            }
+        )
+
+
+class PerformanceTradeMixView(BaseAnalyticsView):
+    """What share of each technician's work is which trade.
+
+    Answers the staffing question a flat ticket count cannot: a campus doing
+    most of its work in one craft with one person qualified for it is visible
+    here and nowhere else.
+
+    Deliberately excluded from the technician role's own view — `role_config`
+    already refuses them `technician` as a group_by so they are never ranked
+    against peers, and this is that ranking with an extra axis.
+    """
+
+    def get(self, request):
+        role = self.get_role(request)
+        if role not in ("admin", "manager", "hod", "hos"):
+            return Response({"detail": "Not available for this role."}, status=403)
+        scoped_qs = self.get_scoped_qs(request, role)
+        date_range = resolve_date_range(request.query_params)
+        return Response(
+            {
+                "date_range": _date_range_meta(date_range),
+                "technicians": technician_trade_mix(scoped_qs, date_range),
             }
         )
 

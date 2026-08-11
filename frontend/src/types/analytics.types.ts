@@ -469,3 +469,34 @@ export interface AnalyticsEnvelope {
   individual?: HeadlineMetrics;
   sectional?: SectionalMetrics;
 }
+
+// ─── Technician work mix (GET /analytics/performance/trade-mix/) ─────────────
+// The one cross-tab in the engine: (technician × trade). Reports the *share of
+// jobs* each craft accounts for, not how busy anyone is — ten lightbulbs and
+// ten roof repairs count the same, so this can never be labelled as capacity.
+
+export interface TradeMixSlice {
+  trade_id: number;
+  trade: string;
+  total: number;
+  open_count: number;
+  resolved_count: number;
+  /** Fraction of this technician's jobs, 0–1. Computed server-side so every
+   *  consumer divides the same way. */
+  share: number;
+}
+
+export interface TradeMixTechnician {
+  technician_id: number;
+  name: string;
+  username: string;
+  total: number;
+  open_count: number;
+  resolved_count: number;
+  trades: TradeMixSlice[];
+}
+
+export interface TradeMixResponse {
+  date_range: DateRange;
+  technicians: TradeMixTechnician[];
+}

@@ -214,6 +214,97 @@ def _group_by_technician(window_qs):
     )
 
 
+def technician_trade_mix(scoped_qs, date_range):
+    """What share of each technician's work is which trade. One query.
+
+    This is the only cross-tab in the engine — every other breakdown is a single
+    axis. It exists because `SectionTechnician` is a (campus, trade) pair and a
+    technician may hold several, so "who does what" is a real question here in a
+    way it would not be if everyone had exactly one craft.
+
+    It reports **mix, not capacity**, and the distinction is not pedantry. Mix
+    is the share of a technician's jobs that were plumbing; capacity is how much
+    of their available time is consumed. Ten lightbulbs and ten roof repairs
+    count the same here, so this cannot answer "are they busy" and must never be
+    labelled as though it does — that needs hours per job and a shift baseline,
+    neither of which this system holds and neither of which a technician will
+    record accurately.
+
+    What it *can* answer is the staffing question: if a campus does 40%
+    electrical work with one electrician and 10% masonry with three masons, that
+    is visible here and actionable.
+
+    Grouped in Python rather than by a second query, the same way `_bottleneck`
+    and the report builders do it — one round trip, no join fan-out, because
+    both axes are direct Ticket columns.
+    """
+    window_qs = scoped_qs.filter(
+        created_at__gte=date_range["date_from"],
+        created_at__lte=date_range["date_to"],
+    )
+    rows = (
+        window_qs.filter(assigned_to__isnull=False, sub_section__isnull=False)
+        .values(
+            technician_id=F("assigned_to__id"),
+            username=F("assigned_to__username"),
+            first_name=F("assigned_to__first_name"),
+            last_name=F("assigned_to__last_name"),
+            trade_id=F("sub_section__id"),
+            trade=F("sub_section__name"),
+        )
+        .annotate(
+            total=Count("id"),
+            open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
+            resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
+        )
+        # Clear the model's default ordering. `Ticket.Meta.ordering` is
+        # `-updated_at`, and an ordering field joins the GROUP BY whether or not
+        # it is in `values()` — which would split every technician into one
+        # bucket per ticket.
+        .order_by()
+    )
+
+    by_tech = {}
+    for r in rows:
+        tech = by_tech.setdefault(
+            r["technician_id"],
+            {
+                "technician_id": r["technician_id"],
+                "name": f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+                or r["username"],
+                "username": r["username"],
+                "total": 0,
+                "open_count": 0,
+                "resolved_count": 0,
+                "trades": [],
+            },
+        )
+        tech["total"] += r["total"]
+        tech["open_count"] += r["open_count"]
+        tech["resolved_count"] += r["resolved_count"]
+        tech["trades"].append(
+            {
+                "trade_id": r["trade_id"],
+                "trade": r["trade"],
+                "total": r["total"],
+                "open_count": r["open_count"],
+                "resolved_count": r["resolved_count"],
+            }
+        )
+
+    out = []
+    for tech in by_tech.values():
+        # Share is computed here rather than in the client so every consumer —
+        # the dashboard, the report, a future export — divides the same way.
+        for t in tech["trades"]:
+            t["share"] = round(t["total"] / tech["total"], 4) if tech["total"] else 0
+        tech["trades"].sort(key=lambda t: -t["total"])
+        out.append(tech)
+
+    out.sort(key=lambda t: -t["total"])
+    return out
+
+
 def technician_load(scoped_qs):
     """Live open-ticket load per technician (no date window). One query.
 

@@ -10,6 +10,7 @@ import {
 import { DateRangeSelector } from '@/components/shared/data/DateRangeSelector';
 import { FlowTrendChart } from '@/components/shared/data/TicketVolumeChart';
 import { TechnicianBreakdownTable } from '@/components/shared/data/TechnicianPerformanceTable';
+import TechnicianTradeMix from '@/components/shared/data/TechnicianTradeMix';
 import { KPICardGrid, type KPIMetric } from '@/components/shared/data/KPICardGrid';
 import { AppPieChart } from '@/components/shared/data/AppPieChart';
 import ChartCard from '@/components/shared/data/ChartCard';
@@ -304,6 +305,13 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
             />
           </CardContent>
         </Card>
+      </LazyMount>
+
+      {/* Work mix — the one cross-tab in the engine. It sits under Technician
+          Performance because it answers the follow-up that table provokes:
+          "and what are they actually working on?" */}
+      <LazyMount minHeight={360}>
+        <TechnicianTradeMix params={params} />
       </LazyMount>
 
       {/* Trade Performance — shown for every role, HOS included.
