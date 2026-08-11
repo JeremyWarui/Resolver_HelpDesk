@@ -290,21 +290,90 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
         </>
       )}
 
-      {/* Technician Performance Table */}
+      {/* Technician Performance beside Trade Performance.
+          They answer one question in two cuts — who is carrying the work,
+          and which craft is behind — so reading them side by side is the
+          comparison, and stacking them made the reader hold the first
+          table in their head while scrolling to the second. Paired only
+          from `xl` up; below that there is not enough width for two
+          six-column tables and they stack as before. */}
       <LazyMount minHeight={420}>
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
-            <CardTitle className="text-base">Technician Performance</CardTitle>
-            <CardDescription>Performance metrics for all technicians</CardDescription>
-          </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
-            <TechnicianBreakdownTable
-              data={perfTechs}
-              loading={perfTechsLoading}
-              bare={true}
-            />
-          </CardContent>
-        </Card>
+        <div className="grid items-start gap-3 xl:grid-cols-2">
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3 pt-5 px-4">
+              <CardTitle className="text-base">Technician Performance</CardTitle>
+              <CardDescription>Performance metrics for all technicians</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-5 pt-0">
+              <TechnicianBreakdownTable
+                data={perfTechs}
+                loading={perfTechsLoading}
+                bare={true}
+              />
+            </CardContent>
+          </Card>
+
+        {/* Trade Performance — shown for every role, HOS included.
+            As a section table this was hidden for HOS (they have one section) and
+            told the other roles nothing either: one row per campus's Maintenance
+            section, restating the Campus Performance table below. Per trade it
+            answers the question the page exists for — which craft is behind. */}
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3 pt-5 px-4">
+              <CardTitle className="text-base">Trade Performance</CardTitle>
+              <CardDescription>Ticket load and SLA per trade</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-5 pt-0">
+              {perfTradesLoading || !perfTrades ? (
+                <SectionSkeleton />
+              ) : perfTrades.breakdown.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No trade data</p>
+              ) : (
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-sm bg-card">
+                    <thead>
+                      <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground uppercase tracking-wide">
+                        <th className="px-2 py-2.5 font-medium">Trade</th>
+                        <th className="px-2 py-2.5 font-medium text-right">Total</th>
+                        <th className="px-2 py-2.5 font-medium text-right">Open</th>
+                        <th className="px-2 py-2.5 font-medium text-right">Resolved</th>
+                        <th className="px-2 py-2.5 font-medium text-right">Escalated</th>
+                        <th className="px-2 py-2.5 font-medium text-right">SLA %</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {perfTrades.breakdown.map((t) => {
+                        const slaPct = t.total_resolved_with_due > 0
+                          ? Math.round((t.resolution_sla_met / t.total_resolved_with_due) * 100)
+                          : null;
+                        return (
+                          <tr key={t.key}>
+                            <td className="px-2 py-2 font-medium">{t.label}</td>
+                            <td className="px-2 py-2 text-right">{t.total}</td>
+                            <td className="px-2 py-2 text-right text-status-open">{t.open_count}</td>
+                            <td className="px-2 py-2 text-right text-status-resolved">{t.resolved_count}</td>
+                            <td className="px-2 py-2 text-right">
+                              <span className={t.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
+                                {t.escalated_count}
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {slaPct != null ? (
+                                <span className={slaPct >= 90 ? 'text-status-resolved' : slaPct >= 75 ? 'text-status-progress' : 'text-status-escalated'}>
+                                  {slaPct}%
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </LazyMount>
 
       {/* Work mix — the one cross-tab in the engine. It sits under Technician
@@ -314,78 +383,16 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
         <TechnicianTradeMix params={params} />
       </LazyMount>
 
-      {/* Trade Performance — shown for every role, HOS included.
-          As a section table this was hidden for HOS (they have one section) and
-          told the other roles nothing either: one row per campus's Maintenance
-          section, restating the Campus Performance table below. Per trade it
-          answers the question the page exists for — which craft is behind. */}
-      <LazyMount minHeight={420}>
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
-            <CardTitle className="text-base">Trade Performance</CardTitle>
-            <CardDescription>Ticket load and SLA per trade</CardDescription>
-          </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
-            {perfTradesLoading || !perfTrades ? (
-              <SectionSkeleton />
-            ) : perfTrades.breakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No trade data</p>
-            ) : (
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm bg-card">
-                  <thead>
-                    <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground uppercase tracking-wide">
-                      <th className="px-3 py-3 font-medium">Trade</th>
-                      <th className="px-3 py-3 font-medium text-right">Total</th>
-                      <th className="px-3 py-3 font-medium text-right">Open</th>
-                      <th className="px-3 py-3 font-medium text-right">Resolved</th>
-                      <th className="px-3 py-3 font-medium text-right">Escalated</th>
-                      <th className="px-3 py-3 font-medium text-right">SLA %</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {perfTrades.breakdown.map((t) => {
-                      const slaPct = t.total_resolved_with_due > 0
-                        ? Math.round((t.resolution_sla_met / t.total_resolved_with_due) * 100)
-                        : null;
-                      return (
-                        <tr key={t.key}>
-                          <td className="px-3 py-2.5 font-medium">{t.label}</td>
-                          <td className="px-3 py-2.5 text-right">{t.total}</td>
-                          <td className="px-3 py-2.5 text-right text-status-open">{t.open_count}</td>
-                          <td className="px-3 py-2.5 text-right text-status-resolved">{t.resolved_count}</td>
-                          <td className="px-3 py-2.5 text-right">
-                            <span className={t.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
-                              {t.escalated_count}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right">
-                            {slaPct != null ? (
-                              <span className={slaPct >= 90 ? 'text-status-resolved' : slaPct >= 75 ? 'text-status-progress' : 'text-status-escalated'}>
-                                {slaPct}%
-                              </span>
-                            ) : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </LazyMount>
 
       {/* Campus Performance (manager only) — ticket load per campus */}
       {isManager && (
         <LazyMount minHeight={420}>
         <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
+          <CardHeader className="pb-3 pt-5 px-4">
             <CardTitle className="text-base">Campus Performance</CardTitle>
             <CardDescription>Ticket load and SLA per campus across your department</CardDescription>
           </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
+          <CardContent className="px-4 pb-5 pt-0">
             {perfCampusLoading || !perfCampus ? (
               <SectionSkeleton />
             ) : perfCampus.breakdown.length === 0 ? (
@@ -395,12 +402,12 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                 <table className="w-full text-sm bg-card">
                   <thead>
                     <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground uppercase tracking-wide">
-                      <th className="px-3 py-3 font-medium">Campus</th>
-                      <th className="px-3 py-3 font-medium text-right">Total</th>
-                      <th className="px-3 py-3 font-medium text-right">Open</th>
-                      <th className="px-3 py-3 font-medium text-right">Resolved</th>
-                      <th className="px-3 py-3 font-medium text-right">Escalated</th>
-                      <th className="px-3 py-3 font-medium text-right">SLA %</th>
+                      <th className="px-2 py-2.5 font-medium">Campus</th>
+                      <th className="px-2 py-2.5 font-medium text-right">Total</th>
+                      <th className="px-2 py-2.5 font-medium text-right">Open</th>
+                      <th className="px-2 py-2.5 font-medium text-right">Resolved</th>
+                      <th className="px-2 py-2.5 font-medium text-right">Escalated</th>
+                      <th className="px-2 py-2.5 font-medium text-right">SLA %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -410,16 +417,16 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                         : null;
                       return (
                         <tr key={c.cd_id}>
-                          <td className="px-3 py-2.5 font-medium">{c.campus_name}</td>
-                          <td className="px-3 py-2.5 text-right">{c.total}</td>
-                          <td className="px-3 py-2.5 text-right text-status-open">{c.open_count}</td>
-                          <td className="px-3 py-2.5 text-right text-status-resolved">{c.resolved_count}</td>
-                          <td className="px-3 py-2.5 text-right">
+                          <td className="px-2 py-2 font-medium">{c.campus_name}</td>
+                          <td className="px-2 py-2 text-right">{c.total}</td>
+                          <td className="px-2 py-2 text-right text-status-open">{c.open_count}</td>
+                          <td className="px-2 py-2 text-right text-status-resolved">{c.resolved_count}</td>
+                          <td className="px-2 py-2 text-right">
                             <span className={c.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
                               {c.escalated_count}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-right">
+                          <td className="px-2 py-2 text-right">
                             {slaPct != null ? (
                               <span className={slaPct >= 90 ? 'text-status-resolved' : slaPct >= 75 ? 'text-status-progress' : 'text-status-escalated'}>
                                 {slaPct}%
@@ -441,11 +448,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       {/* Health Overview KPIs — Resolution SLA, Response SLA, Net Flow, CSAT, Reopen Rate */}
       <LazyMount minHeight={220}>
         <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
+          <CardHeader className="pb-3 pt-5 px-4">
             <CardTitle className="text-base">Health Overview</CardTitle>
             <CardDescription>Service-desk health across your whole department</CardDescription>
           </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
+          <CardContent className="px-4 pb-5 pt-0">
             <div className="grid grid-cols-5 gap-2">
               {headlineKPIs.map((metric) => (
                 <div
@@ -472,11 +479,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       {/* SLA Compliance — Compact Grid */}
       <LazyMount minHeight={260}>
         <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
+          <CardHeader className="pb-3 pt-5 px-4">
             <CardTitle className="text-base">SLA Compliance</CardTitle>
             <CardDescription>Response and resolution SLA performance vs. 95% target</CardDescription>
           </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
+          <CardContent className="px-4 pb-5 pt-0">
           <div className="grid grid-cols-4 gap-3">
             {/* Resolution SLA */}
             <div className="bg-card rounded-lg border p-4">
@@ -573,11 +580,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       {/* Resolution Times — p50 and p90 (never a single mean) */}
       <LazyMount minHeight={220}>
         <Card className="overflow-hidden">
-          <CardHeader className="pb-4 pt-6 px-6">
+          <CardHeader className="pb-3 pt-5 px-4">
             <CardTitle className="text-base">Resolution Times</CardTitle>
             <CardDescription>p50 = median, p90 = 90th percentile (not mean)</CardDescription>
           </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
+          <CardContent className="px-4 pb-5 pt-0">
             <KPICardGrid
               metrics={resolutionKPIs}
               loading={resLoading || !resTimes}
