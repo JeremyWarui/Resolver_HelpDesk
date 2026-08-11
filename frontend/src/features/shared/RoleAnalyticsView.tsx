@@ -11,6 +11,7 @@ import { DateRangeSelector } from '@/components/shared/data/DateRangeSelector';
 import { FlowTrendChart } from '@/components/shared/data/TicketVolumeChart';
 import { TechnicianBreakdownTable } from '@/components/shared/data/TechnicianPerformanceTable';
 import TechnicianTradeMix from '@/components/shared/data/TechnicianTradeMix';
+import FacilityHealthTable from '@/components/shared/data/FacilityHealthTable';
 import { KPICardGrid, type KPIMetric } from '@/components/shared/data/KPICardGrid';
 import { AppPieChart } from '@/components/shared/data/AppPieChart';
 import ChartCard from '@/components/shared/data/ChartCard';
@@ -383,6 +384,13 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
         <TechnicianTradeMix params={params} />
       </LazyMount>
 
+
+      {/* Facilities — full width, and a table rather than a chart. See the
+          component for why. Sits after the people views because "which
+          building" is the question that follows "who, and which craft". */}
+      <LazyMount minHeight={420}>
+        <FacilityHealthTable params={params} />
+      </LazyMount>
 
       {/* Campus Performance (manager only) — ticket load per campus */}
       {isManager && (

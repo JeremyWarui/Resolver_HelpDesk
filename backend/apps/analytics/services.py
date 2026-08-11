@@ -17,8 +17,16 @@ from django.db.models import (
     OuterRef,
     Q,
     Subquery,
+    Value,
 )
-from django.db.models.functions import TruncDay, TruncWeek, TruncMonth, TruncQuarter
+from django.db.models.functions import (
+    Coalesce,
+    Concat,
+    TruncDay,
+    TruncWeek,
+    TruncMonth,
+    TruncQuarter,
+)
 from django.utils import timezone
 
 from apps.tickets.models import Ticket, TicketLog, TicketFeedback, TicketLocation
@@ -305,6 +313,136 @@ def technician_trade_mix(scoped_qs, date_range):
     return out
 
 
+def facility_trade_mix(scoped_qs, date_range):
+    """Tickets per facility, split by trade. One query.
+
+    The question a facilities helpdesk exists to answer: which building is
+    consuming the section, and what kind of work is it consuming it with. A
+    facility with 12 tickets that are 80% plumbing is a drainage problem to fix
+    once; the same 12 spread evenly across five trades is an old building.
+
+    Labelled with the campus code because facility names repeat across campuses
+    — "Administration Block" exists at several — and a manager comparing them
+    otherwise reads identical rows.
+
+    Tickets whose location type carries no Facility row (staff quarters,
+    equipment, grounds — `building_dropdown: false`) are kept and grouped under
+    their type, marked `registered: False`. They were the largest single bucket
+    in the demo data, so dropping them would hide a quarter of the work; naming
+    them as unregistered says what is actually true and points at the asset
+    register that does not exist yet.
+
+    Same shape and same one-query-then-fold idiom as `technician_trade_mix`.
+    """
+    window_qs = scoped_qs.filter(
+        created_at__gte=date_range["date_from"],
+        created_at__lte=date_range["date_to"],
+    )
+    rows = (
+        window_qs.filter(location__isnull=False, sub_section__isnull=False)
+        .values(
+            facility_id=F("location__facility__id"),
+            facility_name=F("location__facility__name"),
+            campus_code=F("location__facility__campus__code"),
+            type_id=F("location__facility_type__id"),
+            type_name=F("location__facility_type__name"),
+            trade_id=F("sub_section__id"),
+            trade=F("sub_section__name"),
+        )
+        .annotate(
+            total=Count("id"),
+            open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
+            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
+            resolution_sla_met=Count(
+                "id",
+                filter=Q(
+                    status__in=TERMINAL_STATUSES,
+                    resolved_at__isnull=False,
+                    resolution_due_at__isnull=False,
+                    resolved_at__lte=F("resolution_due_at"),
+                ),
+            ),
+            total_resolved_with_due=Count(
+                "id",
+                filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
+            ),
+        )
+        # `Ticket.Meta.ordering` is `-updated_at`; an ordering field joins the
+        # GROUP BY even when absent from values(), which would split every
+        # facility into one row per ticket.
+        .order_by()
+    )
+
+    by_facility = {}
+    for r in rows:
+        registered = r["facility_id"] is not None
+        # Unregistered rows share a null facility id, so they key on the type —
+        # otherwise every staff-quarters and equipment ticket in the scope
+        # collapses into a single nameless row.
+        key = ("f", r["facility_id"]) if registered else ("t", r["type_id"])
+        entry = by_facility.setdefault(
+            key,
+            {
+                "facility_id": r["facility_id"],
+                "facility": (
+                    f"{r['campus_code']} · {r['facility_name']}"
+                    if registered
+                    else f"{r['type_name']} (not registered)"
+                ),
+                "campus": r["campus_code"] if registered else None,
+                "facility_type": r["type_name"],
+                "registered": registered,
+                "total": 0,
+                "open_count": 0,
+                "escalated_count": 0,
+                "resolution_sla_met": 0,
+                "total_resolved_with_due": 0,
+                "trades": [],
+            },
+        )
+        for field in (
+            "total",
+            "open_count",
+            "escalated_count",
+            "resolution_sla_met",
+            "total_resolved_with_due",
+        ):
+            entry[field] += r[field]
+        entry["trades"].append(
+            {
+                "trade_id": r["trade_id"],
+                "trade": r["trade"],
+                "total": r["total"],
+                "open_count": r["open_count"],
+            }
+        )
+
+    out = []
+    for entry in by_facility.values():
+        entry["trades"].sort(key=lambda t: -t["total"])
+        for t in entry["trades"]:
+            t["share"] = round(t["total"] / entry["total"], 4) if entry["total"] else 0
+        # The single most useful cell in the table: what this building keeps
+        # needing. Held back when the leader is not actually ahead — a "top
+        # trade" drawn from a tie is a claim the data does not support.
+        top = entry["trades"][0] if entry["trades"] else None
+        tied = (
+            top is not None
+            and len(entry["trades"]) > 1
+            and entry["trades"][1]["total"] == top["total"]
+        )
+        entry["top_trade"] = None if (top is None or tied) else top["trade"]
+        entry["sla_pct"] = (
+            round(entry["resolution_sla_met"] / entry["total_resolved_with_due"] * 100)
+            if entry["total_resolved_with_due"]
+            else None
+        )
+        out.append(entry)
+
+    out.sort(key=lambda f: (-f["total"], f["facility"]))
+    return out
+
+
 def technician_load(scoped_qs):
     """Live open-ticket load per technician (no date window). One query.
 
@@ -342,7 +480,30 @@ _GENERIC_GROUP_BY = {
         F("location__facility_type__id"),
         F("location__facility_type__name"),
     ),
-    "facility": (F("location__facility__id"), F("location__facility__name")),
+    # Two fixes live in this label, both found by rendering it.
+    #
+    # The campus code is prefixed because facility names repeat across campuses
+    # — "Administration Block", "Kitchen", "Gate House" and six others exist at
+    # more than one — so a manager comparing campuses got three identical rows
+    # and no way to tell them apart.
+    #
+    # The Coalesce catches the larger problem: half the location types have no
+    # Facility row at all by design (`building_dropdown: false` — staff
+    # quarters, equipment, grounds), so those tickets carry a null facility and
+    # collapsed into one bucket that rendered as "None". In the demo data that
+    # bucket was the *largest* on the chart. Naming them by type is honest;
+    # dropping them would silently hide a quarter of the estate's work.
+    "facility": (
+        F("location__facility__id"),
+        Coalesce(
+            Concat(
+                F("location__facility__campus__code"),
+                Value(" · "),
+                F("location__facility__name"),
+            ),
+            Concat(F("location__facility_type__name"), Value(" (not registered)")),
+        ),
+    ),
     "status": (F("status"), F("status")),
     # A direct Ticket column, like `status` — so it costs a GROUP BY and no
     # join. Only paused tickets carry one; `_group_by_generic` filters the

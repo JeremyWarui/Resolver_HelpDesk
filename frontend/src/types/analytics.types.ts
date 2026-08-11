@@ -500,3 +500,41 @@ export interface TradeMixResponse {
   date_range: DateRange;
   technicians: TradeMixTechnician[];
 }
+
+// ─── Facility health (GET /analytics/performance/facilities/) ────────────────
+// Tickets per facility with the trade split, so a manager can see not just
+// which building consumes the section but what it consumes it with.
+
+export interface FacilityTradeSlice {
+  trade_id: number;
+  trade: string;
+  total: number;
+  open_count: number;
+  share: number;
+}
+
+export interface FacilityMixRow {
+  facility_id: number | null;
+  /** Campus-prefixed — facility names repeat across campuses. */
+  facility: string;
+  campus: string | null;
+  facility_type: string;
+  /** False for location types that carry no Facility row by design (staff
+   *  quarters, equipment, grounds). Kept and named rather than dropped. */
+  registered: boolean;
+  total: number;
+  open_count: number;
+  escalated_count: number;
+  resolution_sla_met: number;
+  total_resolved_with_due: number;
+  sla_pct: number | null;
+  /** Null when no trade leads, including ties — a leader drawn from a tie is a
+   *  claim the data does not support. */
+  top_trade: string | null;
+  trades: FacilityTradeSlice[];
+}
+
+export interface FacilityMixResponse {
+  date_range: DateRange;
+  facilities: FacilityMixRow[];
+}

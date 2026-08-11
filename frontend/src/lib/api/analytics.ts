@@ -14,6 +14,7 @@ import type {
   PerformanceTradesResponse,
   PerformanceCampusDeptsResponse,
   TradeMixResponse,
+  FacilityMixResponse,
 } from '@/types';
 
 /** Unified analytics endpoint — one call, full envelope, scope from JWT.
@@ -71,6 +72,12 @@ export async function getPerformanceSections(
   return data;
 }
 
+/** Tickets per facility, split by trade — the estate view. */
+export async function getPerformanceFacilities(params?: AnalyticsParams) {
+  const { data } = await apiClient.get('/analytics/performance/facilities/', { params });
+  return data as FacilityMixResponse;
+}
+
 /** Work mix per technician — what share of their jobs is each trade. */
 export async function getPerformanceTradeMix(params?: AnalyticsParams) {
   const { data } = await apiClient.get('/analytics/performance/trade-mix/', { params });
@@ -114,6 +121,7 @@ export const getOrganisationAnalytics = (params?: AnalyticsParams): Promise<Orga
   getRoleOverview(params);
 
 const analyticsService = {
+  getPerformanceFacilities,
   getPerformanceTradeMix,
   getAnalytics,
   getOverview,

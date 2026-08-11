@@ -29,6 +29,7 @@ from .services import (
     resolve_date_range,
     technician_load,
     technician_trade_mix,
+    facility_trade_mix,
 )
 
 
@@ -269,6 +270,29 @@ class PerformanceTechniciansView(BaseAnalyticsView):
                 "date_range": _date_range_meta(date_range),
                 "technician_load": technician_load(scoped_qs),
                 "breakdown": breakdown(scoped_qs, date_range, group_by="technician"),
+            }
+        )
+
+
+class PerformanceFacilitiesView(BaseAnalyticsView):
+    """Tickets per facility, split by trade.
+
+    The estate view: which building is consuming the section, and with what
+    kind of work. Available to every supervising role — an HOS sees their own
+    campus's buildings, an HOD theirs, a manager all of them — because the
+    scope does the narrowing and the question is the same at every level.
+    """
+
+    def get(self, request):
+        role = self.get_role(request)
+        if role not in ("admin", "manager", "hod", "hos"):
+            return Response({"detail": "Not available for this role."}, status=403)
+        scoped_qs = self.get_scoped_qs(request, role)
+        date_range = resolve_date_range(request.query_params)
+        return Response(
+            {
+                "date_range": _date_range_meta(date_range),
+                "facilities": facility_trade_mix(scoped_qs, date_range),
             }
         )
 

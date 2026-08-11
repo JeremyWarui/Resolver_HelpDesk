@@ -41,6 +41,11 @@ urlpatterns = [
         name="performance-sections",
     ),
     path(
+        "analytics/performance/facilities/",
+        views.PerformanceFacilitiesView.as_view(),
+        name="performance-facilities",
+    ),
+    path(
         "analytics/performance/trade-mix/",
         views.PerformanceTradeMixView.as_view(),
         name="performance-trade-mix",

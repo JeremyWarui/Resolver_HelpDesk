@@ -26,6 +26,7 @@ from apps.analytics.services import (
     resolve_date_range,
     technician_load,
     technician_trade_mix,
+    facility_trade_mix,
 )
 from apps.tickets.services.lifecycle import transition_status
 from apps.tickets.services.scope import scoped_ticket_qs
@@ -637,3 +638,119 @@ def test_a_technician_cannot_see_the_peer_trade_mix(api, nrb_electrician):
     api.force_authenticate(nrb_electrician)
     response = api.get(reverse("analytics:performance-trade-mix"))
     assert response.status_code == 403
+
+
+# ── Facility health ───────────────────────────────────────────────────────────
+
+
+def test_facility_rows_carry_the_campus_code(
+    nrb_hos, nrb_electrical_ticket, facility_types, window
+):
+    """Facility names repeat across campuses — "Administration Block" exists at
+    several — so a bare name gives a manager identical rows to compare."""
+    from apps.facilities.models import Facility
+    from apps.tickets.models import TicketLocation
+
+    campus = nrb_electrical_ticket.section.campus_department.campus
+    facility = Facility.objects.create(
+        campus=campus, facility_type=facility_types["office_block"], name="Admin Block"
+    )
+    TicketLocation.objects.create(
+        ticket=nrb_electrical_ticket,
+        facility_type=facility_types["office_block"],
+        facility=facility,
+        values={"floor": "1", "room": "2"},
+    )
+
+    rows = facility_trade_mix(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert rows[0]["facility"] == f"{campus.code} · Admin Block"
+    assert rows[0]["registered"] is True
+
+
+def test_unregistered_locations_are_named_not_dropped(
+    nrb_hos, nrb_electrical_ticket, facility_types, window
+):
+    """Half the location types carry no Facility row by design. They were the
+    largest bucket on the chart and rendered as "None"; dropping them would
+    hide the work instead."""
+    from apps.tickets.models import TicketLocation
+
+    TicketLocation.objects.create(
+        ticket=nrb_electrical_ticket,
+        facility_type=facility_types["equipment"],
+        facility=None,
+        values={"asset_name": "Generator"},
+    )
+
+    rows = facility_trade_mix(scoped_ticket_qs(nrb_hos, "hos"), window)
+    assert len(rows) == 1
+    assert rows[0]["registered"] is False
+    assert "not registered" in rows[0]["facility"]
+    assert rows[0]["total"] == 1
+
+
+def test_facility_reports_the_trade_that_dominates_it(
+    nrb_hos, requester, facility_types, nrb_section, nrb, plumbing, electrical, priorities
+):
+    """The point of the cross-tab — one building, the craft it keeps needing."""
+    from apps.facilities.models import Facility
+    from apps.tickets.models import TicketLocation
+
+    facility = Facility.objects.create(
+        campus=nrb, facility_type=facility_types["office_block"], name="Dining Hall"
+    )
+
+    for trade, count in ((plumbing, 3), (electrical, 1)):
+        for _ in range(count):
+            t = factories.make_ticket(
+                raised_by=requester, section=nrb_section, sub_section=trade
+            )
+            TicketLocation.objects.create(
+                ticket=t,
+                facility_type=facility_types["office_block"],
+                facility=facility,
+                values={"floor": "1", "room": "1"},
+            )
+
+    rows = facility_trade_mix(
+        scoped_ticket_qs(nrb_hos, "hos"), resolve_date_range({"days": 30})
+    )
+    row = next(r for r in rows if r["facility"].endswith("Dining Hall"))
+    assert row["total"] == 4
+    assert row["top_trade"] == "Plumbing"
+    assert row["trades"][0]["share"] == 0.75
+
+
+def test_a_tied_facility_claims_no_dominant_trade(
+    nrb_hos, requester, facility_types, nrb_section, nrb, plumbing, electrical, priorities
+):
+    """Two trades level is not a leader. Naming one would be a claim the data
+    does not support."""
+    from apps.facilities.models import Facility
+    from apps.tickets.models import TicketLocation
+
+    facility = Facility.objects.create(
+        campus=nrb, facility_type=facility_types["office_block"], name="Library"
+    )
+
+    for trade in (plumbing, electrical):
+        t = factories.make_ticket(
+            raised_by=requester, section=nrb_section, sub_section=trade
+        )
+        TicketLocation.objects.create(
+            ticket=t,
+            facility_type=facility_types["office_block"],
+            facility=facility,
+            values={"floor": "1", "room": "1"},
+        )
+
+    rows = facility_trade_mix(
+        scoped_ticket_qs(nrb_hos, "hos"), resolve_date_range({"days": 30})
+    )
+    row = next(r for r in rows if r["facility"].endswith("Library"))
+    assert row["top_trade"] is None
+
+
+def test_a_technician_cannot_see_the_facility_table(api, nrb_electrician):
+    api.force_authenticate(nrb_electrician)
+    assert api.get(reverse("analytics:performance-facilities")).status_code == 403
