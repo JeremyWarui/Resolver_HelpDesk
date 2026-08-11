@@ -93,6 +93,27 @@ ESCALATION_RULES = [
 ]
 
 
+
+def demo_age_minutes(rng):
+    """How long ago a demo ticket was raised, weighted toward recent.
+
+    Spread evenly over 90 days, two thirds of the data sat outside the 30-day
+    window every analytics page opens on — so the ticket list said 170 and the
+    dashboard said 51, and nobody could tell which number was wrong. Meanwhile
+    `open_backlog` is a live count and ignores the window entirely, so the same
+    screen mixed windowed and unwindowed figures.
+
+    Real desks are denser in the recent past: this month's work is still being
+    raised, last quarter's is mostly closed. Weighting the draw makes the
+    default view representative and still leaves a tail for the trend line.
+    """
+    band = rng.choices(
+        [(0, 30), (30, 60), (60, DEMO_WINDOW_DAYS)],
+        weights=[65, 23, 12],
+    )[0]
+    low, high = band
+    return rng.randint(max(low * 24 * 60, 30), high * 24 * 60)
+
 # ── Org ───────────────────────────────────────────────────────────────────────
 
 CAMPUSES = [
@@ -644,7 +665,7 @@ class Command(BaseCommand):
                 # open — exactly the gap TRADE_STAFFING is meant to show.
                 status = "open"
 
-            age_minutes = rng.randint(30, DEMO_WINDOW_DAYS * 24 * 60)
+            age_minutes = demo_age_minutes(rng)
             created_at = now - timedelta(minutes=age_minutes)
             priority = priorities["Low"] if status == "open" else rng.choice(
                 [priorities["Low"], priorities["Medium"],
@@ -730,9 +751,7 @@ class Command(BaseCommand):
                 priority = priorities["Low"] if status == "open" else rng.choice(
                     [priorities["Low"], priorities["Medium"], priorities["High"]]
                 )
-                created_at = now - timedelta(
-                    minutes=rng.randint(30, DEMO_WINDOW_DAYS * 24 * 60)
-                )
+                created_at = now - timedelta(minutes=demo_age_minutes(rng))
                 ticket = Ticket.objects.create(
                     raised_by=requester,
                     requester_campus=section.campus_department.campus,

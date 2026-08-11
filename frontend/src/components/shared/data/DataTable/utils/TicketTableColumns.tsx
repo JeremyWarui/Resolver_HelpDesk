@@ -140,9 +140,13 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
 // every other variant lists rows whose `paused_at` is null, where both would
 // render an em dash in every cell.
 export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string, boolean>> = {
+  // `description` is hidden: a ticket has no title of its own, so the Title
+  // column already shows the service item and Description repeats it with
+  // "reported by …" appended — "Repair paving or walkway" beside "Repair
+  // paving or walkway reported b…", a whole column of restatement.
   queue: {
     searchField: false, facility: false, resolution_due_at: false, sla_countdown: false,
-    priority: false, updated_at: false, raised_by: false,
+    priority: false, updated_at: false, raised_by: false, description: false,
     pending_reason: false, pending_for: false,
   },
   compact: {
