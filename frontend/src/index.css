@@ -141,6 +141,27 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.623 0.214 259.815);
+
+  /* ── Categorical series palette (charts) ───────────────────────────────────
+     Fixed slot order, never cycled: a ninth series folds into "Other" rather
+     than inventing a hue. Validated with the dataviz palette checker against
+     this app's surfaces — lightness band, chroma floor, adjacent-pair CVD
+     separation (protan/deutan/tritan) and contrast — in BOTH modes.
+     The previous --chart-* set failed: #ffaa44 sat at 1.85:1 on white and
+     #5c2d91 fell below the lightness band, so two of five series were
+     unreadable for anyone and indistinguishable under CVD.
+     Three light steps sit under 3:1, which is permitted only because every
+     chart using them ships a legend and a data table carrying exact figures. */
+  --viz-1: #2a78d6;  /* blue */
+  --viz-2: #eb6834;  /* orange */
+  --viz-3: #1baf7a;  /* aqua */
+  --viz-4: #eda100;  /* yellow */
+  --viz-5: #e87ba4;  /* magenta */
+  --viz-6: #008300;  /* green */
+  --viz-7: #4a3aa7;  /* violet */
+  --viz-8: #e34948;  /* red */
+  --viz-other: #8a8a94;
+
 }
 
 .dark {
@@ -176,6 +197,19 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.488 0.243 264.376);
+
+  /* Dark steps are re-selected against the dark surface and re-validated —
+     not an automatic lightening of the light set. */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+  --viz-7: #9085e9;
+  --viz-8: #e66767;
+  --viz-other: #7a7a84;
+
 }
 
 @theme inline {

@@ -12,6 +12,7 @@ import { FlowTrendChart } from '@/components/shared/data/TicketVolumeChart';
 import { TechnicianBreakdownTable } from '@/components/shared/data/TechnicianPerformanceTable';
 import TechnicianTradeMix from '@/components/shared/data/TechnicianTradeMix';
 import FacilityHealthTable from '@/components/shared/data/FacilityHealthTable';
+import FacilityTradeChart from '@/components/shared/data/FacilityTradeChart';
 import { KPICardGrid, type KPIMetric } from '@/components/shared/data/KPICardGrid';
 import { AppPieChart } from '@/components/shared/data/AppPieChart';
 import ChartCard from '@/components/shared/data/ChartCard';
@@ -388,6 +389,13 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       {/* Facilities — full width, and a table rather than a chart. See the
           component for why. Sits after the people views because "which
           building" is the question that follows "who, and which craft". */}
+      <LazyMount minHeight={380}>
+        <FacilityTradeChart params={params} />
+      </LazyMount>
+
+      {/* The table directly under its chart, not elsewhere on the page: three
+          of the light palette's steps sit below 3:1, which the relief rule
+          allows only when exact figures are within reach. */}
       <LazyMount minHeight={420}>
         <FacilityHealthTable params={params} />
       </LazyMount>

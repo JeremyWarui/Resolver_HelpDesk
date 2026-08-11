@@ -14,7 +14,7 @@
 import { usePerformanceTradeMix } from '@/hooks/analytics/usePerformanceTradeMix';
 import ChartCard from '@/components/shared/data/ChartCard';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CHART_COLORS } from '@/constants/colors';
+import { useTradeColours, tradeBucket } from '@/constants/tradeColours';
 import type { AnalyticsParams } from '@/types';
 
 interface Props {
@@ -26,17 +26,8 @@ export function TechnicianTradeMix({ params, enabled = true }: Props) {
   const { data, loading } = usePerformanceTradeMix(params, { enabled });
   const technicians = data?.technicians ?? [];
 
-  // One colour per trade across every row, so a reader comparing two people is
-  // comparing the same thing. Assigned by first appearance rather than by index
-  // within a row — otherwise "the blue one" means a different craft per line.
-  const tradeColour = new Map<string, string>();
-  for (const tech of technicians) {
-    for (const slice of tech.trades) {
-      if (!tradeColour.has(slice.trade)) {
-        tradeColour.set(slice.trade, CHART_COLORS[tradeColour.size % CHART_COLORS.length]);
-      }
-    }
-  }
+  // Shared with the facility chart below, so a trade is the same colour in both.
+  const tradeColour = useTradeColours();
 
   return (
     <ChartCard
@@ -84,7 +75,7 @@ export function TechnicianTradeMix({ params, enabled = true }: Props) {
                       key={slice.trade_id}
                       style={{
                         width: `${slice.share * 100}%`,
-                        backgroundColor: tradeColour.get(slice.trade),
+                        backgroundColor: tradeColour.get(tradeBucket(slice.trade, tradeColour)),
                       }}
                       title={`${slice.trade}: ${slice.total} of ${tech.total}`}
                     />
