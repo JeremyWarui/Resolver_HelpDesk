@@ -297,9 +297,9 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
           table in their head while scrolling to the second. Paired only
           from `xl` up; below that there is not enough width for two
           six-column tables and they stack as before. */}
-      <LazyMount minHeight={420}>
-        <div className="grid items-start gap-3 xl:grid-cols-2">
-          <Card className="overflow-hidden">
+      <LazyMount minHeight={480}>
+        <div className="grid items-stretch gap-3 xl:grid-cols-2">
+          <Card className="flex h-full min-h-[26rem] flex-col overflow-hidden">
             <CardHeader className="pb-3 pt-5 px-4">
               <CardTitle className="text-base">Technician Performance</CardTitle>
               <CardDescription>Performance metrics for all technicians</CardDescription>
@@ -318,7 +318,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
             told the other roles nothing either: one row per campus's Maintenance
             section, restating the Campus Performance table below. Per trade it
             answers the question the page exists for — which craft is behind. */}
-          <Card className="overflow-hidden">
+          <Card className="flex h-full min-h-[26rem] flex-col overflow-hidden">
             <CardHeader className="pb-3 pt-5 px-4">
               <CardTitle className="text-base">Trade Performance</CardTitle>
               <CardDescription>Ticket load and SLA per trade</CardDescription>
@@ -333,11 +333,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                   <table className="w-full text-sm bg-card">
                     <thead>
                       <tr className="border-b bg-muted/30 text-left text-xs text-muted-foreground uppercase tracking-wide">
-                        <th className="px-2 py-2.5 font-medium">Trade</th>
+                        <th className="px-1.5 py-2.5 font-medium">Trade</th>
                         <th className="px-2 py-2.5 font-medium text-right">Total</th>
                         <th className="px-2 py-2.5 font-medium text-right">Open</th>
-                        <th className="px-2 py-2.5 font-medium text-right">Resolved</th>
-                        <th className="px-2 py-2.5 font-medium text-right">Escalated</th>
+                        <th className="px-1 py-2.5 font-medium text-right">Resolved</th>
+                        <th className="px-1 py-2.5 font-medium text-right">Escalated</th>
                         <th className="px-2 py-2.5 font-medium text-right">SLA %</th>
                       </tr>
                     </thead>
@@ -348,16 +348,16 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                           : null;
                         return (
                           <tr key={t.key}>
-                            <td className="px-2 py-2 font-medium">{t.label}</td>
-                            <td className="px-2 py-2 text-right">{t.total}</td>
-                            <td className="px-2 py-2 text-right text-status-open">{t.open_count}</td>
-                            <td className="px-2 py-2 text-right text-status-resolved">{t.resolved_count}</td>
-                            <td className="px-2 py-2 text-right">
+                            <td className="px-1.5 py-2.5 font-medium">{t.label}</td>
+                            <td className="px-2 py-2.5 text-right">{t.total}</td>
+                            <td className="px-2 py-2.5 text-right text-status-open">{t.open_count}</td>
+                            <td className="px-1 py-2.5 text-right text-status-resolved">{t.resolved_count}</td>
+                            <td className="px-1 py-2.5 text-right">
                               <span className={t.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
                                 {t.escalated_count}
                               </span>
                             </td>
-                            <td className="px-2 py-2 text-right">
+                            <td className="px-2 py-2.5 text-right">
                               {slaPct != null ? (
                                 <span className={slaPct >= 90 ? 'text-status-resolved' : slaPct >= 75 ? 'text-status-progress' : 'text-status-escalated'}>
                                   {slaPct}%
@@ -405,8 +405,8 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                       <th className="px-2 py-2.5 font-medium">Campus</th>
                       <th className="px-2 py-2.5 font-medium text-right">Total</th>
                       <th className="px-2 py-2.5 font-medium text-right">Open</th>
-                      <th className="px-2 py-2.5 font-medium text-right">Resolved</th>
-                      <th className="px-2 py-2.5 font-medium text-right">Escalated</th>
+                      <th className="px-1 py-2.5 font-medium text-right">Resolved</th>
+                      <th className="px-1 py-2.5 font-medium text-right">Escalated</th>
                       <th className="px-2 py-2.5 font-medium text-right">SLA %</th>
                     </tr>
                   </thead>
@@ -418,15 +418,15 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
                       return (
                         <tr key={c.cd_id}>
                           <td className="px-2 py-2 font-medium">{c.campus_name}</td>
-                          <td className="px-2 py-2 text-right">{c.total}</td>
-                          <td className="px-2 py-2 text-right text-status-open">{c.open_count}</td>
-                          <td className="px-2 py-2 text-right text-status-resolved">{c.resolved_count}</td>
-                          <td className="px-2 py-2 text-right">
+                          <td className="px-2 py-2.5 text-right">{c.total}</td>
+                          <td className="px-2 py-2.5 text-right text-status-open">{c.open_count}</td>
+                          <td className="px-2 py-2.5 text-right text-status-resolved">{c.resolved_count}</td>
+                          <td className="px-2 py-2.5 text-right">
                             <span className={c.escalated_count > 0 ? 'text-status-escalated' : 'text-muted-foreground'}>
                               {c.escalated_count}
                             </span>
                           </td>
-                          <td className="px-2 py-2 text-right">
+                          <td className="px-2 py-2.5 text-right">
                             {slaPct != null ? (
                               <span className={slaPct >= 90 ? 'text-status-resolved' : slaPct >= 75 ? 'text-status-progress' : 'text-status-escalated'}>
                                 {slaPct}%

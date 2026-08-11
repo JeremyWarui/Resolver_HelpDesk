@@ -121,7 +121,7 @@ export function TechnicianPerformanceTable({ rows, loading = false, title = 'Tec
               {table.getHeaderGroups().map((hg) => (
                 <TableRow key={hg.id} className="border-b bg-muted/30">
                   {hg.headers.map((h) => (
-                    <TableHead key={h.id} className="whitespace-nowrap px-2 py-2.5 text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                    <TableHead key={h.id} className={`whitespace-nowrap ${cellPad(h.column.id)} py-2.5 text-xs text-muted-foreground uppercase tracking-wide font-medium`}>
                       {h.isPlaceholder ? null : (
                         <Button
                           variant="ghost"
@@ -149,7 +149,7 @@ export function TechnicianPerformanceTable({ rows, loading = false, title = 'Tec
                 table.getRowModel().rows.map((row) => (
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id} className="px-2 py-2">
+                      <TableCell key={cell.id} className={`${cellPad(cell.column.id)} py-2.5`}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                     ))}
@@ -194,6 +194,12 @@ const BREAKDOWN_COLUMNS = [
   }),
 ];
 
+// Columns whose header word is far longer than the number under it. Left at the
+// shared padding they reserve width for "Escalated" and then print "1", which
+// is the gap that makes these tables read as sparse rather than dense.
+const NARROW_COLUMNS = new Set(['resolved_count', 'escalated_count', 'total_assigned']);
+const cellPad = (id: string) => (NARROW_COLUMNS.has(id) ? 'px-1' : 'px-2');
+
 interface TechnicianBreakdownTableDataBareProps extends TechnicianPerformanceTableDataProps {
   bare?: boolean; // When true, renders only the table without Card wrapper
 }
@@ -227,7 +233,7 @@ export function TechnicianBreakdownTable({ data, loading = false, title = 'Techn
         {table.getHeaderGroups().map((hg) => (
           <TableRow key={hg.id} className="border-b bg-muted/30">
             {hg.headers.map((h) => (
-              <TableHead key={h.id} className="whitespace-nowrap px-2 py-2.5 text-xs text-muted-foreground uppercase tracking-wide font-medium">
+              <TableHead key={h.id} className={`whitespace-nowrap ${cellPad(h.column.id)} py-2.5 text-xs text-muted-foreground uppercase tracking-wide font-medium`}>
                 {h.isPlaceholder ? null : (
                   <Button
                     variant="ghost"
@@ -255,7 +261,7 @@ export function TechnicianBreakdownTable({ data, loading = false, title = 'Techn
           table.getRowModel().rows.map((row) => (
             <TableRow key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id} className="px-2 py-2">
+                <TableCell key={cell.id} className={`${cellPad(cell.column.id)} py-2.5`}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </TableCell>
               ))}
