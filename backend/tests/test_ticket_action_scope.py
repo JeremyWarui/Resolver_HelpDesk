@@ -257,3 +257,49 @@ def test_ratings_can_be_filtered_to_the_bad_ones(
 
 def test_feedback_requires_authentication(api):
     assert api.get(reverse("ticket-feedback-list")).status_code == 401
+
+
+# ── The escalated filter ──────────────────────────────────────────────────────
+
+
+def test_escalated_filter_returns_only_tickets_above_the_technician(
+    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    nrb_electrical_ticket.current_level = "hos"
+    nrb_electrical_ticket.save(update_fields=["current_level"])
+
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("ticket-list"), {"escalated": "1"}).json()
+
+    assert [t["ticket_no"] for t in body["results"]] == [
+        nrb_electrical_ticket.ticket_no
+    ]
+
+
+def test_escalated_filter_narrows_scope_and_never_widens_it(
+    api, nrb_hos, nrb_electrical_ticket, msa_electrical_ticket
+):
+    """A filter is not a scope. Escalating another campus's ticket must not
+    pull it into this HOS's list."""
+    for t in (nrb_electrical_ticket, msa_electrical_ticket):
+        t.current_level = "hod"
+        t.save(update_fields=["current_level"])
+
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("ticket-list"), {"escalated": "1"}).json()
+
+    assert body["count"] == 1
+    assert body["results"][0]["ticket_no"] == nrb_electrical_ticket.ticket_no
+
+
+def test_escalated_filter_is_ignored_unless_it_is_exactly_one(
+    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """`?escalated=0` and `?escalated=false` must not silently behave like `1`."""
+    nrb_electrical_ticket.current_level = "hos"
+    nrb_electrical_ticket.save(update_fields=["current_level"])
+
+    api.force_authenticate(nrb_hos)
+    for value in ("0", "false", ""):
+        body = api.get(reverse("ticket-list"), {"escalated": value}).json()
+        assert body["count"] == 2, value

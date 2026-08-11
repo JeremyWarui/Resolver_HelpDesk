@@ -117,6 +117,12 @@ export interface Ticket {
    *  rating object itself stays on the detail view. */
   has_feedback?: boolean;
 
+  /** Past its resolution deadline right now, decided server-side. A paused
+   *  ticket is never breaching (R9), so reading this rather than comparing
+   *  `resolution_due_at` to the clock is what keeps a row's colour agreeing
+   *  with the badge on the ticket and the count on the dashboard. */
+  is_breaching?: boolean;
+
   // Nested data (detail view only)
   comments?: Comment[];
   feedback?: Feedback | null;
@@ -182,6 +188,8 @@ export interface TicketsParams {
   section?: number;
   sub_section?: number;   // trade — Plumbing, Electrical, …
   current_level?: 'technician' | 'hos' | 'hod';
+  /** '1' returns everything above the technician, in one request. */
+  escalated?: '1';
   assigned_to?: number;  // technician (assignee) user id
   raised_by?: number;    // requester user id
 }

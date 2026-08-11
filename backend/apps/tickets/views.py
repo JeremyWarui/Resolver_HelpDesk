@@ -476,6 +476,12 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(raised_by_id=params["raised_by"])
         if params.get("current_level"):
             qs = qs.filter(current_level=params["current_level"])
+        # Everything that has climbed above the technician, in one request.
+        # `current_level` takes a single value, so the alternative was two calls
+        # and a merge in the client — which is two chances for the counts on one
+        # page to disagree with each other.
+        if params.get("escalated") == "1":
+            qs = qs.filter(current_level__in=("hos", "hod"))
 
         return qs
 

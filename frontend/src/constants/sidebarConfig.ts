@@ -55,6 +55,7 @@ export const SIDEBAR_CONFIG: Record<UserRole, SidebarConfig> = {
       { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
       { id: 'tickets',      label: 'Tickets',      icon: ClipboardList },
       { id: 'pending',      label: 'Pending Work', icon: PauseCircle },
+      { id: 'escalated',    label: 'Escalated',    icon: ShieldAlert },
       { id: 'technicians',  label: 'Technicians',  icon: Users },
       { id: 'analytics',    label: 'Analytics',    icon: TrendingUp },
       { id: 'reports',      label: 'Reports',      icon: FileText },
@@ -69,6 +70,7 @@ export const SIDEBAR_CONFIG: Record<UserRole, SidebarConfig> = {
       { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
       { id: 'tickets',      label: 'Tickets',      icon: ClipboardList },
       { id: 'pending',      label: 'Pending Work', icon: PauseCircle },
+      { id: 'escalated',    label: 'Escalated',    icon: ShieldAlert },
       { id: 'technicians',  label: 'Technicians',  icon: Users },
       // Route id stays `sections`; the page shows the trade breakdown, which is
       // the only split that varies inside a HOD's single Maintenance section.
