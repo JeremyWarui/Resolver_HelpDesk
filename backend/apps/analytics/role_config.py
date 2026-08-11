@@ -94,7 +94,13 @@ ROLE_VIEWS = {
             "csat",
             "escalation_rate",
         ],
-        "insights": ["bottleneck", "sla_leak", "capacity"],
+        # `recurring_fault` belongs here most of all: "this item at this
+        # building was raised five times — fix it properly rather than patching
+        # it again" is a capital-works decision, and the manager is the only
+        # role that can authorise one. The HOS and HOD had it and the director
+        # did not, so the insight reached everyone except the person who could
+        # act on it.
+        "insights": ["bottleneck", "sla_leak", "capacity", "recurring_fault"],
         "facilities": True,
         "ticket_flow": True,
         "comparison": True,

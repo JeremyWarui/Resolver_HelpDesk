@@ -14,6 +14,7 @@ accidentally acquire a set of accounts with a password from source control.
 
 import os
 import random
+from collections import defaultdict
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -230,6 +231,13 @@ SUPERVISORS = {
 # ticket at Baringo routes correctly but has nobody to assign it to, which is a
 # real state the HOS should be able to see. Give every campus all five if you
 # would rather every demo path complete.
+# A demo has to be big enough to have a shape. At 45 tickets over 14 days every
+# chart was a handful of short bars, most facilities tied on two tickets each,
+# and the 30-day analytics default — the one every role opens on — saw barely
+# half the data. Three months is also what makes a trend line mean anything.
+DEMO_TICKET_COUNT = 150
+DEMO_WINDOW_DAYS = 90
+
 TRADE_STAFFING = {
     "NRB": ["CARP", "MAS", "PAINT", "PLUMB", "ELEC"],
     "MSA": ["MAS", "PLUMB", "ELEC"],
@@ -310,8 +318,27 @@ class Command(BaseCommand):
                 self.stdout.write("  Demo tickets: skipped (--no-demo)")
             else:
                 self._seed_demo_tickets(sections, sub_sections, requesters, priorities)
+                self._run_escalations()
 
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _run_escalations(self):
+        """Let the escalation engine act on the demo data it just inherited.
+
+        Escalation is automatic: a ticket whose active time passes its
+        priority's threshold climbs technician → HOS → HOD. Nothing in the seed
+        triggered it, so `current_level` was "technician" on every row and the
+        HOS and HOD escalation pages, the escalated counts in every breakdown,
+        and the escalation-rate KPI were all empty on a database full of tickets
+        that were weeks overdue.
+
+        This runs the real engine rather than stamping levels by hand, so the
+        demo shows what production would actually have done.
+        """
+        from apps.sla.services.escalation import run_escalations
+
+        count = run_escalations()
+        self.stdout.write(f"  Escalations: {count} ticket(s) raised above the technician")
 
     # ── Reference ─────────────────────────────────────────────────────────────
 
@@ -509,18 +536,27 @@ class Command(BaseCommand):
                 )
                 count += 1
 
-        # A finisher who does both carpentry and painting — two links, one user.
-        nrb = sections["NRB"]
-        finisher = self._make_user(
-            "tech.nrb.finish", "Anthony", "Gitau", password,
-            nrb.campus_department.campus,
-        )
-        self._set_role(finisher, "technician", section=nrb)
-        for trade_code in ("CARP", "PAINT"):
-            SectionTechnician.objects.get_or_create(
-                user=finisher, section=nrb, sub_section=sub_sections[trade_code]
+        # Technicians who work more than one trade. `SectionTechnician` has
+        # always allowed it — the row is a (campus, trade) pair and a person may
+        # hold several — but with a single example in the data the work-mix
+        # report showed every technician at 100% of one craft, which is the one
+        # shape it exists to disprove.
+        multi_trade = [
+            ("NRB", "tech.nrb.finish", "Anthony", "Gitau", ("CARP", "PAINT")),
+            ("MSA", "tech.msa.multi", "Grace", "Achieng", ("PLUMB", "ELEC")),
+            ("EMB", "tech.emb.multi", "Daniel", "Kiptoo", ("MAS", "PLUMB", "PAINT")),
+        ]
+        for campus_code, username, first, last, trade_codes in multi_trade:
+            section = sections[campus_code]
+            user = self._make_user(
+                username, first, last, password, section.campus_department.campus
             )
-        count += 1
+            self._set_role(user, "technician", section=section)
+            for trade_code in trade_codes:
+                SectionTechnician.objects.get_or_create(
+                    user=user, section=section, sub_section=sub_sections[trade_code]
+                )
+            count += 1
 
         self.stdout.write(f"  technician: {count}")
 
@@ -556,10 +592,14 @@ class Command(BaseCommand):
             )
             for code in sections
         }
-        technicians = {
-            (link.section_id, link.sub_section_id): link.user
-            for link in SectionTechnician.objects.select_related("user")
-        }
+        # Every technician linked to the pair, not one of them. This was a dict
+        # keyed on (section, sub_section), so it silently kept whichever row
+        # came last — a multi-trade technician could never receive work in the
+        # trade whose link lost the race, and the work-mix chart could only ever
+        # show single-trade people.
+        technicians = defaultdict(list)
+        for link in SectionTechnician.objects.select_related("user"):
+            technicians[(link.section_id, link.sub_section_id)].append(link.user)
 
         # (status, weight) — a realistic backlog is mostly settled work with a
         # live tail, not an even spread across the lifecycle.
@@ -586,7 +626,7 @@ class Command(BaseCommand):
         ]
 
         created = 0
-        for index in range(45):
+        for index in range(DEMO_TICKET_COUNT):
             # Every sixth ticket lands in an unstaffed trade, so the "routed but
             # nobody to assign" state is visible without swamping the data.
             pool = unstaffed_pairs if index % 6 == 5 and unstaffed_pairs else staffed_pairs
@@ -597,13 +637,14 @@ class Command(BaseCommand):
             item = rng.choice(items_by_trade[trade_code])
             status = rng.choice(statuses)
 
-            technician = technicians.get((section.id, sub_section.id))
+            candidates = technicians.get((section.id, sub_section.id)) or []
+            technician = rng.choice(candidates) if candidates else None
             if technician is None:
                 # Nobody works this trade at this campus, so it can only sit
                 # open — exactly the gap TRADE_STAFFING is meant to show.
                 status = "open"
 
-            age_minutes = rng.randint(30, 14 * 24 * 60)
+            age_minutes = rng.randint(30, DEMO_WINDOW_DAYS * 24 * 60)
             created_at = now - timedelta(minutes=age_minutes)
             priority = priorities["Low"] if status == "open" else rng.choice(
                 [priorities["Low"], priorities["Medium"],
@@ -632,7 +673,92 @@ class Command(BaseCommand):
             self._write_history(ticket, technician, created_at, rng)
             created += 1
 
-        self.stdout.write(f"  Demo tickets: {created} over the last 14 days")
+        created += self._seed_chronic_faults(
+            sections, sub_sections, requesters, priorities, technicians,
+            facilities_by_campus, items_by_trade, rng, now,
+        )
+        self.stdout.write(
+            f"  Demo tickets: {created} over the last {DEMO_WINDOW_DAYS} days"
+        )
+
+    def _seed_chronic_faults(
+        self, sections, sub_sections, requesters, priorities, technicians,
+        facilities_by_campus, items_by_trade, rng, now,
+    ):
+        """A handful of buildings with the same fault, over and over.
+
+        `insights._recurring_fault` looks for a (facility, service_item) pair
+        raised three times or more, and it is the single most actionable thing
+        the analytics layer produces — "this is a permanent fix, not a repeated
+        patch". Against uniformly random demo data it returned nothing, every
+        run, so the feature looked broken rather than quiet.
+
+        Real estates behave this way: one hostel's drainage, one block's
+        wiring. Concentrating a slice of the data reproduces that rather than
+        inventing it.
+        """
+        chronic = [
+            ("NRB", "PLUMB", "Blocked toilet, sink or drain", "Margaret Kobia"),
+            ("MTG", "PLUMB", "Blocked toilet, sink or drain", "Kitchen"),
+            ("EMB", "ELEC", "Lighting fault", "Kiambere"),
+            ("NRB", "CARP", "Replace lock or hinges", "Wamalwa"),
+            ("MSA", "MAS", "Repair cracked wall", "Ultra Modern"),
+        ]
+        created = 0
+        for campus_code, trade_code, item_name, facility_name in chronic:
+            section = sections[campus_code]
+            sub_section = sub_sections[trade_code]
+            item = next(
+                (i for i in items_by_trade[trade_code] if i.name == item_name), None
+            )
+            facility = next(
+                (f for f in facilities_by_campus[campus_code] if f.name == facility_name),
+                None,
+            )
+            if item is None or facility is None:
+                continue
+
+            candidates = technicians.get((section.id, sub_section.id)) or []
+            for _ in range(rng.randint(3, 5)):
+                requester = rng.choice(requesters)
+                # Chronic faults are mostly closed out and then recur — that is
+                # what makes them chronic rather than simply unresolved.
+                status = rng.choice(["closed", "closed", "resolved", "in_progress", "open"])
+                technician = rng.choice(candidates) if candidates else None
+                if technician is None:
+                    status = "open"
+                priority = priorities["Low"] if status == "open" else rng.choice(
+                    [priorities["Low"], priorities["Medium"], priorities["High"]]
+                )
+                created_at = now - timedelta(
+                    minutes=rng.randint(30, DEMO_WINDOW_DAYS * 24 * 60)
+                )
+                ticket = Ticket.objects.create(
+                    raised_by=requester,
+                    requester_campus=section.campus_department.campus,
+                    service_item=item,
+                    section=section,
+                    sub_section=sub_section,
+                    priority=priority,
+                    assigned_to=None if status == "open" else technician,
+                    description=f"{item.name} reported at {facility.name}.",
+                    contact_phone=requester.phone_number,
+                    status=status,
+                    response_due_at=created_at + timedelta(minutes=priority.response_minutes),
+                    resolution_due_at=created_at + timedelta(minutes=priority.resolution_minutes),
+                )
+                Ticket.objects.filter(pk=ticket.pk).update(created_at=created_at)
+                ticket.refresh_from_db()
+                builder = LOCATION_VALUES.get(facility.facility_type.code)
+                TicketLocation.objects.create(
+                    ticket=ticket,
+                    facility_type=facility.facility_type,
+                    facility=facility,
+                    values=builder(rng) if builder else {},
+                )
+                self._write_history(ticket, technician, created_at, rng)
+                created += 1
+        return created
 
     def _attach_location(self, ticket, facilities, rng):
         """Every ticket says where it is — there is no branch that leaves one
@@ -648,7 +774,13 @@ class Command(BaseCommand):
         # have none, and would otherwise never appear in the demo data at all.
         unnamed = ["residential", "equipment"]
         if facilities and rng.random() > 0.25:
-            facility = rng.choice(facilities)
+            # Weighted, not uniform. Spread evenly across a campus's register
+            # every building landed on two or three tickets, so the facility
+            # chart was a row of equal stubs and "which building is costing us"
+            # had no answer. Estates are lopsided — an old block generates most
+            # of the faults — and the weighting reproduces that shape.
+            weights = [4 if i < 2 else 2 if i < 5 else 1 for i in range(len(facilities))]
+            facility = rng.choices(facilities, weights=weights)[0]
             facility_type, type_code = facility.facility_type, facility.facility_type.code
         else:
             facility = None

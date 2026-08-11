@@ -303,3 +303,23 @@ def test_escalated_filter_is_ignored_unless_it_is_exactly_one(
     for value in ("0", "false", ""):
         body = api.get(reverse("ticket-list"), {"escalated": value}).json()
         assert body["count"] == 2, value
+
+
+def test_escalated_filter_leaves_out_finished_work(
+    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """`current_level` is not cleared on resolution, so a job that escalated and
+    was then finished keeps the level for the record. Correct as history, wrong
+    on a work queue."""
+    for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
+        t.current_level = "hos"
+        t.save(update_fields=["current_level"])
+    nrb_plumbing_ticket.status = "resolved"
+    nrb_plumbing_ticket.save(update_fields=["status"])
+
+    api.force_authenticate(nrb_hos)
+    body = api.get(reverse("ticket-list"), {"escalated": "1"}).json()
+
+    assert [t["ticket_no"] for t in body["results"]] == [
+        nrb_electrical_ticket.ticket_no
+    ]

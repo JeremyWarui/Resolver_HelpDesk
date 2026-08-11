@@ -30,6 +30,7 @@ from apps.tickets.serializers import (
     _UserMinSerializer,
 )
 from apps.tickets.pending_reasons import PENDING_REASONS
+from apps.tickets.statuses import ACTIVE_STATUSES
 from apps.tickets.services.attachments import (
     process_upload,
     MAX_ATTACHMENTS_PER_TICKET,
@@ -481,7 +482,16 @@ class TicketListCreateView(generics.ListCreateAPIView):
         # and a merge in the client — which is two chances for the counts on one
         # page to disagree with each other.
         if params.get("escalated") == "1":
-            qs = qs.filter(current_level__in=("hos", "hod"))
+            # Active only. `current_level` is not cleared when a ticket is
+            # resolved, so a job that escalated and was then finished keeps the
+            # level for the record — correct as history, wrong on a work queue,
+            # where it would sit among the things somebody still has to chase.
+            # The engine only escalates active tickets, so this changes nothing
+            # today; it stops the page rotting the first time one is resolved
+            # after escalating.
+            qs = qs.filter(
+                current_level__in=("hos", "hod"), status__in=ACTIVE_STATUSES
+            )
 
         return qs
 
