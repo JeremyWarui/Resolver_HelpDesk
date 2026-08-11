@@ -7,6 +7,7 @@ import ManagerDashboard from './ManagerDashboard';
 const ManagerTickets = lazy(() => import('./ManagerTickets'));
 const ManagerAnalytics = lazy(() => import('./ManagerAnalytics'));
 const PendingWorkView = lazy(() => import('@/features/shared/PendingWorkView'));
+const FacilityRegisterView = lazy(() => import('@/features/shared/FacilityRegisterView'));
 const ManagerReportsPage = lazy(() => import('./ManagerReportsPage'));
 const FeedbackTab = lazy(() => import('@/features/shared/FeedbackTab'));
 
@@ -25,6 +26,7 @@ const ManagerLayout = () => (
       dashboard: <ManagerDashboard onTicketSelect={onTicketSelect} />,
       tickets: <ManagerTickets userId={userId} onTicketSelect={onTicketSelect} />,
       pending: <PendingWorkView role="manager" onTicketSelect={onTicketSelect} />,
+      facilities: <FacilityRegisterView role="manager" />,
       analytics: <ManagerAnalytics />,
       reports: <ManagerReportsPage />,
       feedback: <FeedbackTab role="manager" />,

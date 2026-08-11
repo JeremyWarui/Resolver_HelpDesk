@@ -6,6 +6,7 @@ import HODTechnicians from './HODTechnicians';
 import HODSections from './HODSections';
 import RoleTicketsPage from '@/features/shared/RoleTicketsPage';
 import PendingWorkView from '@/features/shared/PendingWorkView';
+import FacilityRegisterView from '@/features/shared/FacilityRegisterView';
 import EscalatedWorkView from '@/features/shared/EscalatedWorkView';
 import RoleAnalyticsView from '@/features/shared/RoleAnalyticsView';
 import RoleReportsPage from '@/features/shared/RoleReportsPage';
@@ -22,6 +23,7 @@ const HODLayout = () => (
       escalated: <EscalatedWorkView role="hod" onTicketSelect={onTicketSelect} />,
       technicians: <HODTechnicians />,
       sections: <HODSections />,
+      facilities: <FacilityRegisterView role="hod" />,
       analytics: <RoleAnalyticsView role="hod" />,
       reports: <RoleReportsPage role="hod" />,
       feedback: <FeedbackTab role="hod" />,

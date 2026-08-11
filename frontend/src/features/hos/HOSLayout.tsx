@@ -6,6 +6,7 @@ import RoleAnalyticsView from '@/features/shared/RoleAnalyticsView';
 import RoleReportsPage from '@/features/shared/RoleReportsPage';
 import RoleTicketsPage from '@/features/shared/RoleTicketsPage';
 import PendingWorkView from '@/features/shared/PendingWorkView';
+import FacilityRegisterView from '@/features/shared/FacilityRegisterView';
 import EscalatedWorkView from '@/features/shared/EscalatedWorkView';
 import HOSTechnicians from './HOSTechnicians';
 import { SLATrackingView } from '@/features/analytics/SLATrackingView';
@@ -20,6 +21,7 @@ const HOSLayout = () => (
       pending: <PendingWorkView role="hos" onTicketSelect={onTicketSelect} />,
       escalated: <EscalatedWorkView role="hos" onTicketSelect={onTicketSelect} />,
       technicians: <HOSTechnicians />,
+      facilities: <FacilityRegisterView role="hos" />,
       analytics: <RoleAnalyticsView role="hos" />,
       reports: <RoleReportsPage role="hos" />,
       feedback: <FeedbackTab role="hos" />,
