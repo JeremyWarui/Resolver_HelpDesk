@@ -129,3 +129,48 @@ def test_an_unused_priority_can_still_be_deleted(api, admin_user, critical_prior
 
     response = api.delete(reverse("priority-detail", args=[critical_priority.pk]))
     assert response.status_code == 204
+
+
+# ── Who may read the policy ───────────────────────────────────────────────────
+
+
+def test_an_hos_can_read_the_priorities(api, nrb_hos, low_priority, critical_priority):
+    """The assignment modal fetches this list so the HOS can set the real
+    priority as they hand the ticket out. When it was admin-only the request
+    404'd into an empty array and the modal drew its "Priority" heading above
+    no buttons — the control was in the markup and absent from the screen."""
+    api.force_authenticate(nrb_hos)
+    response = api.get(reverse("priority-list"))
+
+    assert response.status_code == 200
+    names = {row["name"] for row in response.json()["results"]}
+    assert {low_priority.name, critical_priority.name} <= names
+
+
+def test_a_technician_can_read_the_priorities(api, nrb_electrician, low_priority):
+    """Every ticket view renders a priority badge, so the vocabulary has to be
+    readable by everyone who can see a ticket."""
+    api.force_authenticate(nrb_electrician)
+    assert api.get(reverse("priority-list")).status_code == 200
+
+
+def test_a_non_admin_still_cannot_change_the_policy(api, nrb_hos, low_priority):
+    """Read opened up; write did not. Editing an SLA window silently re-times
+    every ticket that carries the priority."""
+    response = api.patch(
+        reverse("priority-detail", args=[low_priority.pk]),
+        {"resolution_minutes": 5},
+        format="json",
+    )
+    assert response.status_code in (401, 403)
+
+    api.force_authenticate(nrb_hos)
+    response = api.patch(
+        reverse("priority-detail", args=[low_priority.pk]),
+        {"resolution_minutes": 5},
+        format="json",
+    )
+    assert response.status_code == 403
+
+    low_priority.refresh_from_db()
+    assert low_priority.resolution_minutes != 5

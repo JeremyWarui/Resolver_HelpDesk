@@ -1,5 +1,6 @@
 from django.db.models import ProtectedError
 from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.pagination import ConfigListPagination
@@ -10,10 +11,28 @@ from apps.tickets.models import Ticket
 
 
 class PriorityViewSet(viewsets.ModelViewSet):
+    """The SLA policy. Admin-editable, but readable by anyone signed in.
+
+    Reading was admin-only, and that quietly broke assignment: the HOS decides a
+    ticket's real priority as they hand it out, so `AssignmentModal` fetches this
+    list — and got a 403. The request failed silently, the choices fell back to
+    an empty array, and the modal rendered the "Priority" heading and its hint
+    above no buttons at all. The control looked present in the code and did not
+    exist on screen.
+
+    Priorities are not sensitive (Low/Medium/High/Critical and their SLA
+    windows); the same split as `FacilityViewSet` applies — read for everyone,
+    write for admins.
+    """
+
     queryset = Priority.objects.prefetch_related("escalation_rules").order_by("rank")
     serializer_class = PrioritySerializer
-    permission_classes = [IsAdminGroup]
     pagination_class = ConfigListPagination
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAdminGroup()]
 
     def destroy(self, request, *args, **kwargs):
         """Refuse deletion of a priority still in use, with a reason.

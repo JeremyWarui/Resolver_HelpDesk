@@ -142,6 +142,16 @@ export function AssignmentModal({
               <div className="flex-1 border-t border-border" />
             </div>
 
+            {/* No choices means the fetch failed, not that there are no
+                priorities — the seed always has four. Say so instead of
+                drawing a heading above an empty grid, which is how this
+                shipped looking like a control that was simply missing. */}
+            {priorityChoices.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Could not load the priority list. The ticket keeps its current
+                priority ({ticket.priority?.name ?? 'Low'}); assignment still works.
+              </p>
+            ) : (
             <div className="grid grid-cols-4 gap-2">
               {priorityChoices.map((p) => {
                 const isSelected = chosenPriority === p.id;
@@ -163,11 +173,14 @@ export function AssignmentModal({
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {priorityId == null
-                ? `Opened at ${ticket.priority?.name ?? 'Low'}. Raise it if this is worse than it reads.`
-                : 'The SLA is re-timed from when the ticket was raised, not from now.'}
-            </p>
+            )}
+            {priorityChoices.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {priorityId == null
+                  ? `Opened at ${ticket.priority?.name ?? 'Low'}. Raise it if this is worse than it reads.`
+                  : 'The SLA is re-timed from when the ticket was raised, not from now.'}
+              </p>
+            )}
           </div>
 
           {/* Technician radio cards */}
