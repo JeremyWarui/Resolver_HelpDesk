@@ -1,5 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { getTicketFilterOptions, type TicketFilterOption } from '@/lib/api/tickets';
+import {
+  getTicketFilterOptions,
+  type TicketFilterOption,
+  type PendingReasonOption,
+} from '@/lib/api/tickets';
 
 /**
  * Scoped option lists for the tickets-table filters (sections / trades /
@@ -24,6 +28,9 @@ export function useTicketFilterOptions(enabled = true) {
     subSections: (data?.sub_sections ?? []) as TicketFilterOption[],
     technicians: (data?.technicians ?? []) as TicketFilterOption[],
     requesters: (data?.requesters ?? []) as TicketFilterOption[],
+    // The hold vocabulary, served by the same call. Defined once on the server
+    // (apps/tickets/pending_reasons.py) and never retyped here.
+    pendingReasons: (data?.pending_reasons ?? []) as PendingReasonOption[],
     loading: isLoading,
     error: error as Error | null,
   };

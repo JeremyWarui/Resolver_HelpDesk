@@ -55,12 +55,24 @@ export interface TicketFilterOption {
   name: string;
 }
 
+/** A hold reason, as the server defines it. */
+export interface PendingReasonOption {
+  value: string;
+  label: string;
+}
+
 export interface TicketFilterOptions {
   sections: TicketFilterOption[];
   /** Trades — Plumbing, Electrical, Carpentry, … */
   sub_sections: TicketFilterOption[];
   technicians: TicketFilterOption[];
   requesters: TicketFilterOption[];
+  /**
+   * The hold vocabulary. Static rather than scoped, unlike the lists above,
+   * but served here so the client never keeps its own copy — the last one
+   * drifted against a backend field that did not exist.
+   */
+  pending_reasons: PendingReasonOption[];
 }
 
 /**
@@ -125,11 +137,16 @@ export async function assignTicket(
 export async function updateTicketStatus(
   id: number,
   status: string,
-  reason: string
+  reason: string,
+  /** Required by the server when `status` is 'pending'. */
+  pendingReason?: string,
+  pendingReasonNote?: string,
 ): Promise<Ticket> {
   const { data } = await apiClient.post<Ticket>(`/tickets/${id}/status/`, {
     status,
     reason,
+    pending_reason: pendingReason ?? '',
+    pending_reason_note: pendingReasonNote ?? '',
   });
   return data;
 }

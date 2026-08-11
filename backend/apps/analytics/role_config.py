@@ -27,6 +27,10 @@ GROUP_BY_DIMENSIONS = (
     "facility_type",
     "facility",
     "technician",
+    # Why work is stopped. Only populated on paused tickets, so a breakdown on
+    # it answers a different question from the others: not "where is the work"
+    # but "what is in the way of it".
+    "pending_reason",
 )
 
 # Insight types (implemented in apps/analytics/insights.py).
@@ -53,6 +57,7 @@ ROLE_VIEWS = {
             "priority",
             "facility_type",
             "facility",
+            "pending_reason",
         ],
         "headline": [
             "sla_resolution_pct",
@@ -80,6 +85,7 @@ ROLE_VIEWS = {
             "service_item",
             "priority",
             "facility",
+            "pending_reason",
         ],
         "headline": [
             "sla_resolution_pct",
@@ -103,6 +109,7 @@ ROLE_VIEWS = {
             "priority",
             "facility",
             "technician",
+            "pending_reason",
         ],
         "headline": [
             "sla_resolution_pct",
@@ -124,6 +131,7 @@ ROLE_VIEWS = {
             "service_item",
             "priority",
             "facility",
+            "pending_reason",
         ],
         "headline": ["sla_resolution_pct", "unassigned", "open_backlog", "csat"],
         "insights": ["bottleneck", "recurring_fault", "sla_leak"],

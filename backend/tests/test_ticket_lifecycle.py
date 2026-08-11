@@ -63,6 +63,91 @@ def test_pending_requires_a_reason(assigned_ticket, nrb_electrician):
         transition_status(assigned_ticket, "pending", actor=nrb_electrician)
 
 
+def test_pending_reason_must_be_one_of_the_codes(assigned_ticket, nrb_electrician):
+    """Free text is what the old design collected, and it is what made "why is
+    work stopped" unanswerable. Prose in this field is now refused."""
+    advance(assigned_ticket, "in_progress", actor=nrb_electrician)
+    with pytest.raises(TransitionError):
+        transition_status(
+            assigned_ticket,
+            "pending",
+            actor=nrb_electrician,
+            pending_reason="waiting for the pump",
+        )
+
+
+def test_other_requires_a_note(assigned_ticket, nrb_electrician):
+    """`other` on its own carries no information — the note is the content."""
+    advance(assigned_ticket, "in_progress", actor=nrb_electrician)
+    with pytest.raises(TransitionError):
+        transition_status(
+            assigned_ticket, "pending", actor=nrb_electrician, pending_reason="other"
+        )
+
+    transition_status(
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="other",
+        pending_reason_note="The store key is with someone on leave.",
+    )
+    assert assigned_ticket.pending_reason == "other"
+
+
+def test_the_reason_is_cleared_when_work_resumes(assigned_ticket, nrb_electrician):
+    """A stale reason on a running ticket would count as blocked work forever."""
+    advance(assigned_ticket, "in_progress", actor=nrb_electrician)
+    transition_status(
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="awaiting_materials",
+        pending_reason_note="Replacement pump.",
+    )
+    assert assigned_ticket.pending_reason == "awaiting_materials"
+
+    transition_status(assigned_ticket, "in_progress", actor=nrb_electrician)
+
+    assigned_ticket.refresh_from_db()
+    assert assigned_ticket.pending_reason == ""
+    assert assigned_ticket.pending_reason_note == ""
+
+
+def test_the_reason_survives_the_round_trip_to_the_database(
+    assigned_ticket, nrb_electrician
+):
+    """`update_fields` is an explicit list — a field missing from it is written
+    to the instance and silently dropped on the way to the table."""
+    advance(assigned_ticket, "in_progress", actor=nrb_electrician)
+    transition_status(
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="awaiting_contractor",
+        pending_reason_note="Lift engineer booked for Thursday.",
+    )
+
+    assigned_ticket.refresh_from_db()
+    assert assigned_ticket.pending_reason == "awaiting_contractor"
+    assert assigned_ticket.pending_reason_note == "Lift engineer booked for Thursday."
+
+
+def test_the_hold_reads_as_prose_in_the_timeline(assigned_ticket, nrb_electrician):
+    """The log is read by people, so it keeps the label — the code lives on the
+    ticket for the machines."""
+    advance(assigned_ticket, "in_progress", actor=nrb_electrician)
+    transition_status(
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="awaiting_materials",
+        pending_reason_note="Replacement pump.",
+    )
+
+    log = TicketLog.objects.filter(ticket=assigned_ticket).order_by("-id").first()
+    assert log.reason == "Materials not in store — Replacement pump."
+
+
 def test_every_status_has_an_entry_in_the_map(assigned_ticket):
     """A status missing from ALLOWED is a dead end nothing can leave."""
     statuses = {value for value, _ in type(assigned_ticket).STATUS}
@@ -75,7 +160,10 @@ def test_every_status_has_an_entry_in_the_map(assigned_ticket):
 def test_pending_freezes_the_clock(assigned_ticket, nrb_electrician):
     advance(assigned_ticket, "in_progress", actor=nrb_electrician)
     transition_status(
-        assigned_ticket, "pending", actor=nrb_electrician, reason="awaiting parts"
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="awaiting_materials",
     )
     assert assigned_ticket.paused_at is not None
 
@@ -86,7 +174,10 @@ def test_resuming_pushes_the_deadline_out_by_the_paused_time(
     """A ticket parked for two days must not owe those two days back."""
     advance(assigned_ticket, "in_progress", actor=nrb_electrician)
     transition_status(
-        assigned_ticket, "pending", actor=nrb_electrician, reason="awaiting parts"
+        assigned_ticket,
+        "pending",
+        actor=nrb_electrician,
+        pending_reason="awaiting_materials",
     )
 
     paused_for = timedelta(days=2)

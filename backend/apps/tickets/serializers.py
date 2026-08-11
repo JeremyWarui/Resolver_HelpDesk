@@ -22,6 +22,7 @@ from apps.tickets.models import (
 )
 from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
 from apps.tickets.statuses import ALL_STATUSES
+from apps.tickets.pending_reasons import PENDING_REASON_CODES
 
 User = get_user_model()
 
@@ -114,6 +115,11 @@ class TicketReadSerializer(serializers.ModelSerializer):
     location = _TicketLocationSerializer(read_only=True, allow_null=True)
     is_breaching = serializers.SerializerMethodField()
     has_feedback = serializers.SerializerMethodField()
+    # The label, resolved server-side, so no client ever holds a second copy of
+    # the vocabulary to fall out of step with this one.
+    pending_reason_display = serializers.CharField(
+        source="get_pending_reason_display", read_only=True
+    )
 
     class Meta:
         model = Ticket
@@ -135,6 +141,9 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "resolution_due_at",
             "paused_at",
             "accumulated_pause",
+            "pending_reason",
+            "pending_reason_display",
+            "pending_reason_note",
             "is_breaching",
             "has_feedback",
             "created_at",
@@ -348,6 +357,18 @@ class TicketStatusUpdateSerializer(serializers.Serializer):
         choices=list(ALL_STATUSES)
     )
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+    # Required on the way into `pending`, but enforced in the lifecycle service
+    # rather than here: that is the only door into the state, so a caller that
+    # bypasses this serializer still cannot leave a hold uncategorised.
+    pending_reason = serializers.ChoiceField(
+        choices=list(PENDING_REASON_CODES),
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    pending_reason_note = serializers.CharField(
+        required=False, allow_blank=True, default=""
+    )
 
 
 class TicketAssignSerializer(serializers.Serializer):

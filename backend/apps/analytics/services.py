@@ -22,6 +22,7 @@ from django.db.models.functions import TruncDay, TruncWeek, TruncMonth, TruncQua
 from django.utils import timezone
 
 from apps.tickets.models import Ticket, TicketLog, TicketFeedback, TicketLocation
+from apps.tickets.pending_reasons import PENDING_REASON_LABELS
 
 # Re-exported so existing importers keep working; defined in tickets.statuses,
 # which is where the vocabulary belongs — see the note there on why one home.
@@ -252,6 +253,11 @@ _GENERIC_GROUP_BY = {
     ),
     "facility": (F("location__facility__id"), F("location__facility__name")),
     "status": (F("status"), F("status")),
+    # A direct Ticket column, like `status` — so it costs a GROUP BY and no
+    # join. Only paused tickets carry one; `_group_by_generic` filters the
+    # empty string out so the chart never shows a blank slice for every ticket
+    # that simply isn't on hold.
+    "pending_reason": (F("pending_reason"), F("pending_reason")),
 }
 
 
@@ -283,11 +289,23 @@ def _group_by_generic(window_qs, dim):
     qs = window_qs
     if dim in ("facility_type", "facility"):
         qs = qs.filter(location__isnull=False)
-    return list(
+    if dim == "pending_reason":
+        # Only tickets that are (or have been) on hold have one. Without this
+        # every other ticket collapses into a single empty-labelled slice that
+        # dwarfs the real ones and answers no question anybody asked.
+        qs = qs.exclude(pending_reason="")
+    rows = list(
         qs.values(key=key_expr, label=label_expr)
         .annotate(**_standard_breakdown_metrics())
         .order_by("-total")
     )
+    if dim == "pending_reason":
+        # Every other dimension labels itself off a related name; this one is a
+        # code column, so the label has to be resolved. Doing it here rather
+        # than in the client is what keeps the vocabulary in one place.
+        for row in rows:
+            row["label"] = PENDING_REASON_LABELS.get(row["key"], row["key"])
+    return rows
 
 
 def breakdown(scoped_qs, date_range: dict, group_by: str) -> list:

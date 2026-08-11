@@ -102,9 +102,12 @@ export interface Ticket {
   resolved_at?: string | null;
   closed_at?: string | null;
 
-  // Pending reason (required when transitioning to 'pending')
+  // Why the ticket is on hold. Set on the way into 'pending', cleared on the
+  // way out, so a non-empty `pending_reason` and a running status cannot
+  // disagree. `pending_reason_display` is the label, resolved server-side.
   pending_reason?: string | null;
-  pending_comment?: string | null;
+  pending_reason_display?: string | null;
+  pending_reason_note?: string | null;
   organizational_path?: OrganizationalPath | null;
 
   // Available technicians (only for roles that can assign)
@@ -157,7 +160,7 @@ export interface UpdateTicketPayload {
   status?: Ticket['status'];
   assigned_to_id?: number | null;
   pending_reason?: string | null;
-  pending_comment?: string | null;
+  pending_reason_note?: string | null;
 }
 
 export interface BulkStatusUpdatePayload {

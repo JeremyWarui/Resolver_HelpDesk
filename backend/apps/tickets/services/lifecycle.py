@@ -4,6 +4,11 @@ from django.utils import timezone
 
 from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.models import TicketLog
+from apps.tickets.pending_reasons import (
+    PENDING_REASON_CODES,
+    PENDING_REASON_LABELS,
+    REASON_REQUIRING_NOTE,
+)
 from apps.notifications.notify import (
     emit_ticket_assigned,
     emit_ticket_status_changed,
@@ -28,25 +33,55 @@ class TransitionError(Exception):
     pass
 
 
-def transition_status(ticket, new_status, actor, reason=""):
-    """Validate and apply a status transition, handling SLA pause/resume and logging."""
+def transition_status(
+    ticket,
+    new_status,
+    actor,
+    reason="",
+    pending_reason="",
+    pending_reason_note="",
+):
+    """Validate and apply a status transition, handling SLA pause/resume and logging.
+
+    `reason` is the free-text audit note kept for every transition.
+    `pending_reason` is the structured code, required on the way into `pending`
+    and cleared on the way out — it is what makes "why is work stopped"
+    answerable by a GROUP BY instead of by reading prose.
+    """
 
     if new_status not in ALLOWED.get(ticket.status, set()):
         raise TransitionError(
             f"Cannot transition from '{ticket.status}' to '{new_status}'."
         )
 
-    if new_status == "pending" and not reason.strip():
-        raise TransitionError("A reason is required when moving to pending.")
+    pending_reason = (pending_reason or "").strip()
+    pending_reason_note = (pending_reason_note or "").strip()
+
+    if new_status == "pending":
+        if not pending_reason:
+            raise TransitionError("A reason is required when moving to pending.")
+        if pending_reason not in PENDING_REASON_CODES:
+            raise TransitionError(f"Unknown pending reason: '{pending_reason}'.")
+        # `other` carries no meaning on its own, so the note is the whole
+        # content and cannot be skipped. Every other code stands by itself.
+        if pending_reason == REASON_REQUIRING_NOTE and not pending_reason_note:
+            raise TransitionError(
+                "Describe the reason when choosing 'Other'."
+            )
 
     old_status = ticket.status
     now = timezone.now()
     is_reopen = old_status in ("resolved", "closed") and new_status == "open"
 
-    # SLA pause/resume
+    # SLA pause/resume — the hold reason moves with the pause, so that
+    # `status == 'pending'` and `pending_reason != ''` can never disagree.
     if new_status == "pending":
         ticket.paused_at = now
+        ticket.pending_reason = pending_reason
+        ticket.pending_reason_note = pending_reason_note
     elif old_status == "pending" and new_status != "pending":
+        ticket.pending_reason = ""
+        ticket.pending_reason_note = ""
         if ticket.paused_at:
             pause = now - ticket.paused_at
             ticket.accumulated_pause += pause
@@ -74,6 +109,8 @@ def transition_status(ticket, new_status, actor, reason=""):
         ticket.accumulated_pause = timedelta(0)
         ticket.resolved_at = None
         ticket.closed_at = None
+        ticket.pending_reason = ""
+        ticket.pending_reason_note = ""
 
     ticket.status = new_status
     ticket.save(
@@ -82,6 +119,8 @@ def transition_status(ticket, new_status, actor, reason=""):
             "assigned_to",
             "paused_at",
             "accumulated_pause",
+            "pending_reason",
+            "pending_reason_note",
             "response_due_at",
             "resolution_due_at",
             "resolved_at",
@@ -100,13 +139,24 @@ def transition_status(ticket, new_status, actor, reason=""):
     else:
         event_type = "status_changed"
 
+    # The log keeps prose, because the timeline is read by people. Composing the
+    # label into it here means the existing timeline renders holds correctly
+    # with no frontend change, while analytics reads the code off the ticket.
+    log_reason = reason
+    if new_status == "pending":
+        log_reason = " — ".join(
+            p
+            for p in (PENDING_REASON_LABELS[pending_reason], pending_reason_note)
+            if p
+        )
+
     TicketLog.objects.create(
         ticket=ticket,
         actor=actor,
         event_type=event_type,
         from_value=old_status,
         to_value=new_status,
-        reason=reason,
+        reason=log_reason,
     )
 
     if new_status == "resolved":

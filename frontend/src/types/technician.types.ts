@@ -80,7 +80,7 @@ export interface DashboardTicket {
   section_name: string;
   raised_by: string;
   pending_reason: string | null;
-  pending_comment: string | null;
+  pending_reason_note: string | null;
   escalation_level: number;
   escalation_status: { code: string; label: string };
   is_due_for_escalation: boolean;

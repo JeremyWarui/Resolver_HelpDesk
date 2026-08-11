@@ -6,6 +6,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
+from apps.tickets.pending_reasons import PENDING_REASONS
+
 
 class Ticket(models.Model):
     """A service request — intrinsic current state only (SoT §3.2a).
@@ -88,6 +90,26 @@ class Ticket(models.Model):
     resolution_due_at = models.DateTimeField(null=True, blank=True)
     paused_at = models.DateTimeField(null=True, blank=True)
     accumulated_pause = models.DurationField(default=timedelta)
+    # Why the ticket is on hold. Intrinsic current state, so it belongs here and
+    # not in TicketLog: "what is blocking this right now" is a property of the
+    # ticket, and the question management asks — how much work is stopped, and
+    # by what — is a GROUP BY, not a log scan. The history of holds still lands
+    # in TicketLog like every other transition.
+    #
+    # Empty string, not null, for both: Django's own advice for character
+    # fields, and it keeps `GROUP BY pending_reason` free of a NULL bucket that
+    # means the same thing as ''.
+    pending_reason = models.CharField(
+        max_length=24,
+        choices=PENDING_REASONS,
+        blank=True,
+        default="",
+        help_text="Set while status is 'pending'; cleared when work resumes.",
+    )
+    pending_reason_note = models.TextField(
+        blank=True,
+        help_text="Free text alongside the code — required when the reason is 'other'.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)

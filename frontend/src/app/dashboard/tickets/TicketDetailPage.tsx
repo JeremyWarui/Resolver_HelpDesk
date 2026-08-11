@@ -138,16 +138,10 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
 
   const isRaisedByCurrentUser = ticket?.raised_by_id === currentUser?.id;
 
-  // Captured-but-hidden dialog data (QA D1/D2) — both travel as TicketLog.reason
-  // and are already in the fetched timeline; no extra endpoint needed.
-  const pendingReason = useMemo(() => {
-    if (ticket?.status !== 'pending') return null;
-    const ev = [...events].reverse().find(
-      (e) => e.event_type === 'status_changed' && e.data?.to === 'pending',
-    );
-    return ev?.note ?? null;
-  }, [ticket?.status, events]);
-
+  // The resolution note still comes from the timeline (QA D2) — it is prose and
+  // has no home on the ticket. The hold reason no longer does: it is a real
+  // column now, so reading it back out of a reversed log scan would be
+  // guessing at something the server already states.
   const resolutionNote = useMemo(() => {
     if (!ticket || !['resolved', 'closed'].includes(ticket.status)) return null;
     const ev = [...events].reverse().find((e) => e.event_type === 'resolved');
@@ -504,16 +498,21 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                     </Card>
                   )}
 
-                  {/* Pending reason (D1) — derived from the latest pending transition
-                      in the timeline (the reason lands in TicketLog, not on Ticket).
-                      Uses status-approval (amber) tokens for paused/waiting state. */}
-                  {ticket.status === 'pending' && pendingReason && (
+                  {/* Pending reason (D1) — read straight off the ticket. The
+                      label is resolved server-side, so no vocabulary lives
+                      here. Amber (status-approval) for a waiting state. */}
+                  {ticket.status === 'pending' && ticket.pending_reason_display && (
                     <Card style={{ borderColor: 'var(--status-approval-border)' }}>
                       <CardContent className="p-5">
                         <SectionLabel>On Hold</SectionLabel>
-                        <p className="text-sm capitalize" style={{ color: 'var(--status-approval-text)' }}>
-                          {pendingReason.replace(/_/g, ' ')}
+                        <p className="text-sm font-medium" style={{ color: 'var(--status-approval-text)' }}>
+                          {ticket.pending_reason_display}
                         </p>
+                        {ticket.pending_reason_note && (
+                          <p className="mt-1.5 text-sm text-muted-foreground">
+                            {ticket.pending_reason_note}
+                          </p>
+                        )}
                       </CardContent>
                     </Card>
                   )}

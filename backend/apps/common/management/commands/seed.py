@@ -24,6 +24,21 @@ from django.utils import timezone
 from apps.accounts.models import RoleAssignment, UserProfile
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import TYPE_SPECS
+from apps.tickets.pending_reasons import PENDING_REASON_LABELS
+
+# What a technician would actually have typed, per reason — so the demo shows
+# the note carrying information the code cannot ("which part", "whose
+# approval"), which is the whole argument for keeping both.
+PENDING_NOTES = {
+    "awaiting_materials": "Replacement parts not in the store.",
+    "awaiting_procurement": "LPO raised — supplier has not delivered.",
+    "awaiting_approval": "Above section limit — with the HOD.",
+    "awaiting_labour": "No plumber free on this campus this week.",
+    "awaiting_contractor": "Lift contractor booked for the next site visit.",
+    "awaiting_requester": "Occupant to confirm a time we can work.",
+    "access_unavailable": "Room in use — rescheduled with the occupant.",
+    "scope_clarification": "Extent of works unclear, site meeting needed.",
+}
 from apps.org.models import (
     Campus,
     CampusDepartment,
@@ -689,8 +704,22 @@ class Command(BaseCommand):
                 from_value="assigned", to_value="in_progress",
             )
         if ticket.status == "pending":
+            # Weighted, not uniform: a maintenance section is stopped by parts
+            # and money far more often than by anything else, and a flat draw
+            # would show six equal bars — a chart that renders and tells the
+            # reader nothing. `other` is left out entirely; it is the bucket
+            # that means "we failed to categorise this", not a real cause.
+            reason = rng.choices(list(PENDING_NOTES), weights=[26, 20, 15, 12, 10, 8, 5, 4])[0]
+            paused_at = created_at + timedelta(hours=rng.randint(1, 12))
             Ticket.objects.filter(pk=ticket.pk).update(
-                paused_at=created_at + timedelta(hours=rng.randint(1, 12))
+                paused_at=paused_at,
+                pending_reason=reason,
+                pending_reason_note=PENDING_NOTES[reason],
+            )
+            self._log(
+                ticket, paused_at, event_type="status_changed", actor=technician,
+                from_value="in_progress", to_value="pending",
+                reason=f"{PENDING_REASON_LABELS[reason]} — {PENDING_NOTES[reason]}",
             )
         if ticket.status in ("resolved", "closed"):
             # Resolution time is drawn relative to the ticket's own SLA window,

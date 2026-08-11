@@ -51,14 +51,13 @@ export const ACTIVE_STATUSES: Ticket['status'][] = [
   'pending',
 ];
 
-// Backend PENDING_REASON_CHOICES — must match Django model exactly
-export const PENDING_REASON_CHOICES = [
-  { value: 'material_shortage',    label: 'Material shortage' },
-  { value: 'awaiting_procurement', label: 'Awaiting procurement' },
-  { value: 'awaiting_approval',    label: 'Awaiting approval' },
-  { value: 'vendor_dependency',    label: 'Vendor dependency' },
-  { value: 'access_issue',         label: 'Access issue' },
-  { value: 'other',                label: 'Other' },
-] as const;
-
-export type PendingReason = typeof PENDING_REASON_CHOICES[number]['value'];
+// The hold vocabulary is NOT declared here.
+//
+// It used to be — a `PENDING_REASON_CHOICES` array captioned "must match Django
+// model exactly", against a Django model that had no such field. The modal read
+// it, joined the code to the free-text note, and posted the result as one
+// string, so nothing could ever count how much work was stopped or by what.
+//
+// It now lives in `apps/tickets/pending_reasons.py` and arrives over the wire
+// from `GET /tickets/filter-options/`. Read it with `useTicketFilterOptions()`.
+// A second copy here is the bug, not the convenience.

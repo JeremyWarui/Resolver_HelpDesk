@@ -26,6 +26,7 @@ from apps.analytics.services import (
     resolve_date_range,
     technician_load,
 )
+from apps.tickets.services.lifecycle import transition_status
 from apps.tickets.services.scope import scoped_ticket_qs
 from tests import factories
 
@@ -473,3 +474,80 @@ def test_trades_breakdown_does_not_leak_another_campus(
     api.force_authenticate(nrb_hos)
     body = api.get(reverse("analytics:performance-trades")).json()
     assert sum(r["total"] for r in body["breakdown"]) == 1
+
+
+# ── Blocked work ──────────────────────────────────────────────────────────────
+
+
+def _park(ticket, actor, reason="awaiting_materials", note=""):
+    """Drive a ticket to `pending` through the real lifecycle, so the reason is
+    set the only way production can set it."""
+    transition_status(ticket, "assigned", actor=actor)
+    transition_status(ticket, "in_progress", actor=actor)
+    transition_status(
+        ticket,
+        "pending",
+        actor=actor,
+        pending_reason=reason,
+        pending_reason_note=note,
+    )
+    return ticket
+
+
+def test_pending_reason_breaks_down_by_code(
+    nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    _park(nrb_electrical_ticket, nrb_hos, "awaiting_materials")
+    _park(nrb_plumbing_ticket, nrb_hos, "awaiting_approval")
+
+    scoped = scoped_ticket_qs(nrb_hos, "hos")
+    rows = breakdown(scoped, resolve_date_range({}), group_by="pending_reason")
+
+    assert {r["label"] for r in rows} == {"Materials not in store", "Awaiting approval"}
+    assert all(r["total"] == 1 for r in rows)
+
+
+def test_pending_reason_breakdown_ignores_tickets_that_are_not_on_hold(
+    nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """The failure this guards: every running ticket collapsing into one blank
+    slice that dwarfs the real reasons."""
+    _park(nrb_electrical_ticket, nrb_hos, "awaiting_materials")
+
+    scoped = scoped_ticket_qs(nrb_hos, "hos")
+    rows = breakdown(scoped, resolve_date_range({}), group_by="pending_reason")
+
+    assert len(rows) == 1
+    assert rows[0]["label"] == "Materials not in store"
+
+
+def test_pending_reason_breakdown_carries_the_standard_metrics(
+    nrb_hos, nrb_electrical_ticket
+):
+    _park(nrb_electrical_ticket, nrb_hos, "awaiting_contractor")
+    scoped = scoped_ticket_qs(nrb_hos, "hos")
+    row = breakdown(scoped, resolve_date_range({}), group_by="pending_reason")[0]
+
+    for field in (
+        "key",
+        "label",
+        "total",
+        "open_count",
+        "resolved_count",
+        "escalated_count",
+        "resolution_sla_met",
+        "total_resolved_with_due",
+    ):
+        assert field in row, field
+
+
+def test_pending_reason_breakdown_does_not_leak_another_campus(
+    nrb_hos, msa_hos, nrb_electrical_ticket, msa_electrical_ticket
+):
+    _park(nrb_electrical_ticket, nrb_hos, "awaiting_materials")
+    _park(msa_electrical_ticket, msa_hos, "access_unavailable")
+
+    rows = breakdown(
+        scoped_ticket_qs(nrb_hos, "hos"), resolve_date_range({}), "pending_reason"
+    )
+    assert [r["label"] for r in rows] == ["Materials not in store"]

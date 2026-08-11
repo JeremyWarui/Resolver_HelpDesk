@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/shared/ticket/StatusBadge';
 import { updateTicketStatus } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
-import { PENDING_REASON_CHOICES } from '@/constants/tickets';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import type { Ticket } from '@/types';
 
 // Mirror of the backend ALLOWED map (apps/tickets/services/lifecycle.py),
@@ -54,12 +54,20 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
   const [submitting, setSubmitting] = useState(false);
   const invalidate = useTicketInvalidate();
 
+  // The server owns the hold vocabulary; this modal only renders it. Cached and
+  // shared with the tickets-table filters, so opening this costs no extra call.
+  const { pendingReasons } = useTicketFilterOptions(open);
+
   const validNextStatuses = VALID_NEXT[ticket.status] ?? [];
   const needsPendingReason = selectedStatus === 'pending';
+  // `other` says nothing on its own, so the note carries the meaning — the
+  // server refuses it blank and the button should not pretend otherwise.
+  const needsPendingNote = needsPendingReason && pendingReason === 'other';
   const canSubmit =
     selectedStatus !== '' &&
     note.trim().length >= 3 &&
-    (!needsPendingReason || pendingReason !== '');
+    (!needsPendingReason || pendingReason !== '') &&
+    (!needsPendingNote || pendingComment.trim() !== '');
 
   function handleClose() {
     setSelectedStatus('');
@@ -73,10 +81,16 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      const reason = needsPendingReason
-        ? [pendingReason, pendingComment.trim()].filter(Boolean).join(' — ')
-        : note.trim();
-      const updated = await updateTicketStatus(ticket.id, selectedStatus, reason);
+      // The code and the note travel as themselves. They used to be joined
+      // into one string, which read fine on the timeline and left the question
+      // "how much work is stopped, and by what" unanswerable.
+      const updated = await updateTicketStatus(
+        ticket.id,
+        selectedStatus,
+        note.trim(),
+        needsPendingReason ? pendingReason : undefined,
+        needsPendingReason ? pendingComment.trim() : undefined,
+      );
       toast.success(`Ticket status updated to "${STATUS_LABEL[selectedStatus] ?? selectedStatus}"`);
       invalidate(ticket.id);
       handleClose();
@@ -196,7 +210,7 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
                     <SelectValue placeholder="Select a reason" />
                   </SelectTrigger>
                   <SelectContent>
-                    {PENDING_REASON_CHOICES.map((c) => (
+                    {pendingReasons.map((c) => (
                       <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -206,7 +220,11 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
               <div className="space-y-2">
                 <Label htmlFor="su-pending-comment">
                   Additional details
-                  <span className="ml-1 text-xs text-muted-foreground">(optional)</span>
+                  {needsPendingNote ? (
+                    <span className="ml-1 text-destructive">*</span>
+                  ) : (
+                    <span className="ml-1 text-xs text-muted-foreground">(optional)</span>
+                  )}
                 </Label>
                 <Textarea
                   id="su-pending-comment"

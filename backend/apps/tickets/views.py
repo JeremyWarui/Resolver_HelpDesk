@@ -29,6 +29,7 @@ from apps.tickets.serializers import (
     TicketAttachmentSerializer,
     _UserMinSerializer,
 )
+from apps.tickets.pending_reasons import PENDING_REASONS
 from apps.tickets.services.attachments import (
     process_upload,
     MAX_ATTACHMENTS_PER_TICKET,
@@ -161,6 +162,10 @@ class TicketStatusView(APIView):
                 serializer.validated_data["status"],
                 actor=request.user,
                 reason=serializer.validated_data.get("reason", ""),
+                pending_reason=serializer.validated_data.get("pending_reason", ""),
+                pending_reason_note=serializer.validated_data.get(
+                    "pending_reason_note", ""
+                ),
             )
         except TransitionError as e:
             return Response({"detail": str(e)}, status=400)
@@ -595,6 +600,13 @@ class TicketFilterOptionsView(APIView):
                 "sub_sections": sub_sections,
                 "technicians": technicians,
                 "requesters": requesters,
+                # Static, unlike everything above it — but it rides along here
+                # so the client learns the hold vocabulary from the server on a
+                # request it already makes, instead of keeping its own copy.
+                # That copy is what drifted last time.
+                "pending_reasons": [
+                    {"value": code, "label": label} for code, label in PENDING_REASONS
+                ],
             }
         )
 
