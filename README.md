@@ -74,6 +74,10 @@ pytest -q --no-cov
 creates 5 campuses, 5 trades, 28 service items, 37 facilities, 39 users and 45
 demo tickets spread over the previous fortnight.
 
+Sign-in is by email address, and a seeded person's address is their name —
+`peter.kimani@ksg.ac.ke` is the Nairobi HOS. The command prints one login per
+role when it finishes, since the role is no longer readable off the address.
+
 ### Frontend
 
 ```bash

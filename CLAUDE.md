@@ -29,7 +29,10 @@ E2E_PASSWORD='<seed password>' npm run test:e2e   # Playwright; starts both serv
 
 `seed` refuses to run without `SEED_DEFAULT_PASSWORD`. It seeds 5 campuses, 5
 trades, 28 service items, 37 facilities, 6 facility types, 39 users and 45 demo
-tickets over two weeks. Deterministic (`random.Random(20260808)`).
+tickets over two weeks. Deterministic (`random.Random(20260808)`). Seeded
+accounts follow the email rule like any other (`first.last@ksg.ac.ke`, username
+derived from it), so the command ends by printing one login per role — the
+address no longer says who is what.
 
 ## Architecture
 
@@ -84,6 +87,11 @@ out-of-scope id matches nothing rather than reaching past the caller.
 6. Priority is a property of a ticket, not a service. Opens at Low; the HOS sets
    the real one at assignment.
 7. Every ticket carries a location.
+8. The email address is the identity (SOT §3a). Login takes `{email, password}`;
+   username, first and last name are derived from the local part in
+   `apps/accounts/identity.py` and never taken from the client — not by
+   registration, not by admin create, not by the seed. Changing a user's email
+   renames the account; there is no way to set a name on its own.
 
 ## Gotchas
 

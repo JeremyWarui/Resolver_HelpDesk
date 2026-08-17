@@ -7,15 +7,25 @@ import { expect, type Page } from '@playwright/test';
 //   E2E_PASSWORD=<seed password> npm run test:e2e
 //
 // The password is never committed.
+//
+// Sign-in is by email, and a seeded person's address is their name
+// (first.last@ksg.ac.ke) — the role is no longer readable off the login, so
+// each one is labelled here. `manage.py seed` prints the same list when it
+// finishes.
 export const USERS = {
-  admin: 'admin',
-  manager: 'director',
-  /** HOS over Maintenance at Nairobi — assigns and sets priority. */
-  hos: 'hos.nrb',
-  /** Plumbing technician at Nairobi. Pairs with PLUMBING below. */
-  technician: 'tech.nrb.plumb',
-  /** staff.1 is at Nairobi (seed deals requesters round-robin from NRB). */
-  requester: 'staff.1',
+  /** System Administrator. */
+  admin: 'system.administrator@ksg.ac.ke',
+  /** Wanjiku Kamau, the Corporate Director — Administration at every campus. */
+  manager: 'wanjiku.kamau@ksg.ac.ke',
+  /** Peter Kimani, HOS over Maintenance at Nairobi — assigns and sets priority. */
+  hos: 'peter.kimani@ksg.ac.ke',
+  /** Esther Wairimu, plumbing technician at Nairobi. Pairs with PLUMBING below. */
+  technician: 'esther.wairimu@ksg.ac.ke',
+  /** Caroline Wafula, at Nairobi (the seed deals requesters round-robin from NRB). */
+  requester: 'caroline.wafula@ksg.ac.ke',
+  /** Anthony Gitau — Nairobi like the technician above, but Carpentry and
+   *  Painting only. The negative case for pairwise (campus AND trade) scope. */
+  technicianOtherTrade: 'anthony.gitau@ksg.ac.ke',
 } as const;
 
 /** The trade `USERS.technician` is linked to, and one of its seeded items. */
@@ -41,9 +51,9 @@ export function seedPassword(): string {
  * Roles land on different paths — admin on /dashboard, everyone else on their
  * own prefix — so this waits for "not /login" rather than a fixed URL.
  */
-export async function login(page: Page, username: string): Promise<void> {
+export async function login(page: Page, email: string): Promise<void> {
   await page.goto('/login');
-  await page.locator('input[name="username"]').fill(username);
+  await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(seedPassword());
   await page.getByRole('button', { name: 'Sign In' }).click();
   // Login navigates via window.location.assign, i.e. a full page load.

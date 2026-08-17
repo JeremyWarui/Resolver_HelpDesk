@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { updateUser, createUser, createRoleAssignment } from '@/lib/api/users';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import { handleDRFError } from '@/utils/handleDRFError';
+import { deriveIdentity } from '@/utils/identity';
 import type { User, UserRole, CreateUserPayload } from '@/types';
 import {
   ROLES_REQUIRING_SECTION,
@@ -20,10 +21,7 @@ import {
 import { RoleScopeSelectFields } from './RoleScopeSelectFields';
 
 interface UserFormData {
-  first_name: string;
-  last_name: string;
   email: string;
-  username: string;
   password: string;
   role: UserRole;
   campus_id: string;
@@ -33,10 +31,7 @@ interface UserFormData {
 }
 
 const EMPTY_FORM: UserFormData = {
-  first_name: '',
-  last_name: '',
   email: '',
-  username: '',
   password: '',
   role: 'user',
   campus_id: '',
@@ -59,10 +54,7 @@ function buildForm(editing: User | null): UserFormData {
   return editing
     ? {
         ...EMPTY_FORM,
-        first_name: editing.first_name,
-        last_name: editing.last_name,
         email: editing.email,
-        username: editing.username,
         home_campus_id: editing.home_campus_id != null ? String(editing.home_campus_id) : '',
         ...roleScopeFromUser(editing),
       }
@@ -86,14 +78,15 @@ export function UserFormDialog({
 
   const set = (key: keyof UserFormData, val: string) => setForm(f => ({ ...f, [key]: val }));
 
+  const derived = deriveIdentity(form.email);
   const needsSection = ROLES_REQUIRING_SECTION.includes(form.role);
   const needsCampusDept = ROLES_REQUIRING_CAMPUS_DEPT.includes(form.role);
   const needsDepartment = ROLES_REQUIRING_DEPARTMENT.includes(form.role);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.first_name.trim() || !form.last_name.trim() || !form.email.trim()) {
-      toast.error('First name, last name and email are required');
+    if (!form.email.trim()) {
+      toast.error('An email address is required');
       return;
     }
     if (!editing && !form.password.trim()) {
@@ -133,20 +126,15 @@ export function UserFormDialog({
       let userId: number;
       if (editing) {
         await updateUser(editing.id, {
-          first_name: form.first_name.trim(),
-          last_name: form.last_name.trim(),
           email: form.email.trim(),
           campus_id: Number(form.home_campus_id),
         });
         userId = editing.id;
       } else {
         const payload: CreateUserPayload = {
-          first_name: form.first_name.trim(),
-          last_name: form.last_name.trim(),
           email: form.email.trim(),
           password: form.password,
           campus_id: Number(form.home_campus_id),
-          ...(form.username.trim() ? { username: form.username.trim() } : {}),
         };
         const created = await createUser(payload);
         userId = created.id;
@@ -189,19 +177,14 @@ export function UserFormDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>First Name</Label>
-              <Input value={form.first_name} onChange={e => set('first_name', e.target.value)} placeholder="First name" required />
-            </div>
-            <div className="space-y-2">
-              <Label>Last Name</Label>
-              <Input value={form.last_name} onChange={e => set('last_name', e.target.value)} placeholder="Last name" required />
-            </div>
-          </div>
           <div className="space-y-2">
             <Label>Email</Label>
-            <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@example.com" required />
+            <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@ksg.ac.ke" required />
+            <p className="text-xs text-muted-foreground">
+              {derived
+                ? <>They sign in with this address, appear as <span className="font-medium text-foreground">{derived.name}</span>, and take the username <span className="font-mono">{derived.username}</span>.</>
+                : <>Name and username come from the part before the @ — jeremy.mwangi@ksg.ac.ke becomes Jeremy Mwangi. Editing the address renames the account.</>}
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Home Campus</Label>
@@ -216,15 +199,9 @@ export function UserFormDialog({
             <p className="text-xs text-muted-foreground">Where this person is based — used to route tickets they raise themselves, independent of their role.</p>
           </div>
           {!editing && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Username <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Input value={form.username} onChange={e => set('username', e.target.value)} placeholder="e.g. john.doe" />
-              </div>
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <PasswordInput value={form.password} onChange={e => set('password', e.target.value)} placeholder="Minimum 8 characters" required />
-              </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <PasswordInput value={form.password} onChange={e => set('password', e.target.value)} placeholder="Minimum 8 characters" required />
             </div>
           )}
 

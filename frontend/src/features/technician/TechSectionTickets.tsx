@@ -25,10 +25,14 @@ const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTe
     section_type_name: s.section_type_name,
   } as unknown as Section));
 
+  // No assigned_to and no trade pin: the server's `scoped_ticket_qs` already
+  // returns exactly this technician's (campus, trade) pairs, so the claimable
+  // pool needs no client-side narrowing. `fetchSectionTickets: true` used to be
+  // passed here and was never read by the hook — it read as the thing keeping
+  // other trades out, which nothing on this page was ever doing.
   const table = useTicketTable({
     role: 'technician',
     currentUserId: currentTechnicianId,
-    fetchSectionTickets: true,
     defaultStatusFilter: 'all',
     defaultPageSize: 20,
     externalSections,
@@ -60,14 +64,14 @@ const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTe
       </div>
 
       <StatCardsRenderer
-        statDefinitions={STAT_VIEWS.section_head_personal}
+        statDefinitions={STAT_VIEWS.technician_section}
         data={(sectional ?? {}) as Record<string, unknown>}
         loading={loading}
       />
 
       <DataTable
         variant="admin"
-        title="Section Tickets"
+        title="Section Tickets — your trades"
         columns={columns}
         data={table.tableData}
         {...table.commonTableProps}

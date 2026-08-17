@@ -75,6 +75,30 @@ def test_the_seed_produces_data_a_dashboard_can_be_judged_against(seeded):
     assert out_of_order == [], f"closed before resolved: {out_of_order[:5]}"
 
 
+def test_every_seeded_account_obeys_the_email_rule(seeded):
+    """Demo accounts must be indistinguishable from registered ones (SOT §3a).
+
+    The seed used to invent role-coded usernames (`hos.nrb`) and hang an
+    unrelated name on them — a second identity rule the running system cannot
+    reproduce, so the demo contradicted the product it was demonstrating.
+    """
+    from django.contrib.auth import get_user_model
+
+    from apps.accounts.identity import identity_from_email
+
+    wrong = []
+    for user in get_user_model().objects.all():
+        _, first, last = identity_from_email(user.email, exclude_pk=user.pk)
+        expected_username = user.email.split("@")[0].lower()
+        if (user.username, user.first_name, user.last_name) != (
+            expected_username,
+            first,
+            last,
+        ):
+            wrong.append(user.email)
+    assert wrong == [], f"seeded accounts not derived from their email: {wrong[:5]}"
+
+
 def test_the_seed_refuses_to_invent_a_password(monkeypatch):
     """Otherwise a deployment quietly acquires a set of accounts whose password
     is in source control."""

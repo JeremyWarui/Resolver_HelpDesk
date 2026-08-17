@@ -333,6 +333,16 @@ export const SECTION_HEAD_PERSONAL_STATS = statusOverviewStats(
   'All tickets in your section'
 );
 
+// The technician's queue-pool cards. Same shape and same server aggregate as
+// the HOS row above, but it must not borrow the HOS's label: a technician's
+// scope is pairwise (campus AND trade), so these count their trades within the
+// section, never the whole section. Esther sees 20 plumbing tickets while
+// NRB-Maintenance holds 48 — "All tickets in your section" claimed the 48.
+export const TECHNICIAN_SECTION_STATS = statusOverviewStats(
+  'tech-section',
+  'In your trades at this campus'
+);
+
 // ============================================
 // HOD STATS — DEPARTMENT DASHBOARD (One Branch)
 // Used by: HOD (Head of Department - manages one dept in one branch)
@@ -604,6 +614,7 @@ export const USER_PERSONAL_STATS: StatDefinition<UserPersonalData>[] = [
 
 export type StatCardView =
   | 'section_overview' // Technician + Section Head (viewing section stats)
+  | 'technician_section' // Technician (the claimable pool: their trades here)
   | 'technician_personal' // Technician (viewing assigned to me)
   | 'section_head_personal' // Section Head (personal dashboard)
   | 'hod_department' // HOD (one department in one branch)
@@ -613,6 +624,7 @@ export type StatCardView =
 
 export const STAT_VIEWS: Record<StatCardView, AnyStatDefinition[]> = {
   section_overview: SECTION_OVERVIEW_STATS,
+  technician_section: TECHNICIAN_SECTION_STATS,
   technician_personal: TECHNICIAN_PERSONAL_STATS,
   section_head_personal: SECTION_HEAD_PERSONAL_STATS,
   hod_department: HOD_DEPARTMENT_STATS,

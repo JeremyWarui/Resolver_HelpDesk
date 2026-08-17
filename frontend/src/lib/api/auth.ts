@@ -48,15 +48,17 @@ export interface LoginResponse {
 }
 
 export interface LoginCredentials {
-  username: string;
+  /** The email address is the credential — usernames are not accepted. */
+  email: string;
   password: string;
   remember_me?: boolean;
 }
 
+/** Username, first name and last name are all derived server-side from the
+ *  email's local part (jeremy.mwangi@ksg.ac.ke → jeremy.mwangi / Jeremy
+ *  Mwangi), so there is nothing else for the form to collect. */
 export interface RegisterPayload {
   email: string;
-  first_name: string;
-  last_name: string;
   password: string;
   campus_id: number;
 }

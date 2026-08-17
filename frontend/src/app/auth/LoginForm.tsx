@@ -19,7 +19,8 @@ interface LoginFormProps {
 }
 
 const loginSchema = z.object({
-  username: z.string().min(1, { message: 'Username is required' }),
+  email: z.string().min(1, { message: 'Email is required' })
+    .email({ message: 'Enter a valid email address' }),
   password: z.string().min(1, { message: 'Password is required' })
 });
 
@@ -48,13 +49,13 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: '', password: '' }
+    defaultValues: { email: '', password: '' }
   });
 
   const handleLogin = async (values: z.infer<typeof loginSchema>) => {
     try {
       const result = await login({
-        username: values.username,
+        email: values.email.trim(),
         password: values.password,
         remember_me: false
       });
@@ -149,17 +150,19 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
                 <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-6">
                   <FormField
                     control={loginForm.control}
-                    name="username"
+                    name="email"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-sm font-medium text-gray-700">
-                          Username
+                          Email Address
                         </FormLabel>
                         <FormControl>
                           <div className="relative">
                             <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                             <Input
-                              placeholder="Enter your username"
+                              type="email"
+                              autoComplete="email"
+                              placeholder="you@ksg.ac.ke"
                               className="pl-10 h-11"
                               {...field}
                               disabled={isLoading}

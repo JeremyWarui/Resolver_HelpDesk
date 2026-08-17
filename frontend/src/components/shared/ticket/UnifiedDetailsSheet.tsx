@@ -143,10 +143,11 @@ export function UnifiedDetailsSheet({
     setIsUpdating(true);
     try {
       if (entityType === 'technician') {
-        const filteredSections = (editedValues.sections || []).filter((id) => id && id > 0);
+        // Only the email is writable here: name and username follow it, and
+        // section membership is a role assignment, not a user field — the
+        // server has never read `sections` off this endpoint.
         await updateUser(entity.id, {
           email: asString(editedValues.email),
-          sections: filteredSections,
         });
       } else if (entityType === 'section') {
         await sectionsService.updateSection(entity.id, {

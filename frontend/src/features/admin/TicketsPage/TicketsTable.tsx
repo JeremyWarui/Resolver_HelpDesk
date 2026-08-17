@@ -4,6 +4,7 @@ import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import {
+  createStatusFilter,
   createTradeFilter,
   createTechnicianFilter,
   createUserFilter,
@@ -46,6 +47,28 @@ function AllTicketsTable({
     table.setPageIndex(0);
   };
 
+  /**
+   * The dropdown counterpart to the pills above.
+   *
+   * The pills are a shortlist — they cover four of the six statuses, so
+   * Assigned, Pending and Closed were unreachable from this table even though
+   * the server has always accepted them. Both controls drive the same
+   * `statusFilter`, so they are kept in step rather than left to disagree:
+   *
+   *  - `activeFilter` is set to the chosen status, so a pill that represents it
+   *    lights up and one that doesn't (assigned/pending/closed) leaves the row
+   *    unlit — which is the honest reading of "the dropdown is driving".
+   *  - Overdue is cleared. It is a cross-status flag, not a status, and leaving
+   *    it set would silently intersect with the choice and draw an empty table
+   *    with nothing on screen to explain why.
+   */
+  const handleStatusSelect = (value: string) => {
+    setActiveFilter(value);
+    table.setOverdueFilter(false);
+    table.setStatusFilter(value);
+    table.setPageIndex(0);
+  };
+
   // Scoped filter options (sections / technicians / requesters that appear in
   // the caller's tickets). One server-scoped source serves every role.
   const { technicians, requesters } = useTicketFilterOptions();
@@ -60,6 +83,12 @@ function AllTicketsTable({
   // section type means one option. The trade filter is useful to all of them,
   // HOS included, so there is no role exclusion here.
   const filterOptions: FilterOption[] = [
+    createStatusFilter(
+      table.statusFilter,
+      handleStatusSelect,
+      table.allStatuses,
+      table.setPageIndex,
+    ),
     createTradeFilter(
       table.tradeFilter ?? 'all',
       (v) => table.setTradeFilter(v == null ? null : Number(v)),

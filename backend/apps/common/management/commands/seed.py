@@ -22,6 +22,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.identity import local_part
 from apps.accounts.models import RoleAssignment, UserProfile
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import TYPE_SPECS
@@ -341,7 +342,25 @@ class Command(BaseCommand):
                 self._seed_demo_tickets(sections, sub_sections, requesters, priorities)
                 self._run_escalations()
 
+        self._print_demo_logins()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _print_demo_logins(self):
+        """One account per role, since sign-in is by email and the addresses are
+        people's names — `hos.nrb` no longer tells you who the Nairobi HOS is."""
+        roster = self._roster or []
+        self.stdout.write("")
+        self.stdout.write("  Demo logins (password: $SEED_DEFAULT_PASSWORD)")
+        for role in ("admin", "manager", "hod", "hos", "technician", "user"):
+            rows = [row for row in roster if row[0] == role]
+            if not rows:
+                continue
+            # Prefer Nairobi: it is the campus every other demo path starts from.
+            row = next((r for r in rows if r[1] == "NRB"), rows[0])
+            self.stdout.write(f"    {role:<11}{row[1]:<5}{row[2]}")
+        self.stdout.write(
+            "    Every account is first.last@ksg.ac.ke — the Users page lists the rest."
+        )
 
     def _run_escalations(self):
         """Let the escalation engine act on the demo data it just inherited.
@@ -470,13 +489,39 @@ class Command(BaseCommand):
         self._phone_counter += 1
         return f"+2547{self._phone_counter:08d}"
 
-    def _make_user(self, username, first, last, password, campus=None):
+    _usernames = None
+
+    def _make_user(self, first, last, password, campus=None):
+        """Create a person from their name the way the app creates them from an
+        email: address first (`first.last@ksg.ac.ke`), username derived back out
+        of it (SOT §3a).
+
+        A username invented here — `hos.nrb`, `tech.nrb.plumb` — was a second
+        identity rule the running system cannot reproduce: registering that
+        address would have produced the name "Hos Nrb". Seeded accounts are now
+        indistinguishable from registered ones.
+
+        Two seeded people sharing a name would share an address and therefore an
+        account, silently collapsing two roles into one, so that is a hard error
+        rather than a `get_or_create` that quietly returns the first of them.
+        """
+        email = f"{first}.{last}@ksg.ac.ke".lower()
+        username = local_part(email)
+        if self._usernames is None:
+            self._usernames = set()
+        if username in self._usernames:
+            raise CommandError(
+                f"Two seeded people are called {first} {last}: both would be "
+                f"{email}, i.e. one account. Give one of them a different name."
+            )
+        self._usernames.add(username)
+
         user, created = User.objects.get_or_create(
             username=username,
             defaults={
                 "first_name": first,
                 "last_name": last,
-                "email": f"{username}@ksg.ac.ke",
+                "email": email,
                 "phone_number": self._next_phone(),
             },
         )
@@ -486,11 +531,21 @@ class Command(BaseCommand):
         UserProfile.objects.get_or_create(user=user, defaults={"campus": campus})
         return user
 
+    _roster = None
+
     def _set_role(self, user, role, **scope):
         RoleAssignment.objects.get_or_create(user=user, defaults={"role": role, **scope})
+        # Kept so the run can end by printing one login per role: the addresses
+        # are no longer guessable from the role (that was the point), and a demo
+        # nobody can sign into is not a demo.
+        if self._roster is None:
+            self._roster = []
+        profile = getattr(user, "profile", None)
+        campus = profile.campus if profile and profile.campus_id else None
+        self._roster.append((role, campus.code if campus else "-", user.email))
 
     def _seed_admin(self, password):
-        user = self._make_user("admin", "System", "Administrator", password)
+        user = self._make_user("System", "Administrator", password)
         if not user.is_staff:
             user.is_staff = True
             user.is_superuser = True
@@ -500,7 +555,7 @@ class Command(BaseCommand):
 
     def _seed_director(self, department, password):
         """The Corporate HOD — manager role, Administration across all campuses."""
-        user = self._make_user("director", "Wanjiku", "Kamau", password)
+        user = self._make_user("Wanjiku", "Kamau", password)
         self._set_role(user, "manager", department=department)
         if department.manager_user_id is None:
             department.manager_user = user
@@ -513,17 +568,13 @@ class Command(BaseCommand):
             section = sections[campus_code]
             campus_department = section.campus_department
 
-            hod = self._make_user(
-                f"hod.{campus_code.lower()}", hod_first, hod_last, password, campus
-            )
+            hod = self._make_user(hod_first, hod_last, password, campus)
             self._set_role(hod, "hod", campus_department=campus_department)
             if campus_department.head_of_department_id is None:
                 campus_department.head_of_department = hod
                 campus_department.save(update_fields=["head_of_department"])
 
-            hos = self._make_user(
-                f"hos.{campus_code.lower()}", hos_first, hos_last, password, campus
-            )
+            hos = self._make_user(hos_first, hos_last, password, campus)
             self._set_role(hos, "hos", section=section)
             if section.hos_id is None:
                 section.hos = hos
@@ -547,9 +598,8 @@ class Command(BaseCommand):
                 except StopIteration:
                     names = iter(TECHNICIAN_NAMES)
                     first, last = next(names)
-                username = f"tech.{campus_code.lower()}.{trade_code.lower()}"
                 user = self._make_user(
-                    username, first, last, password, section.campus_department.campus
+                    first, last, password, section.campus_department.campus
                 )
                 self._set_role(user, "technician", section=section)
                 SectionTechnician.objects.get_or_create(
@@ -563,14 +613,14 @@ class Command(BaseCommand):
         # report showed every technician at 100% of one craft, which is the one
         # shape it exists to disprove.
         multi_trade = [
-            ("NRB", "tech.nrb.finish", "Anthony", "Gitau", ("CARP", "PAINT")),
-            ("MSA", "tech.msa.multi", "Grace", "Achieng", ("PLUMB", "ELEC")),
-            ("EMB", "tech.emb.multi", "Daniel", "Kiptoo", ("MAS", "PLUMB", "PAINT")),
+            ("NRB", "Anthony", "Gitau", ("CARP", "PAINT")),
+            ("MSA", "Miriam", "Odongo", ("PLUMB", "ELEC")),
+            ("EMB", "Daniel", "Kiptoo", ("MAS", "PLUMB", "PAINT")),
         ]
-        for campus_code, username, first, last, trade_codes in multi_trade:
+        for campus_code, first, last, trade_codes in multi_trade:
             section = sections[campus_code]
             user = self._make_user(
-                username, first, last, password, section.campus_department.campus
+                first, last, password, section.campus_department.campus
             )
             self._set_role(user, "technician", section=section)
             for trade_code in trade_codes:
@@ -587,7 +637,7 @@ class Command(BaseCommand):
         for index, (first, last) in enumerate(REQUESTER_NAMES):
             campus_code = codes[index % len(codes)]
             user = self._make_user(
-                f"staff.{index + 1}", first, last, password, campuses[campus_code]
+                first, last, password, campuses[campus_code]
             )
             self._set_role(user, "user")
             requesters.append(user)

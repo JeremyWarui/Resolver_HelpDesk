@@ -13,7 +13,6 @@ export interface UseTicketTableConfig {
   currentUserId?: number;
   defaultStatusFilter?: string;
   defaultPageSize?: number;
-  fetchSectionTickets?: boolean;
   skipUntilUserId?: boolean;
   /** Server params pinned for the page's purpose (e.g. assigned_to on the
    *  Assigned Tickets page) — applied last, not clearable via filter UI. */

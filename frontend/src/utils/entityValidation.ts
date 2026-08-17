@@ -18,8 +18,8 @@ export const createFacilitySchema = z.object({
 });
 
 export const createTechnicianSchema = z.object({
-  first_name: z.string().min(1, { message: 'First name is required' }),
-  last_name: z.string().min(1, { message: 'Last name is required' }),
+  // No name fields: username and name are derived from the email server-side
+  // (backend/apps/accounts/identity.py).
   email: z.string().email({ message: 'Valid email required' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
   section_id: z.number({ message: 'A section is required' }),

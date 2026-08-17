@@ -1,7 +1,7 @@
 """The audit log is read by people asking "who did this".
 
-`tech.nrb.plumb` does not answer that without a lookup, so the log reports the
-actor's name and carries the username alongside as the stable handle.
+A handle like `jkamau` does not answer that without a lookup, so the log reports
+the actor's name and carries the username alongside as the stable handle.
 """
 
 import pytest

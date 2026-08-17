@@ -148,9 +148,13 @@ function DateChip({ label }: { label: string }) {
 }
 
 // Events whose `note` (TicketLog.reason) is a human-entered message worth
-// rendering: progress notes, pending reasons, resolution notes (QA D1/D2).
+// rendering: progress notes, pending reasons, resolution notes (QA D1/D2), and
+// the HOS's handover note on assignment — which the modal had always collected
+// and thrown away, so the one instruction attached to the job never reached the
+// person doing it.
 const NOTE_EVENT_TYPES: TimelineEventType[] = [
   'status_changed', 'pending', 'resolved', 'closed', 'reopened',
+  'assigned', 'reassigned',
 ];
 
 function EventRow({

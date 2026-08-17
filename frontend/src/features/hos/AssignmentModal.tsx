@@ -77,6 +77,7 @@ export function AssignmentModal({
         ticket.id,
         selectedTechId,
         priorityId ?? undefined,
+        note,
       );
       const tech = technicians.find((t) => t.id === selectedTechId);
       const displayName = tech

@@ -438,3 +438,77 @@ def test_the_flag_costs_no_query_per_row(
         f"{len(first)} queries for 1 ticket, {len(second)} for 6 — the flag is "
         "being evaluated per row"
     )
+
+
+# ── The HOS's handover note ───────────────────────────────────────────────────
+
+
+def _assign(api, ticket, technician, **extra):
+    from django.urls import reverse
+
+    return api.post(
+        reverse("ticket-assign", args=[ticket.pk]),
+        {"assigned_to": technician.pk, **extra},
+        format="json",
+    )
+
+
+def test_the_assignment_note_reaches_the_technician(
+    api, nrb_hos, nrb_electrician, nrb_electrical_ticket
+):
+    """The note the HOS types when handing the job over must survive the round
+    trip. The modal collected it and `assignTicket` never sent it, so the one
+    instruction attached to a job — which cupboard, which key, third failure
+    this month — was discarded between the two people who needed it.
+
+    It lands on the `assigned` log row rather than on the Ticket: it describes
+    the handover, not the ticket's own state (invariant 2).
+    """
+    api.force_authenticate(nrb_hos)
+    note = "Stopcock is behind the cupboard in 204 — carry the long key."
+    assert _assign(api, nrb_electrical_ticket, nrb_electrician, note=note).status_code == 200
+
+    log = TicketLog.objects.get(ticket=nrb_electrical_ticket, event_type="assigned")
+    assert log.reason == note
+
+
+def test_assignment_without_a_note_records_nothing(
+    api, nrb_hos, nrb_electrician, nrb_electrical_ticket
+):
+    """The note is optional and blank must leave no trace — an empty string in
+    the audit log renders as an empty quote block under the event."""
+    api.force_authenticate(nrb_hos)
+    assert _assign(api, nrb_electrical_ticket, nrb_electrician).status_code == 200
+    assert (
+        TicketLog.objects.get(
+            ticket=nrb_electrical_ticket, event_type="assigned"
+        ).reason
+        == ""
+    )
+
+
+def test_reassignment_keeps_the_earlier_note(
+    api, nrb_hos, nrb_electrician, nrb_electrical_ticket, nrb_section, electrical
+):
+    """Each handover carries its own note. Storing it on the Ticket would let
+    the second assignment overwrite what the first one told the first person,
+    erasing the record of why they were sent."""
+    from tests import factories
+
+    second = factories.make_technician("second_elec", nrb_section, [electrical])
+    api.force_authenticate(nrb_hos)
+    _assign(api, nrb_electrical_ticket, nrb_electrician, note="first note")
+    _assign(api, nrb_electrical_ticket, second, note="second note")
+
+    assert (
+        TicketLog.objects.get(
+            ticket=nrb_electrical_ticket, event_type="assigned"
+        ).reason
+        == "first note"
+    )
+    assert (
+        TicketLog.objects.get(
+            ticket=nrb_electrical_ticket, event_type="reassigned"
+        ).reason
+        == "second note"
+    )

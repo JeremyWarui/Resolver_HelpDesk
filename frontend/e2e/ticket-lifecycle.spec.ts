@@ -91,7 +91,7 @@ test('a requester raises a plumbing ticket with an office-block location', async
 
 test('the ticket reaches the plumbing technician at that campus', async ({ page }) => {
   // Scope is pairwise (campus AND trade), so this asserts more than "a list
-  // rendered": tech.nrb.plumb is linked to (Nairobi, Plumbing) and the ticket
+  // rendered": Esther Wairimu is linked to (Nairobi, Plumbing) and the ticket
   // routed to exactly that pair.
   await login(page, USERS.technician);
   await openTicket(page);
@@ -145,13 +145,13 @@ test('the assignee resolves it, and the requester sees it resolved', async ({ pa
 });
 
 test('a technician in the same section but a different trade cannot see it', async ({ page }) => {
-  // The sharp negative. tech.nrb.finish is at Nairobi like the assignee, but
+  // The sharp negative. Anthony Gitau is at Nairobi like the assignee, but
   // linked to Carpentry and Painting — never Plumbing. Scope is pairwise
   // (campus AND trade) via Exists on SectionTechnician; the plausible
   // regression is scoping by campus alone, and this is the case that would
   // catch it from the UI. `scoped_ticket_qs` fails closed, so an unscoped
   // ticket is not merely hidden from the table — it is not in the response.
-  await login(page, 'tech.nrb.finish');
+  await login(page, USERS.technicianOtherTrade);
   await searchBox(page).fill(ticketNo);
   await expect(page.getByText(ticketNo, { exact: false })).toHaveCount(0);
 });

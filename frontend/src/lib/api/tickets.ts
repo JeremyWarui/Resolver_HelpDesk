@@ -120,14 +120,23 @@ export async function deleteTicket(id: number): Promise<void> {
  *  urgency. The HOS has read it and knows the section's workload, so they set
  *  the real priority as they hand it out. Omit it to leave the ticket as it is
  *  — reassignment is not necessarily a re-judgement. */
+/**
+ * `note` is the HOS's handover message to the technician. It is stored on the
+ * `assigned` log row, so it appears in the timeline rather than overwriting
+ * anything on the ticket. Blank is omitted rather than sent as "" — an empty
+ * note should leave no trace in the audit log at all.
+ */
 export async function assignTicket(
   id: number,
   technicianId: number,
-  priorityId?: number
+  priorityId?: number,
+  note?: string
 ): Promise<Ticket> {
+  const trimmed = note?.trim();
   const { data } = await apiClient.post<Ticket>(`/tickets/${id}/assign/`, {
     assigned_to: technicianId,
     ...(priorityId != null ? { priority: priorityId } : {}),
+    ...(trimmed ? { note: trimmed } : {}),
   });
   return data;
 }

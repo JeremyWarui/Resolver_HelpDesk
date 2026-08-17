@@ -31,15 +31,18 @@ export interface User {
   home_campus_name: string | null;
 }
 
+/** Username and name are derived from the email server-side
+ *  (backend/apps/accounts/identity.py) — there is nothing else to send. */
 export interface CreateUserPayload {
-  first_name: string;
-  last_name: string;
   email: string;
   password: string;
   campus_id: number;
 }
 
-export interface UpdateUserPayload extends Partial<User> {
+/** Editing the email re-derives username, first and last name with it; neither
+ *  can be set on its own, which is why they are absent here. */
+export interface UpdateUserPayload {
+  email?: string;
   campus_id?: number | null;
 }
 

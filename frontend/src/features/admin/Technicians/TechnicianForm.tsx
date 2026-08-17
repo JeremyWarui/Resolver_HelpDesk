@@ -23,7 +23,8 @@ import { sectionsService } from '@/lib/api/organizations';
 import { getSubSections } from '@/lib/api/catalogue';
 import { createRoleAssignment, getRoleAssignments } from '@/lib/api/users';
 import { handleDRFError } from '@/utils/handleDRFError';
-import type { Technician, CreateUserPayload, User } from '@/types';
+import { deriveIdentity } from '@/utils/identity';
+import type { Technician, CreateUserPayload } from '@/types';
 
 interface TechnicianFormProps {
   isOpen: boolean;
@@ -102,8 +103,6 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
   const form = useForm<CreateTechnicianFormValues>({
     resolver: zodResolver(createTechnicianSchema),
     defaultValues: {
-      first_name: '',
-      last_name: '',
       email: '',
       password: '',
       sub_section_ids: [],
@@ -161,8 +160,6 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
         setCampusFilter(technician.primary_campus_id ? String(technician.primary_campus_id) : '__all__');
         setDepartmentFilter(technician.primary_department_id ? String(technician.primary_department_id) : '__all__');
         form.reset({
-          first_name: technician.first_name || '',
-          last_name: technician.last_name || '',
           email: technician.email || '',
           password: '',
           // section_id and sub_section_ids arrive from getRoleAssignments below.
@@ -174,8 +171,6 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
         setDepartmentFilter('__all__');
         setDepartmentSections([]);
         form.reset({
-          first_name: '',
-          last_name: '',
           email: '',
           password: '',
           sub_section_ids: [],
@@ -199,15 +194,9 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
         // retry the role assignment for that account instead of duplicating it.
         userId = pendingRoleUserId;
       } else if (technician) {
-        const updatePayload: Partial<User> & { password?: string } = {
-          first_name: values.first_name,
-          last_name: values.last_name,
-          email: values.email,
-        };
-        if (values.password) {
-          updatePayload.password = values.password;
-        }
-        const res = await updateUser(technician.id, updatePayload);
+        // Email only — name and username follow it. (Password is not settable
+        // through this endpoint; it never was.)
+        const res = await updateUser(technician.id, { email: values.email });
         if (!res) {
           toast.error('Failed to update technician');
           setIsSubmitting(false);
@@ -221,8 +210,6 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
           return;
         }
         const createPayload: CreateUserPayload = {
-          first_name: values.first_name,
-          last_name: values.last_name,
           email: values.email,
           password: values.password,
           campus_id: campusId,
@@ -299,35 +286,23 @@ const TechnicianForm = ({ isOpen, onOpenChange, onSuccess, technician = null }: 
       submitLabel={technician ? 'Save Changes' : 'Create Technician'}
       size="lg"
     >
-      <FormField control={form.control} name='first_name' render={({ field }) => (
-        <FormItem>
-          <FormLabel>First name</FormLabel>
-          <FormControl>
-            <Input {...field} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-
-      <FormField control={form.control} name='last_name' render={({ field }) => (
-        <FormItem>
-          <FormLabel>Last name</FormLabel>
-          <FormControl>
-            <Input {...field} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-
-      <FormField control={form.control} name='email' render={({ field }) => (
-        <FormItem>
-          <FormLabel>Email</FormLabel>
-          <FormControl>
-            <Input {...field} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
+      <FormField control={form.control} name='email' render={({ field }) => {
+        const derived = deriveIdentity(field.value ?? '');
+        return (
+          <FormItem>
+            <FormLabel>Email</FormLabel>
+            <FormControl>
+              <Input type='email' placeholder='you@ksg.ac.ke' {...field} />
+            </FormControl>
+            <p className='text-xs text-muted-foreground'>
+              {derived
+                ? <>Appears as <span className='font-medium text-foreground'>{derived.name}</span>, username <span className='font-mono'>{derived.username}</span>.</>
+                : <>Name and username come from the part before the @.</>}
+            </p>
+            <FormMessage />
+          </FormItem>
+        );
+      }} />
 
       <FormField control={form.control} name='password' render={({ field }) => (
         <FormItem>

@@ -384,6 +384,15 @@ class TicketAssignSerializer(serializers.Serializer):
     priority = serializers.PrimaryKeyRelatedField(
         queryset=Priority.objects.all(), required=False
     )
+    # Handing the job over is the one moment the HOS has context the ticket
+    # does not — which cupboard the stopcock is behind, that this is the third
+    # failure this month. It lands on the `assigned` log row's `reason`, not on
+    # the Ticket: it describes the handover, not the ticket's own state
+    # (invariant 2), and a reassignment must not overwrite what the last one
+    # said.
+    note = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True
+    )
 
     def validate(self, attrs):
         ticket = self.context["ticket"]

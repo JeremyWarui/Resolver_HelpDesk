@@ -169,8 +169,14 @@ class UserRoleAssignmentView(APIView):
         vd.pop("sub_section_ids", None)
 
         with transaction.atomic():
+            # `of=("self",)` locks the RoleAssignment row only. All three
+            # select_related FKs are nullable, so they join LEFT OUTER, and
+            # PostgreSQL refuses `FOR UPDATE` against the nullable side of an
+            # outer join — a bare select_for_update() here made every role
+            # assignment 500. The row being replaced is the only one that needs
+            # locking; the scope objects are read, not written.
             old_ra = (
-                RoleAssignment.objects.select_for_update()
+                RoleAssignment.objects.select_for_update(of=("self",))
                 .filter(user=target)
                 .select_related("section", "campus_department", "department")
                 .first()
@@ -204,34 +210,52 @@ class UserRoleAssignmentView(APIView):
 
 import logging
 from django.contrib.auth import authenticate, get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken as _RefreshToken
+from apps.accounts.identity import identity_from_email
 from apps.accounts.jwt_utils import ensure_floor_assignment
 
 _logger = logging.getLogger(__name__)
 _User = get_user_model()
 
 
+def _authenticate_by_email(email, password):
+    """Authenticate on the email address, which is what people sign in with.
+
+    Django authenticates on the username, so the email has to be resolved to an
+    account first. Email is not unique at the database level — a legacy row or a
+    `createsuperuser` left blank can collide — so every match is tried instead of
+    assuming there is exactly one.
+    """
+    for candidate in _User.objects.filter(email__iexact=email).order_by("pk"):
+        user = authenticate(username=candidate.username, password=password)
+        if user:
+            return user
+    return None
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_login(request):
-    """POST /auth/login/ — password login, returns JWT access token + sets refresh cookie."""
-    username = request.data.get("username")
-    password = request.data.get("password")
+    """POST /auth/login/ — email + password, returns JWT access token + sets refresh cookie."""
+    email = (request.data.get("email") or "").strip()
+    password = request.data.get("password") or ""
 
-    if not username or not password:
+    if not email or not password:
         return Response(
             {
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "username and password are required",
+                    "message": "email and password are required",
                 }
             },
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-    user = authenticate(username=username, password=password)
+    user = _authenticate_by_email(email, password)
     if not user:
         return Response(
             {"error": {"code": "UNAUTHORIZED", "message": "Invalid credentials"}},
@@ -267,30 +291,40 @@ def public_campus_list(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_register(request):
-    """POST /auth/register/ — create account, auto-assign user floor role, return JWT."""
-    username = request.data.get("username", "").strip()
-    email = request.data.get("email", "").strip()
-    password = request.data.get("password", "")
-    first_name = request.data.get("first_name", "").strip()
-    last_name = request.data.get("last_name", "").strip()
+    """POST /auth/register/ — create account from the email address, return JWT.
+
+    The email is the whole identity: `jeremy.mwangi@ksg.ac.ke` becomes username
+    `jeremy.mwangi`, first name Jeremy, last name Mwangi. Names are never taken
+    from the client, so an account's display name and its login can't drift
+    apart.
+    """
+    email = (request.data.get("email") or "").strip()
+    password = request.data.get("password") or ""
     campus_id = request.data.get("campus_id")
 
-    if not first_name or not last_name or not email or not password or not campus_id:
+    if not email or not password or not campus_id:
         return Response(
             {
                 "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "first_name, last_name, email, password and campus_id are required",
+                    "message": "email, password and campus_id are required",
                 }
             },
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
-    if username and _User.objects.filter(username=username).exists():
+    try:
+        validate_email(email)
+    except DjangoValidationError:
         return Response(
-            {"error": {"code": "CONFLICT", "message": "Username already taken"}},
-            status=status.HTTP_409_CONFLICT,
+            {
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Enter a valid email address",
+                }
+            },
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
-    if _User.objects.filter(email=email).exists():
+    if _User.objects.filter(email__iexact=email).exists():
         return Response(
             {"error": {"code": "CONFLICT", "message": "Email already registered"}},
             status=status.HTTP_409_CONFLICT,
@@ -304,13 +338,18 @@ def jwt_register(request):
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-    if not username:
-        base = f"{first_name.lower()}.{last_name.lower()}"
-        username = base
-        n = 1
-        while _User.objects.filter(username=username).exists():
-            username = f"{base}{n}"
-            n += 1
+    username, first_name, last_name = identity_from_email(email)
+    if not first_name:
+        return Response(
+            {
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Your email must have a name before the '@' — "
+                    "e.g. jeremy.mwangi@ksg.ac.ke",
+                }
+            },
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
 
     user = _User.objects.create_user(
         username=username,

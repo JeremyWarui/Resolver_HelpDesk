@@ -316,25 +316,21 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.Serializer):
-    """Write serializer for admin user creation."""
+    """Write serializer for admin user creation.
 
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
+    Username and name are derived from the email (`identity_from_email`) and
+    cannot be supplied: an override here would be a second answer to who this
+    person is, which is exactly what deriving from the address removes. Admin
+    creation and self-registration therefore produce identical accounts.
+    """
+
     email = serializers.EmailField()
-    username = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True)
     campus_id = serializers.IntegerField()
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
-        return value
-
-    def validate_username(self, value):
-        if value and User.objects.filter(username=value).exists():
-            raise serializers.ValidationError(
-                "A user with this username already exists."
-            )
         return value
 
     def validate_campus_id(self, value):
@@ -345,16 +341,9 @@ class UserCreateSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
-        first = validated_data["first_name"].strip()
-        last = validated_data["last_name"].strip()
-        username = (validated_data.get("username") or "").strip()
-        if not username:
-            base = f"{first.lower()}.{last.lower()}"
-            username = base
-            n = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{base}{n}"
-                n += 1
+        from apps.accounts.identity import identity_from_email
+
+        username, first, last = identity_from_email(validated_data["email"])
 
         user = User.objects.create_user(
             username=username,
@@ -369,15 +358,22 @@ class UserCreateSerializer(serializers.Serializer):
 
 
 class UserUpdateSerializer(serializers.Serializer):
-    """Write serializer for admin user update."""
+    """Write serializer for admin user update.
 
-    first_name = serializers.CharField(required=False)
-    last_name = serializers.CharField(required=False)
+    Name and username are not editable — they follow the email. Changing the
+    address re-derives all three, so someone who moves from
+    `j.mwangi@ksg.ac.ke` to `jeremy.mwangi@ksg.ac.ke` is renamed with it rather
+    than left displaying a name their address no longer supports.
+    """
+
     email = serializers.EmailField(required=False)
     campus_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_email(self, value):
-        qs = User.objects.filter(email=value)
+        # Case-insensitive: the email is the login credential now, so two
+        # accounts differing only in case would be two ways to sign in as
+        # different people.
+        qs = User.objects.filter(email__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
@@ -392,11 +388,20 @@ class UserUpdateSerializer(serializers.Serializer):
         return value
 
     def update(self, instance, validated_data):
+        from apps.accounts.identity import identity_from_email
+
         campus_id = validated_data.pop("campus_id", serializers.empty)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
-        if validated_data:
-            instance.save(update_fields=list(validated_data.keys()))
+        email = validated_data.get("email")
+        if email and email.lower() != (instance.email or "").lower():
+            instance.email = email
+            (
+                instance.username,
+                instance.first_name,
+                instance.last_name,
+            ) = identity_from_email(email, exclude_pk=instance.pk)
+            instance.save(
+                update_fields=["email", "username", "first_name", "last_name"]
+            )
         if campus_id is not serializers.empty:
             UserProfile.objects.update_or_create(
                 user=instance, defaults={"campus_id": campus_id}

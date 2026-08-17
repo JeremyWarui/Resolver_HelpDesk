@@ -194,6 +194,7 @@ class TicketAssignView(APIView):
         serializer.is_valid(raise_exception=True)
         assignee = serializer.validated_data["assigned_to"]
         new_priority = serializer.validated_data.get("priority")
+        note = serializer.validated_data.get("note", "")
 
         previous_assignee = (
             ticket.assigned_to
@@ -241,6 +242,7 @@ class TicketAssignView(APIView):
                 else ""
             ),
             to_value=assignee.get_full_name() or assignee.username,
+            reason=note,
         )
         emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
 
@@ -674,9 +676,10 @@ class AuditLogSerializer(drf_serializers.Serializer):
     def get_actor(self, obj):
         """The person, by name — an audit log is read by humans looking for who.
 
-        `tech.nrb.plumb` tells a reader nothing without a lookup; "Brian
-        Ochieng" does. The username still travels as `actor_username` because
-        two people can share a name and it is the stable handle.
+        Usernames are email local parts now, so most read close to a name —
+        but `jkamau`, and `brian.ochieng1` where two domains collided, do not.
+        The username still travels as `actor_username` because two people can
+        share a name and it is the stable handle.
         """
         if not obj.actor:
             return None

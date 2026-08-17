@@ -99,9 +99,9 @@ export default function AuditLogPage() {
       accessorKey: 'actor',
       header: actorHeader,
       // Name first, handle underneath. An audit log is scanned for "who did
-      // this", and `tech.nrb.plumb` needs a lookup before it answers that.
-      // The username stays visible because names are not unique and it is the
-      // handle you would search or report by.
+      // this", and a handle like `jkamau` needs a lookup before it answers
+      // that. The username stays visible because names are not unique and it
+      // is the handle you would search or report by.
       cell: ({ row }) => {
         const entry = row.original;
         return (

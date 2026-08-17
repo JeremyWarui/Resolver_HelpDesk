@@ -105,6 +105,93 @@ deleted.
 Role cover is gone. Absence is handled organisationally, not in software. **Only
 admin assigns roles** — HOD loses the role-assignment capability it had.
 
+## 3a. Identity is the email address
+
+People sign in with their email, never a username: `POST /auth/login/` takes
+`{email, password}` and resolves the account itself, because Django
+authenticates on `username` and only the server knows the mapping.
+
+Everything else about a new account is derived from that address, in
+`apps/accounts/identity.py`:
+
+```
+jeremy.mwangi@ksg.ac.ke  →  username   jeremy.mwangi   (the local part, lower-cased)
+                            first_name Jeremy          (dot-separated, title-cased)
+                            last_name  Mwangi
+```
+
+`POST /auth/register/` therefore takes only `{email, password, campus_id}` — a
+`first_name` or `username` posted alongside is ignored, so the name a ticket is
+raised under can never drift from the address it was raised from. A local part
+with no dot (`jmwangi@…`) gets an empty last name rather than an invented one;
+the same local part at a second domain gets a numeric suffix, since emails are
+unique but local parts are not.
+
+There is no override anywhere, and that is the point. `POST /api/v1/users/`
+(admin creation) takes `{email, password, campus_id}` and derives the rest, so
+an admin-created account is indistinguishable from a self-registered one.
+`PATCH /api/v1/users/{pk}/` accepts no name fields at all: **changing the email
+renames the account**, re-deriving username, first and last name together
+(`identity_from_email(email, exclude_pk=...)` — the exclusion is what stops
+someone colliding with their own old username and becoming `jeremy.mwangi1`).
+The credential moves with it, since the credential *is* the address.
+
+One consequence worth knowing: **email is not unique at the database level.**
+Registration, admin creation and admin update all reject a duplicate
+case-insensitively, but a `createsuperuser` account with a blank email can still
+collide, so `_authenticate_by_email()` tries every match rather than assuming
+one. A `unique=True` migration would fail on exactly those legacy rows.
+
+Front-end mirror: `frontend/src/utils/identity.ts` previews the derivation while
+the address is being typed (register form, admin Add/Edit User, technician
+form). It is a preview only — the server decides — but it must stay in step, or
+the name someone is shown before submitting is not the name they get.
+
+## 3b. PENDING — displacing a supervisor leaves them half-demoted
+
+**Open defect. Not yet fixed; the options below are a decision, not a plan.**
+
+There are two answers to "who runs this section", and they can disagree:
+
+| | Written by | Read by |
+|---|---|---|
+| `RoleAssignment.section` / `.campus_department` / `.department` | the admin role-assignment endpoint | every UI label, the JWT role claim |
+| `Section.hos`, `CampusDepartment.head_of_department`, `Department.manager_user` | `_sync_org_scope`, on the same request | **`scoped_ticket_qs` — i.e. all actual access** (§3 table) |
+
+Those pointers are single-valued, so promoting a second HOS to a section
+displaces the first — `_sync_org_scope` says so out loud ("One HOS per section:
+whoever held it is displaced by this assignment"). But it updates only the
+right-hand column. The displaced person keeps their `RoleAssignment`, so:
+
+- the admin Users page still lists them as Head of Section, with the section
+- their JWT still carries `role=hos`, so they still land on the HOS portal
+- and every scoped query returns **nothing**
+
+A Head of Section with no section. Observed live: promoting Grace Njeri to
+NRB-ADM-MTCE left Peter Kimani at 0 tickets while Grace saw 50, with Peter's
+role row untouched. The same shape applies to `hod` and `manager`.
+
+It contradicts invariant 1 only for *reads*: `RoleAssignment` is the source of
+truth for writes, and these FKs are the source of truth for access. It was
+unreachable until the `select_for_update` fix in §7b, because the endpoint had
+been 500ing on every call, so nobody had ever successfully displaced anyone.
+
+Three ways out, to be decided:
+
+1. **Demote the displaced holder explicitly.** On displacement, also move their
+   `RoleAssignment` to `user` and tell the admin who was demoted. Keeps one
+   supervisor per scope and makes the outcome visible instead of silent.
+2. **Allow several holders per scope.** Scope reads `RoleAssignment` instead of
+   the FKs (`section__roleassignment__user=user`); `Section.hos` demotes to a
+   "primary contact" label. The largest change — it touches every scope branch
+   and needs a negative test per role.
+3. **Refuse the assignment.** 409 while the scope already has a holder; the
+   admin must demote the incumbent first. Smallest change, most clicks.
+
+Whichever is chosen, the fix needs a test that asserts the *displaced* user's
+scope and role agree afterwards — the current suite only ever checks the
+promoted one.
+
 ## 4. Scope enforcement
 
 All reads go through `scoped_ticket_qs(user, role)`. Scope derives server-side from
@@ -331,6 +418,68 @@ one-tap "Start work" button rather than a trip through the status modal, which
 insists on a progress note. Transitions that record a *decision* need words
 (`pending` needs a reason, `resolved` needs a note); transitions that record
 *starting* do not.
+
+### The handover note
+
+Assignment carries an optional `note` — the HOS's message to the technician
+they are handing the job to. It is stored as `reason` on the **`assigned` /
+`reassigned` TicketLog row**, never on the Ticket: it describes the handover,
+not the ticket's own state (invariant 2), and a later reassignment must not
+overwrite what the previous one told the previous person. Each handover keeps
+its own note, and the timeline renders both.
+
+`AssignmentModal` had collected this note since it was written and
+`assignTicket()` never sent it — the field existed, was typed into, and was
+dropped on the floor. The serializer, the log write, the API call and the
+timeline's `NOTE_EVENT_TYPES` allowlist all had to change together; any one of
+them left out puts the box back on screen with nothing behind it.
+
+Blank is omitted rather than sent as `""`, so an unused note leaves no trace in
+the audit log at all.
+
+### Section Tickets vs Assigned Tickets
+
+The technician has two lists and they answer different questions.
+
+**Section Tickets** is the claimable pool: `scoped_ticket_qs` unchanged, so it is
+the technician's (campus, trade) pairs — *not* the whole section. A plumber at
+Nairobi sees Nairobi plumbing, including work assigned to other plumbers and work
+assigned to nobody. It is read-only by design: the row actions column is off, and
+the detail sheet offers Claim and nothing else until the ticket is theirs.
+
+The trade narrowing is entirely server-side and needs no client filter: the page
+passes no `sub_section`, and `/tickets/filter-options/` builds the trade dropdown
+from the caller's own rows, so it offers only trades they hold. Miriam Odongo
+(Electrical + Plumbing at Mombasa) is offered exactly those two of the section's
+five. The page used to pass a `fetchSectionTickets: true` flag that the hook never
+read — it looked like the thing keeping other trades out, and removing it changes
+nothing. The cards above the table are labelled "In your trades at this campus"
+for the same reason: they reuse the HOS aggregate, whose "All tickets in your
+section" claimed a scope the technician does not have.
+
+**Assigned Tickets** is their own queue: the same scope narrowed by
+`assigned_to=<self>` (`TechTickets.tsx`, `fixedParams`). It holds tickets the HOS
+assigned to them *and* tickets they claimed — claiming sets `assigned_to`, so the
+ticket moves lists as a consequence of the same write, with nothing extra to keep
+in sync.
+
+The narrowing is a `fixedParams` entry rather than a filter default because a
+filter can be cleared. Without it the page falls back to the full section scope,
+which silently turns the personal queue into a second copy of Section Tickets.
+
+### The status filter on ticket tables
+
+Ticket tables filter by status through `createStatusFilter`, which offers all six
+of `ALL_TICKET_STATUSES`. The shared table (`TicketsPage/TicketsTable.tsx`, used
+by admin/manager/HOD/HOS) also carries the pill row, which is a shortlist —
+All / Open / In Progress / Overdue / Resolved — so Assigned, Pending and Closed
+are reachable only from the dropdown.
+
+Both controls drive one `statusFilter`, so they are kept in step deliberately:
+choosing a status sets the pill state too, which lights the matching pill or none
+at all when no pill represents it. Selecting a status also clears **Overdue**,
+which is a cross-status flag rather than a status — left set it would intersect
+with the choice and draw an empty table with nothing on screen explaining why.
 
 ## 7. Inherited bugs — do not port
 
