@@ -1,5 +1,6 @@
-from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
 
 
 class Campus(models.Model):
@@ -195,8 +196,6 @@ class Section(models.Model):
     R3: (campus_department, section_type) is unique.
     """
 
-    from django.core.exceptions import ValidationError
-
     campus_department = models.ForeignKey(
         CampusDepartment,
         on_delete=models.CASCADE,
@@ -227,8 +226,6 @@ class Section(models.Model):
         ]
 
     def clean(self):
-        from django.core.exceptions import ValidationError
-
         """R2: section_type.department must equal campus_department.department."""
         if (
             self.section_type_id
@@ -294,8 +291,6 @@ class SectionTechnician(models.Model):
 
     def clean(self):
         """The trade must belong to the section's type — no Plumbing row on an ICT section."""
-        from django.core.exceptions import ValidationError
-
         if (
             self.section_id
             and self.sub_section_id

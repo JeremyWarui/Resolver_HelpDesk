@@ -14,11 +14,12 @@ from apps.notifications.notify import (
     emit_ticket_status_changed,
     emit_ticket_resolved,
 )
+from apps.accounts.identity import display_name
 
 # Reopen (resolved/closed → open) restarts the lifecycle: `open` is the
 # unassigned state, so reopen clears the assignee and the SLA clock restarts
 # (QA B2f). Keep the frontend mirror in sync:
-# client/src/features/technician/StatusUpdateModal.tsx (NEXT_STATUSES).
+# frontend/src/features/technician/StatusUpdateModal.tsx (VALID_NEXT).
 ALLOWED = {
     "open": {"assigned"},
     "assigned": {"in_progress"},
@@ -186,7 +187,7 @@ def claim_ticket(ticket, technician):
         actor=technician,
         event_type="assigned",
         from_value="",
-        to_value=technician.get_full_name() or technician.username,
+        to_value=display_name(technician),
     )
     emit_ticket_assigned(ticket, previous_assignee=None)
 

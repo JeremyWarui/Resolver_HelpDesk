@@ -64,3 +64,25 @@ def identity_from_email(email, exclude_pk=None):
     """
     first_name, last_name = names_from_email(email)
     return allocate_username(email, exclude_pk=exclude_pk), first_name, last_name
+
+
+def display_name(user):
+    """How a person's name is rendered anywhere a human reads it — '' if no user.
+
+    Falls back to the username because a name is not guaranteed: `names_from_email`
+    leaves the surname empty for a dotless local part, and `createsuperuser`
+    bypasses the email rule entirely. The fallback is never blank, so a UI row
+    never renders an anonymous gap.
+    """
+    if user is None:
+        return ""
+    return display_name_parts(user.first_name, user.last_name, user.username)
+
+
+def display_name_parts(first_name, last_name, username):
+    """`display_name` for callers holding columns rather than a user.
+
+    A `.values()` queryset has no model instance to call, and re-fetching one
+    per row is the N+1 this exists to avoid.
+    """
+    return f"{first_name or ''} {last_name or ''}".strip() or (username or "")

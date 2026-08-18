@@ -1,5 +1,4 @@
 from rest_framework import generics, serializers as drf_serializers, status
-from rest_framework.generics import CreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,7 +8,7 @@ from rest_framework.generics import get_object_or_404
 import os
 
 from django.core.files.base import ContentFile
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Q
 
 from apps.tickets.models import (
     Ticket,
@@ -44,12 +43,13 @@ from apps.tickets.services.lifecycle import (
 from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.services.scope import scoped_ticket_qs
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
-from apps.common.permissions import get_request_role
+from apps.common.roles import resolve_role
 from apps.notifications.notify import (
     emit_ticket_created,
     emit_ticket_assigned,
     emit_comment_added,
 )
+from apps.accounts.identity import display_name, display_name_parts
 
 # Roles that may perform staff actions (assign, etc.) on in-scope tickets.
 STAFF_ROLES = ("admin", "manager", "hod", "hos", "technician")
@@ -73,7 +73,7 @@ def get_ticket_for_request_or_403(
     if allow_requester and ticket.raised_by_id == request.user.pk:
         return ticket
 
-    role = get_request_role(request)
+    role = resolve_role(request)
     if staff_only and role not in STAFF_ROLES:
         raise PermissionDenied("You do not have permission to perform this action.")
     if not scoped_ticket_qs(request.user, role).filter(pk=ticket.pk).exists():
@@ -100,29 +100,6 @@ class TicketLogSerializer(drf_serializers.ModelSerializer):
         read_only_fields = fields
 
 
-# ---------------------------------------------------------------------------
-# Phase 3 — kept intact
-# ---------------------------------------------------------------------------
-
-
-class TicketCreateView(CreateAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = TicketCreateSerializer
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ticket = serializer.save()
-        emit_ticket_created(ticket)
-        return Response(
-            {"id": ticket.id, "ticket_no": ticket.ticket_no},
-            status=status.HTTP_201_CREATED,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Phase 4 — lifecycle & interaction views
-# ---------------------------------------------------------------------------
 
 
 class TicketStatusView(APIView):
@@ -142,7 +119,7 @@ class TicketStatusView(APIView):
         # unrestricted; a technician may only act on tickets assigned to
         # *them* (section scope alone gives view-only); the requester may
         # only close or reopen their own ticket.
-        role = get_request_role(request)
+        role = resolve_role(request)
         is_assigned_tech = (
             role == "technician" and ticket.assigned_to_id == request.user.pk
         )
@@ -237,11 +214,11 @@ class TicketAssignView(APIView):
             actor=request.user,
             event_type=event_type,
             from_value=(
-                (previous_assignee.get_full_name() or previous_assignee.username)
+                display_name(previous_assignee)
                 if previous_assignee is not None
                 else ""
             ),
-            to_value=assignee.get_full_name() or assignee.username,
+            to_value=display_name(assignee),
             reason=note,
         )
         emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
@@ -270,7 +247,7 @@ class TicketClaimView(APIView):
     def post(self, request, pk):
         from django.db import transaction
 
-        if get_request_role(request) != "technician":
+        if resolve_role(request) != "technician":
             raise PermissionDenied("Only technicians may claim tickets.")
 
         try:
@@ -323,7 +300,7 @@ class TicketCommentListCreateView(generics.ListCreateAPIView):
             raise drf_serializers.ValidationError(
                 {"detail": "Comments open once a technician is assigned."}
             )
-        role = get_request_role(self.request)
+        role = resolve_role(self.request)
         is_requester = ticket.raised_by_id == self.request.user.pk
         if (
             role == "technician"
@@ -395,17 +372,12 @@ class TicketLogListView(generics.ListAPIView):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase 6 — scoped list + detail (§3.5, R15)
-# ---------------------------------------------------------------------------
-
-
 class TicketListCreateView(generics.ListCreateAPIView):
     """Role-scoped ticket list.
 
     GET  ?mine=1  → raised_by == user (any authenticated user, R15 universal requester).
     GET  (no ?mine) → role-scoped queryset; users with no role get an empty result.
-    POST → create a new ticket (same as TicketCreateView).
+    POST → create a new ticket.
     Filters: status, priority (id), section (id), sub_section (id), current_level.
     Pagination: PageNumber ordered -updated_at (D6 / §3.7).
     """
@@ -433,35 +405,12 @@ class TicketListCreateView(generics.ListCreateAPIView):
         params = self.request.query_params
 
         if params.get("mine") == "1":
-            qs = (
-                Ticket.objects.filter(raised_by=user)
-                .annotate(
-                    # The requester's own view is where this matters most: it
-                    # is what surfaces "you have resolved tickets still waiting
-                    # for your rating".
-                    has_feedback=Exists(
-                        TicketFeedback.objects.filter(ticket=OuterRef("pk"))
-                    ),
-                )
-                .select_related(
-                    "section__campus_department__department",
-                    "section__campus_department__campus",
-                    "section__section_type",
-                    "section__hos",
-                    "sub_section",
-                    "priority",
-                    "service_item__sub_section",
-                    "assigned_to",
-                    "raised_by",
-                    "requester_campus",
-                    "location__facility_type",
-                    "location__facility",
-                )
-                .order_by("-updated_at")
-            )
+            # R15: any authenticated user may see the tickets they raised. The
+            # literal role is the point — it is not read from the request, so
+            # ?mine=1 narrows to the caller and can never widen past them.
+            qs = scoped_ticket_qs(user, "user")
         else:
-            role = get_request_role(self.request)
-            qs = scoped_ticket_qs(user, role)
+            qs = scoped_ticket_qs(user, resolve_role(self.request))
 
         # Apply optional filters. These narrow the already role-scoped queryset
         # (scope is never widened — out-of-scope ids simply match nothing).
@@ -511,12 +460,36 @@ class TicketFilterOptionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     @staticmethod
-    def _full_name(first, last, username):
-        name = f"{first or ''} {last or ''}".strip()
-        return name or username
+    def _people(scoped, prefix, exclude_null=False):
+        """Distinct people on `prefix` (assigned_to / raised_by), sorted by name.
+
+        Takes .values() columns rather than model instances so the whole list is
+        one query — hence display_name_parts rather than display_name.
+        """
+        rows = scoped.exclude(**{f"{prefix}__isnull": True}) if exclude_null else scoped
+        rows = rows.values(
+            f"{prefix}_id",
+            f"{prefix}__first_name",
+            f"{prefix}__last_name",
+            f"{prefix}__username",
+        ).order_by().distinct()
+        return sorted(
+            (
+                {
+                    "id": r[f"{prefix}_id"],
+                    "name": display_name_parts(
+                        r[f"{prefix}__first_name"],
+                        r[f"{prefix}__last_name"],
+                        r[f"{prefix}__username"],
+                    ),
+                }
+                for r in rows
+            ),
+            key=lambda p: p["name"].lower(),
+        )
 
     def get(self, request):
-        role = get_request_role(request)
+        role = resolve_role(request)
         scoped = scoped_ticket_qs(request.user, role)
 
         section_rows = (
@@ -561,56 +534,8 @@ class TicketFilterOptionsView(APIView):
             key=lambda s: s["name"].lower(),
         )
 
-        tech_rows = (
-            scoped.exclude(assigned_to__isnull=True)
-            .values(
-                "assigned_to_id",
-                "assigned_to__first_name",
-                "assigned_to__last_name",
-                "assigned_to__username",
-            )
-            .order_by()
-            .distinct()
-        )
-        technicians = sorted(
-            (
-                {
-                    "id": r["assigned_to_id"],
-                    "name": self._full_name(
-                        r["assigned_to__first_name"],
-                        r["assigned_to__last_name"],
-                        r["assigned_to__username"],
-                    ),
-                }
-                for r in tech_rows
-            ),
-            key=lambda t: t["name"].lower(),
-        )
-
-        req_rows = (
-            scoped.values(
-                "raised_by_id",
-                "raised_by__first_name",
-                "raised_by__last_name",
-                "raised_by__username",
-            )
-            .order_by()
-            .distinct()
-        )
-        requesters = sorted(
-            (
-                {
-                    "id": r["raised_by_id"],
-                    "name": self._full_name(
-                        r["raised_by__first_name"],
-                        r["raised_by__last_name"],
-                        r["raised_by__username"],
-                    ),
-                }
-                for r in req_rows
-            ),
-            key=lambda u: u["name"].lower(),
-        )
+        technicians = self._people(scoped, "assigned_to", exclude_null=True)
+        requesters = self._people(scoped, "raised_by")
 
         return Response(
             {
@@ -681,10 +606,7 @@ class AuditLogSerializer(drf_serializers.Serializer):
         The username still travels as `actor_username` because two people can
         share a name and it is the stable handle.
         """
-        if not obj.actor:
-            return None
-        full_name = f"{obj.actor.first_name} {obj.actor.last_name}".strip()
-        return full_name or obj.actor.username
+        return display_name(obj.actor) or None
 
     def get_actor_username(self, obj):
         return obj.actor.username if obj.actor else None
@@ -806,7 +728,7 @@ class TicketAttachmentView(APIView):
         attachment = get_object_or_404(TicketAttachment, pk=att_id, ticket=ticket)
 
         is_uploader = attachment.uploaded_by_id == request.user.pk
-        is_privileged = request.user.is_staff or get_request_role(request) in (
+        is_privileged = request.user.is_staff or resolve_role(request) in (
             "admin",
             "manager",
             "hod",
@@ -886,7 +808,7 @@ class TicketFeedbackListView(generics.ListAPIView):
     pagination_class = TicketFeedPagination
 
     def get_queryset(self):
-        role = get_request_role(self.request)
+        role = resolve_role(self.request)
         scoped = scoped_ticket_qs(self.request.user, role)
         qs = TicketFeedback.objects.filter(ticket__in=scoped).select_related(
             "ticket__service_item",

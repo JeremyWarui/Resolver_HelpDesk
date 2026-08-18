@@ -12,7 +12,7 @@ from datetime import timedelta
 from io import BytesIO
 
 import openpyxl
-from django.db.models import Count, F, Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -22,11 +22,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.analytics.services import aggregate, resolve_date_range
+from apps.analytics.services import aggregate, created_window, resolve_date_range
 from apps.tickets.statuses import ACTIVE_STATUSES, TERMINAL_STATUSES
 from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.services.scope import scoped_ticket_qs
+from apps.accounts.identity import display_name
 
 # ── Excel styling ──────────────────────────────────────────────────────────────
 
@@ -59,8 +60,15 @@ def _fmt(dt) -> str:
 # ── Date-range and queryset helpers ───────────────────────────────────────────
 
 
+_TIMEFRAME_OFFSETS = {"day": 1, "week": 7, "month": 30, "quarter": 90, "year": 365}
+
+
 def _build_date_range_params(request) -> dict:
-    """Build params dict compatible with resolve_date_range()."""
+    """Translate the report params into the vocabulary resolve_date_range() reads.
+
+    Returns {} for timeframe='all', which is the caller's signal to apply no
+    date filter at all — resolve_date_range would otherwise default it to 30d.
+    """
     params: dict = {}
     start = request.query_params.get("start_date")
     end = request.query_params.get("end_date")
@@ -69,12 +77,8 @@ def _build_date_range_params(request) -> dict:
     if start and end:
         params["date_from"] = start
         params["date_to"] = end
-    else:
-        offsets = {"day": 1, "week": 7, "month": 30, "quarter": 90, "year": 365}
-        if timeframe in offsets:
-            params["days"] = offsets[timeframe]
-        # 'all' → no date filter; resolve_date_range defaults to 30d,
-        # so for 'all' we just skip the date filter below.
+    elif timeframe in _TIMEFRAME_OFFSETS:
+        params["days"] = _TIMEFRAME_OFFSETS[timeframe]
 
     return params
 
@@ -86,23 +90,13 @@ def _base_qs(request, role):
     else:
         qs = Ticket.objects.filter(raised_by=request.user)
 
-    timeframe = request.query_params.get("timeframe", "all")
-    start = request.query_params.get("start_date")
-    end = request.query_params.get("end_date")
-
-    if start and end:
-        from datetime import datetime
-
-        try:
-            qs = qs.filter(created_at__gte=datetime.strptime(start, "%Y-%m-%d"))
-            qs = qs.filter(created_at__lte=datetime.strptime(end, "%Y-%m-%d"))
-        except ValueError:
-            pass
-    elif timeframe != "all":
-        offsets = {"day": 1, "week": 7, "month": 30, "quarter": 90, "year": 365}
-        if timeframe in offsets:
-            since = timezone.now() - timedelta(days=offsets[timeframe])
-            qs = qs.filter(created_at__gte=since)
+    # The same parse the Summary sheet uses, so the sheets cannot disagree
+    # about which window they cover. (It previously parsed the dates a second
+    # time with a naive strptime, which both skewed the boundary by the TZ
+    # offset and warned under USE_TZ.)
+    params = _build_date_range_params(request)
+    if params:
+        qs = created_window(qs, resolve_date_range(params))
 
     section_id = request.query_params.get("section_id")
     technician_id = request.query_params.get("technician_id")
@@ -282,9 +276,9 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
     tickets = qs.select_related(
         "raised_by",
         "requester_campus",
-        "service_item__sub_section",
+        "sub_section",
+        "service_item",
         "section__section_type",
-        "section__campus_department__campus",
         "priority",
         "assigned_to",
     )
@@ -300,7 +294,7 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
                 t.priority.name if t.priority_id else "",
                 t.get_current_level_display(),
                 (
-                    (t.raised_by.get_full_name() or t.raised_by.username)
+                    display_name(t.raised_by)
                     if t.raised_by_id
                     else ""
                 ),
@@ -313,7 +307,7 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
                     else ""
                 ),
                 (
-                    (t.assigned_to.get_full_name() or t.assigned_to.username)
+                    display_name(t.assigned_to)
                     if t.assigned_to_id
                     else "Unassigned"
                 ),
@@ -487,7 +481,7 @@ def _sheet_pending_analysis(ws, qs) -> None:
                 ),
                 t.section.campus_department.campus.name if t.section_id else "",
                 (
-                    (t.assigned_to.get_full_name() or t.assigned_to.username)
+                    display_name(t.assigned_to)
                     if t.assigned_to_id
                     else "Unassigned"
                 ),

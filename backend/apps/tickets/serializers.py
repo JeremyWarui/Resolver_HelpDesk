@@ -23,6 +23,7 @@ from apps.tickets.models import (
 from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
 from apps.tickets.statuses import ALL_STATUSES
 from apps.tickets.pending_reasons import PENDING_REASON_CODES
+from apps.accounts.identity import display_name
 
 User = get_user_model()
 
@@ -40,8 +41,7 @@ class _UserMinSerializer(serializers.Serializer):
     full_name = serializers.SerializerMethodField()
 
     def get_full_name(self, obj):
-        name = f"{obj.first_name} {obj.last_name}".strip()
-        return name or obj.username
+        return display_name(obj)
 
 
 class _PriorityMinSerializer(serializers.Serializer):

@@ -9,7 +9,7 @@ from apps.common.permissions import IsAdminGroup
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
 
-from apps.tickets.statuses import ACTIVE_STATUSES as _OPEN_STATUSES  # noqa: E402
+from apps.tickets.statuses import ACTIVE_STATUSES
 
 
 def _ticket_count_subq(status_filter: Q):
@@ -61,7 +61,7 @@ class FacilityViewSet(viewsets.ModelViewSet):
             Facility.objects.select_related("campus", "facility_type")
             .annotate(
                 open_ticket_count=_ticket_count_subq(
-                    Q(ticket__status__in=_OPEN_STATUSES)
+                    Q(ticket__status__in=ACTIVE_STATUSES)
                 ),
                 resolved_ticket_count=_ticket_count_subq(Q(ticket__status="resolved")),
                 closed_ticket_count=_ticket_count_subq(Q(ticket__status="closed")),

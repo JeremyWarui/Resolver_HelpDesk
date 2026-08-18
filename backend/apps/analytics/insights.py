@@ -16,10 +16,10 @@ from django.db.models import Count, F
 from django.utils import timezone
 
 from apps.analytics.services import (
-    ACTIVE_STATUSES,
     RUNNING_STATUSES,
     TERMINAL_STATUSES,
     _percentile,
+    created_window,
 )
 from apps.tickets.models import TicketFeedback
 
@@ -96,10 +96,7 @@ def _recurring_fault(scoped_qs, date_range):
 
 def _bottleneck(scoped_qs, date_range):
     """Sections whose tickets sit paused far longer than their peers."""
-    window = scoped_qs.filter(
-        created_at__gte=date_range["date_from"],
-        created_at__lte=date_range["date_to"],
-    )
+    window = created_window(scoped_qs, date_range)
     sec_pause = defaultdict(float)
     sec_name = {}
     for sid, sname, pause in window.values_list(
@@ -198,10 +195,7 @@ def _sla_leak(scoped_qs):
 
 def _capacity(scoped_qs, date_range):
     """Persistent positive net flow — backlog compounding, a staffing signal."""
-    window = scoped_qs.filter(
-        created_at__gte=date_range["date_from"],
-        created_at__lte=date_range["date_to"],
-    )
+    window = created_window(scoped_qs, date_range)
     created = window.count()
     resolved = scoped_qs.filter(
         resolved_at__gte=date_range["date_from"],

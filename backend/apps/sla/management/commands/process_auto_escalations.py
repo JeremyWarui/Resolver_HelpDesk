@@ -1,12 +1,10 @@
 """Management command: process automatic ticket escalations.
 
-This is the new-style wrapper that delegates to apps.sla.services.escalation.
-Run periodically (e.g., hourly) via a cron job or task scheduler:
+Delegates to apps.sla.services.escalation. Run periodically (e.g., hourly) via a cron job or task scheduler:
     python manage.py process_auto_escalations
 
 Options:
     --dry-run   Report what would change without writing to the database.
-    --verbose   Show detailed output for each escalation attempt.
 """
 
 from django.core.management.base import BaseCommand
@@ -22,11 +20,6 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help="Run without making actual changes, just show what would happen.",
-        )
-        parser.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Show detailed output for each escalation attempt.",
         )
 
     def handle(self, *args, **options):

@@ -2,35 +2,13 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.accounts.models import RoleAssignment, UserProfile
+from apps.accounts.services import (
+    campus_from_role_assignment,
+    department_from_role_assignment,
+    home_campus_from_user,
+)
 
 User = get_user_model()
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _campus_from_ra(ra):
-    """Resolve the campus object from any role assignment variant."""
-    if ra is None:
-        return None
-    if ra.section_id and ra.section and ra.section.campus_department:
-        return ra.section.campus_department.campus
-    if ra.campus_department_id and ra.campus_department:
-        return ra.campus_department.campus
-    return None
-
-
-def _department_from_ra(ra):
-    """Resolve the department object from any role assignment variant."""
-    if ra is None:
-        return None
-    if ra.department_id and ra.department:
-        return ra.department
-    if ra.section_id and ra.section and ra.section.campus_department:
-        return ra.section.campus_department.department
-    if ra.campus_department_id and ra.campus_department:
-        return ra.campus_department.department
-    return None
 
 
 # ── RoleAssignment serializers ────────────────────────────────────────────────
@@ -71,19 +49,19 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         return None
 
     def get_campus_id(self, obj):
-        c = _campus_from_ra(obj)
+        c = campus_from_role_assignment(obj)
         return c.pk if c else None
 
     def get_campus_name(self, obj):
-        c = _campus_from_ra(obj)
+        c = campus_from_role_assignment(obj)
         return c.name if c else None
 
     def get_department_id(self, obj):
-        d = _department_from_ra(obj)
+        d = department_from_role_assignment(obj)
         return d.pk if d else None
 
     def get_department_name(self, obj):
-        d = _department_from_ra(obj)
+        d = department_from_role_assignment(obj)
         return d.name if d else None
 
     def get_assigned_by_username(self, obj):
@@ -262,21 +240,17 @@ class UserAdminSerializer(serializers.ModelSerializer):
         ra = _primary_ra(obj)
         return ra.role if ra else "user"
 
-    def _home_campus(self, obj):
-        profile = getattr(obj, "profile", None)
-        return profile.campus if profile and profile.campus_id else None
-
     def get_home_campus_id(self, obj):
-        campus = self._home_campus(obj)
+        campus = home_campus_from_user(obj)
         return campus.pk if campus else None
 
     def get_home_campus_name(self, obj):
-        campus = self._home_campus(obj)
+        campus = home_campus_from_user(obj)
         return campus.name if campus else None
 
     def get_campus_name(self, obj):
         ra = _primary_ra(obj)
-        c = _campus_from_ra(ra)
+        c = campus_from_role_assignment(ra)
         return c.name if c else None
 
     def get_sections(self, obj):
@@ -293,22 +267,22 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
     def get_primary_campus_id(self, obj):
         ra = _primary_ra(obj)
-        c = _campus_from_ra(ra)
+        c = campus_from_role_assignment(ra)
         return c.pk if c else None
 
     def get_primary_campus_display(self, obj):
         ra = _primary_ra(obj)
-        c = _campus_from_ra(ra)
+        c = campus_from_role_assignment(ra)
         return c.name if c else None
 
     def get_primary_department_id(self, obj):
         ra = _primary_ra(obj)
-        d = _department_from_ra(ra)
+        d = department_from_role_assignment(ra)
         return d.pk if d else None
 
     def get_primary_department_display(self, obj):
         ra = _primary_ra(obj)
-        d = _department_from_ra(ra)
+        d = department_from_role_assignment(ra)
         return d.name if d else None
 
     def get_primary_department_name(self, obj):

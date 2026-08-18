@@ -26,7 +26,6 @@ from apps.sla.models import Priority, EscalationRule
 from apps.tickets.models import (
     Ticket,
     TicketLocation,
-    TicketLog,
     TicketComment,
     TicketFeedback,
 )

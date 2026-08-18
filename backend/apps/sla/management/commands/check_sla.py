@@ -16,7 +16,7 @@ intentionally not persisted here.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from apps.analytics.services import ACTIVE_STATUSES
+from apps.tickets.statuses import RUNNING_STATUSES
 from apps.notifications.notify import emit_sla_breach
 from apps.tickets.models import Ticket, TicketLog
 
@@ -41,15 +41,15 @@ class Command(BaseCommand):
         verbose = options["verbose"]
         now = timezone.now()
 
-        # Active, past resolution deadline, and not currently paused (frozen clock).
+        # Running (RUNNING_STATUSES already excludes paused) and past the
+        # resolution deadline.
         qs = (
             Ticket.objects.filter(
-                status__in=ACTIVE_STATUSES,
+                status__in=RUNNING_STATUSES,
                 resolution_due_at__isnull=False,
                 resolution_due_at__lt=now,
                 paused_at__isnull=True,
             )
-            .exclude(status="pending")
             .select_related(
                 "section__campus_department__campus",
                 "section__campus_department__department",

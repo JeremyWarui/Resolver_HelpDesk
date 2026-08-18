@@ -89,13 +89,3 @@ def normalise_phone(value):
         raise InvalidPhoneNumber()
 
     return f"+{COUNTRY_CODE}{national}"
-
-
-def format_phone_local(value):
-    """Render an E.164 number the way Kenyans read it: +254712345678 → 0712345678.
-
-    For display only — storage stays E.164.
-    """
-    if not value or not value.startswith(f"+{COUNTRY_CODE}"):
-        return value or ""
-    return "0" + value[len(COUNTRY_CODE) + 1 :]

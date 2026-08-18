@@ -13,7 +13,7 @@ class Ticket(models.Model):
     """A service request — intrinsic current state only (SoT §3.2a).
 
     No derived values, no history, no child data on this row.
-    Business logic lives in tickets/api/services/.
+    Business logic lives in apps/tickets/services/.
     """
 
     STATUS = [
@@ -165,11 +165,6 @@ class Ticket(models.Model):
         super().save(*args, **kwargs)
 
     def _generate_ticket_no(self):
-        if not self.section_id:
-            last = Ticket.objects.order_by("-id").first()
-            seq = (last.id + 1) if last else 1
-            return f"TKT-{seq:06d}"
-
         campus_department = self.section.campus_department
         campus_code = campus_department.campus.code.upper()
         department_code = campus_department.department.code.upper()

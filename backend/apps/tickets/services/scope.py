@@ -5,7 +5,8 @@ def scoped_ticket_qs(user, role):
     """Return a Ticket queryset scoped to what `user` can see for the given `role`.
 
     Returns an empty queryset for users with no role or an unknown role.
-    Does NOT apply ?mine=1 — that is handled separately in the view (R15).
+    ?mine=1 is the `role="user"` branch — the view passes that literal rather
+    than rebuilding the queryset, so there is only ever one base to maintain.
     """
     from apps.tickets.models import Ticket, TicketFeedback
     from apps.org.models import SectionTechnician
@@ -20,7 +21,6 @@ def scoped_ticket_qs(user, role):
         "section__campus_department__department",
         "section__campus_department__campus",
         "section__section_type",
-        "section__hos",
         "sub_section",
         "priority",
         "service_item__sub_section",

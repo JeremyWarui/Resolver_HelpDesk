@@ -25,7 +25,6 @@ from django.utils import timezone
 from apps.accounts.identity import local_part
 from apps.accounts.models import RoleAssignment, UserProfile
 from apps.facilities.models import Facility, FacilityType
-from apps.facilities.validators import TYPE_SPECS
 from apps.tickets.pending_reasons import PENDING_REASON_LABELS
 
 # What a technician would actually have typed, per reason — so the demo shows

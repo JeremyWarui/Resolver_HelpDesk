@@ -9,6 +9,7 @@ from apps.org.models import (
     ServiceItem,
     SubSection,
 )
+from apps.accounts.identity import display_name
 
 
 class CampusSerializer(serializers.ModelSerializer):
@@ -46,7 +47,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
                     "campus": cd.campus.code,
                     "hod": {
                         "id": hod.id,
-                        "name": f"{hod.first_name} {hod.last_name}".strip() or hod.username,
+                        "name": display_name(hod),
                         "username": hod.username,
                     },
                 })
@@ -203,10 +204,7 @@ class SectionSerializer(serializers.ModelSerializer):
         had to fetch the user list and join it client-side. The viewset already
         select_relates hos, so this costs no extra query.
         """
-        if not obj.hos_id:
-            return None
-        full_name = f"{obj.hos.first_name} {obj.hos.last_name}".strip()
-        return full_name or obj.hos.username
+        return display_name(obj.hos) if obj.hos_id else None
 
 
 class SectionTechnicianSerializer(serializers.ModelSerializer):

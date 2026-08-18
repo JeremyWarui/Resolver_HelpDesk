@@ -29,7 +29,7 @@ from django.db.models.functions import (
 )
 from django.utils import timezone
 
-from apps.tickets.models import Ticket, TicketLog, TicketFeedback, TicketLocation
+from apps.tickets.models import TicketLog, TicketFeedback, TicketLocation
 from apps.tickets.pending_reasons import PENDING_REASON_LABELS
 
 # Re-exported so existing importers keep working; defined in tickets.statuses,
@@ -104,6 +104,70 @@ def _delta(current, prior):
     return round(current - prior, 2)
 
 
+def _dispatch_breakdown(window_qs, group_by):
+    """Rows for `group_by`, or None if this dimension has no dedicated grouper.
+
+    The one dispatch table: aggregate() and breakdown() both route through it,
+    so a new dimension is wired in once rather than in two chains that drift.
+    """
+    dedicated = {
+        "section": _group_by_section,
+        "campus": _group_by_campus,
+        "campus_department": _group_by_campus_department,
+        "technician": _group_by_technician,
+    }
+    if group_by in dedicated:
+        return dedicated[group_by](window_qs)
+    if group_by in _GENERIC_GROUP_BY:
+        return _group_by_generic(window_qs, group_by)
+    return None
+
+
+def _standard_breakdown_metrics():
+    """The metric set shared by every breakdown dimension (SLA-aware)."""
+    return dict(
+        total=Count("id"),
+        open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
+        resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
+        escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
+        resolution_sla_met=Count(
+            "id",
+            filter=Q(
+                status__in=TERMINAL_STATUSES,
+                resolved_at__isnull=False,
+                resolution_due_at__isnull=False,
+                resolved_at__lte=F("resolution_due_at"),
+            ),
+        ),
+        total_resolved_with_due=Count(
+            "id",
+            filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
+        ),
+    )
+
+
+def created_window(qs, date_range):
+    """Narrow to tickets *created* inside the window — the default lens.
+
+    Every headline number and every breakdown counts by creation date, so this
+    is the one expression they must share: an endpoint that spells the window
+    out again is how two cards on the same dashboard start disagreeing.
+    """
+    return qs.filter(
+        created_at__gte=date_range["date_from"],
+        created_at__lte=date_range["date_to"],
+    )
+
+
+def resolved_window(qs, date_range):
+    """Narrow to tickets *resolved* inside the window (settled outcomes only)."""
+    return qs.filter(
+        resolved_at__gte=date_range["date_from"],
+        resolved_at__lte=date_range["date_to"],
+        status__in=TERMINAL_STATUSES,
+    )
+
+
 # ── Group-by breakdowns ────────────────────────────────────────────────────────
 
 
@@ -120,25 +184,7 @@ def _group_by_section(window_qs):
             "campus_name",
             "campus_code",
         )
-        .annotate(
-            total=Count("id"),
-            open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
-            resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
-            resolution_sla_met=Count(
-                "id",
-                filter=Q(
-                    status__in=TERMINAL_STATUSES,
-                    resolved_at__isnull=False,
-                    resolution_due_at__isnull=False,
-                    resolved_at__lte=F("resolution_due_at"),
-                ),
-            ),
-            total_resolved_with_due=Count(
-                "id",
-                filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-            ),
-        )
+        .annotate(**_standard_breakdown_metrics())
         .order_by("-total")
     )
 
@@ -150,25 +196,7 @@ def _group_by_campus(window_qs):
             campus_name=F("section__campus_department__campus__name"),
             campus_code=F("section__campus_department__campus__code"),
         )
-        .annotate(
-            total=Count("id"),
-            open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
-            resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
-            resolution_sla_met=Count(
-                "id",
-                filter=Q(
-                    status__in=TERMINAL_STATUSES,
-                    resolved_at__isnull=False,
-                    resolution_due_at__isnull=False,
-                    resolved_at__lte=F("resolution_due_at"),
-                ),
-            ),
-            total_resolved_with_due=Count(
-                "id",
-                filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-            ),
-        )
+        .annotate(**_standard_breakdown_metrics())
         .order_by("-total")
     )
 
@@ -180,25 +208,7 @@ def _group_by_campus_department(window_qs):
             campus_name=F("section__campus_department__campus__name"),
             dept_name=F("section__campus_department__department__name"),
         )
-        .annotate(
-            total=Count("id"),
-            open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
-            resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
-            resolution_sla_met=Count(
-                "id",
-                filter=Q(
-                    status__in=TERMINAL_STATUSES,
-                    resolved_at__isnull=False,
-                    resolution_due_at__isnull=False,
-                    resolved_at__lte=F("resolution_due_at"),
-                ),
-            ),
-            total_resolved_with_due=Count(
-                "id",
-                filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-            ),
-        )
+        .annotate(**_standard_breakdown_metrics())
         .order_by("-total")
     )
 
@@ -246,10 +256,7 @@ def technician_trade_mix(scoped_qs, date_range):
     and the report builders do it — one round trip, no join fan-out, because
     both axes are direct Ticket columns.
     """
-    window_qs = scoped_qs.filter(
-        created_at__gte=date_range["date_from"],
-        created_at__lte=date_range["date_to"],
-    )
+    window_qs = created_window(scoped_qs, date_range)
     rows = (
         window_qs.filter(assigned_to__isnull=False, sub_section__isnull=False)
         .values(
@@ -334,10 +341,7 @@ def facility_trade_mix(scoped_qs, date_range):
 
     Same shape and same one-query-then-fold idiom as `technician_trade_mix`.
     """
-    window_qs = scoped_qs.filter(
-        created_at__gte=date_range["date_from"],
-        created_at__lte=date_range["date_to"],
-    )
+    window_qs = created_window(scoped_qs, date_range)
     rows = (
         window_qs.filter(location__isnull=False, sub_section__isnull=False)
         .values(
@@ -513,29 +517,6 @@ _GENERIC_GROUP_BY = {
 }
 
 
-def _standard_breakdown_metrics():
-    """The metric set shared by every breakdown dimension (SLA-aware)."""
-    return dict(
-        total=Count("id"),
-        open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
-        resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-        escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
-        resolution_sla_met=Count(
-            "id",
-            filter=Q(
-                status__in=TERMINAL_STATUSES,
-                resolved_at__isnull=False,
-                resolution_due_at__isnull=False,
-                resolved_at__lte=F("resolution_due_at"),
-            ),
-        ),
-        total_resolved_with_due=Count(
-            "id",
-            filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-        ),
-    )
-
-
 def _group_by_generic(window_qs, dim):
     key_expr, label_expr = _GENERIC_GROUP_BY[dim]
     qs = window_qs
@@ -569,20 +550,10 @@ def breakdown(scoped_qs, date_range: dict, group_by: str) -> list:
     round-trip and dozens. The breakdown uses the same created_at window as
     aggregate(), so numbers match the full path exactly.
     """
-    window_qs = scoped_qs.filter(
-        created_at__gte=date_range["date_from"],
-        created_at__lte=date_range["date_to"],
-    )
-    if group_by == "section":
-        return _group_by_section(window_qs)
-    if group_by == "campus":
-        return _group_by_campus(window_qs)
-    if group_by == "campus_department":
-        return _group_by_campus_department(window_qs)
-    if group_by == "technician":
-        return _group_by_technician(window_qs)
-    if group_by in _GENERIC_GROUP_BY:
-        return _group_by_generic(window_qs, group_by)
+    window_qs = created_window(scoped_qs, date_range)
+    rows = _dispatch_breakdown(window_qs, group_by)
+    if rows is not None:
+        return rows
     # 'time' (and anything unrecognised) needs the full path; rare for breakdown-only callers.
     return (
         aggregate(scoped_qs, date_range, group_by=group_by).get("breakdown", []) or []
@@ -631,7 +602,6 @@ def aggregate(
 
     # ── Window querysets ──────────────────────────────────────────────────────
     window_qs = scoped_qs.filter(created_at__gte=date_from, created_at__lte=date_to)
-    prior_qs = scoped_qs.filter(created_at__gte=prior_from, created_at__lte=prior_to)
 
     # Resolved: resolved_at in window (independent of created_at window)
     resolved_qs = scoped_qs.filter(
@@ -1036,18 +1006,13 @@ def aggregate(
 
     # ── Optional group-by breakdown ───────────────────────────────────────────
     breakdown = None
-    if group_by == "section":
-        breakdown = _group_by_section(window_qs)
-    elif group_by == "campus":
-        breakdown = _group_by_campus(window_qs)
-    elif group_by == "campus_department":
-        breakdown = _group_by_campus_department(window_qs)
-    elif group_by == "technician":
-        breakdown = _group_by_technician(window_qs)
-    elif group_by == "time":
+    if group_by == "time":
         breakdown = flow_trend
-    elif group_by in _GENERIC_GROUP_BY:
-        breakdown = _group_by_generic(window_qs, group_by)
+    else:
+        # `or` would be wrong here: an empty breakdown is a real result and
+        # must stay [], not collapse back to None.
+        rows = _dispatch_breakdown(window_qs, group_by)
+        breakdown = breakdown if rows is None else rows
 
     result = {
         # Volume & flow

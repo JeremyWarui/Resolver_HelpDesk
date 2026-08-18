@@ -150,7 +150,7 @@ pytest --cov-report=html                   # HTML coverage report
 ```bash
 python manage.py seed_full                          # idempotent full seed
 python manage.py process_auto_escalations           # run escalation sweep
-python manage.py process_auto_escalations --dry-run --verbose
+python manage.py process_auto_escalations --dry-run
 ```
 
 ---

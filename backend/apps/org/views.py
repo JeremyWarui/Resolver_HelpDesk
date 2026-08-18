@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from django.db.models import Count
 
 from apps.common.pagination import ConfigListPagination
-from apps.common.permissions import IsAdminGroup, IsAdminOrReadOnly, get_request_role
+from apps.common.permissions import IsAdminGroup, IsAdminOrReadOnly
+from apps.common.roles import resolve_role
 from apps.tickets.services.scope import scoped_section_qs
 from apps.org.models import (
     Campus,
@@ -30,6 +31,7 @@ from apps.org.serializers import (
     SubSectionSerializer,
 )
 from apps.org.services.visibility import get_visible_sub_sections
+from apps.accounts.identity import display_name
 
 
 class CampusViewSet(viewsets.ModelViewSet):
@@ -150,8 +152,6 @@ class CampusDepartmentViewSet(viewsets.ModelViewSet):
     def hod_candidates(self, request, pk=None):
         """Users who have an active HOD role assignment for this campus-department."""
         from django.contrib.auth import get_user_model
-        from apps.accounts.models import RoleAssignment
-
         cd = self.get_object()
         User = get_user_model()
         users = User.objects.filter(
@@ -162,7 +162,7 @@ class CampusDepartmentViewSet(viewsets.ModelViewSet):
         data = [
             {
                 "id": u.id,
-                "name": f"{u.first_name} {u.last_name}".strip() or u.username,
+                "name": display_name(u),
                 "username": u.username,
             }
             for u in users
@@ -262,7 +262,7 @@ class ScopedTechnicianRosterView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        role = get_request_role(request)
+        role = resolve_role(request)
         sections = scoped_section_qs(request.user, role)
         links = (
             SectionTechnician.objects.filter(section__in=sections)
@@ -281,7 +281,7 @@ class ScopedTechnicianRosterView(APIView):
             u = link.user
             entry = techs.get(u.id)
             if entry is None:
-                full = f"{u.first_name} {u.last_name}".strip() or u.username
+                full = display_name(u)
                 entry = techs[u.id] = {
                     "id": u.id,
                     "username": u.username,

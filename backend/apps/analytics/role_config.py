@@ -34,15 +34,6 @@ GROUP_BY_DIMENSIONS = (
 )
 
 # Insight types (implemented in apps/analytics/insights.py).
-INSIGHT_TYPES = (
-    "recurring_fault",
-    "bottleneck",
-    "sla_leak",
-    "capacity",
-    "csat_driver",
-)
-
-
 ROLE_VIEWS = {
     "admin": {
         # Campus, not department: there is one department, so grouping by it

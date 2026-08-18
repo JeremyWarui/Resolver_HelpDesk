@@ -22,7 +22,6 @@ from apps.tickets.services.scope import scoped_ticket_qs
 from .insights import compute_insights
 from .role_config import get_role_config, resolve_group_by
 from .services import (
-    ACTIVE_STATUSES,
     aggregate,
     breakdown,
     config_health,
@@ -45,8 +44,27 @@ class BaseAnalyticsView(APIView):
         role = role or self.get_role(request)
         return scoped_ticket_qs(user, role)
 
+    def scope_and_range(self, request):
+        """(scoped_qs, date_range) — the preamble every analytics endpoint runs."""
+        return (
+            self.get_scoped_qs(request, self.get_role(request)),
+            resolve_date_range(request.query_params),
+        )
+
+
+# Roles that see aggregate performance across other people's work. A technician
+# is deliberately absent: role_config refuses them `technician` as a group_by so
+# they are never ranked against peers.
+SUPERVISING_ROLES = ("admin", "manager", "hod", "hos")
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+
+def _granularity(request):
+    """The requested trend bucket, falling back to 'day' for anything unknown."""
+    value = request.query_params.get("granularity", "day")
+    return value if value in ("day", "week", "month", "quarter") else "day"
 
 
 def _date_range_meta(date_range):
@@ -146,9 +164,7 @@ class OverviewView(BaseAnalyticsView):
 
 class SLAComplianceView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         data = aggregate(scoped_qs, date_range)
         return Response(
             {
@@ -170,9 +186,7 @@ class SLAComplianceView(BaseAnalyticsView):
 
 class ResolutionTimesView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         data = aggregate(scoped_qs, date_range)
         return Response(
             {
@@ -190,12 +204,8 @@ class ResolutionTimesView(BaseAnalyticsView):
 
 class FlowView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
-        granularity = request.query_params.get("granularity", "day")
-        if granularity not in ("day", "week", "month", "quarter"):
-            granularity = "day"
+        scoped_qs, date_range = self.scope_and_range(request)
+        granularity = _granularity(request)
         data = aggregate(scoped_qs, date_range, granularity=granularity)
         return Response(
             {
@@ -220,9 +230,7 @@ class FlowView(BaseAnalyticsView):
 
 class QualityView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         data = aggregate(scoped_qs, date_range)
         return Response(
             {
@@ -243,9 +251,7 @@ class QualityView(BaseAnalyticsView):
 
 class DemandView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         data = aggregate(scoped_qs, date_range)
         return Response(
             {
@@ -260,9 +266,7 @@ class DemandView(BaseAnalyticsView):
 
 class PerformanceTechniciansView(BaseAnalyticsView):
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         # Two cheap queries (live load + windowed breakdown) instead of the
         # ~23-query full aggregate (see services.breakdown / technician_load).
         return Response(
@@ -284,11 +288,9 @@ class PerformanceFacilitiesView(BaseAnalyticsView):
     """
 
     def get(self, request):
-        role = self.get_role(request)
-        if role not in ("admin", "manager", "hod", "hos"):
+        if self.get_role(request) not in SUPERVISING_ROLES:
             return Response({"detail": "Not available for this role."}, status=403)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         return Response(
             {
                 "date_range": _date_range_meta(date_range),
@@ -310,11 +312,9 @@ class PerformanceTradeMixView(BaseAnalyticsView):
     """
 
     def get(self, request):
-        role = self.get_role(request)
-        if role not in ("admin", "manager", "hod", "hos"):
+        if self.get_role(request) not in SUPERVISING_ROLES:
             return Response({"detail": "Not available for this role."}, status=403)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
+        scoped_qs, date_range = self.scope_and_range(request)
         return Response(
             {
                 "date_range": _date_range_meta(date_range),
@@ -323,21 +323,30 @@ class PerformanceTradeMixView(BaseAnalyticsView):
         )
 
 
-class PerformanceSectionsView(BaseAnalyticsView):
+class _BreakdownOnlyView(BaseAnalyticsView):
+    """A single group-by breakdown, without the headline metrics.
+
+    Skips the ~40-query aggregate() (see services.breakdown()); subclasses only
+    name the dimension.
+    """
+
+    group_by = None
+
     def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
-        # breakdown-only: skip the ~40-query headline (see services.breakdown()).
+        scoped_qs, date_range = self.scope_and_range(request)
         return Response(
             {
                 "date_range": _date_range_meta(date_range),
-                "breakdown": breakdown(scoped_qs, date_range, group_by="section"),
+                "breakdown": breakdown(scoped_qs, date_range, group_by=self.group_by),
             }
         )
 
 
-class PerformanceTradesView(BaseAnalyticsView):
+class PerformanceSectionsView(_BreakdownOnlyView):
+    group_by = "section"
+
+
+class PerformanceTradesView(_BreakdownOnlyView):
     """Breakdown by trade (sub_section) — the useful split below a section.
 
     Maintenance is the only section type, so a HOD or HOS grouping by section
@@ -347,42 +356,20 @@ class PerformanceTradesView(BaseAnalyticsView):
     section at all); this gives the breakdown-only charts the same dimension.
     """
 
-    def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
-        # breakdown-only: skip the ~40-query headline (see services.breakdown()).
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "breakdown": breakdown(scoped_qs, date_range, group_by="sub_section"),
-            }
-        )
+    group_by = "sub_section"
 
 
-class PerformanceCampusDepartmentsView(BaseAnalyticsView):
-    def get(self, request):
-        role = self.get_role(request)
-        scoped_qs = self.get_scoped_qs(request, role)
-        date_range = resolve_date_range(request.query_params)
-        # breakdown-only: skip the ~40-query headline (see services.breakdown()).
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "breakdown": breakdown(
-                    scoped_qs, date_range, group_by="campus_department"
-                ),
-            }
-        )
+class PerformanceCampusDepartmentsView(_BreakdownOnlyView):
+    group_by = "campus_department"
 
 
 # ── Unified analytics endpoint (one view serves every role) ────────────────────
 
 
 def _range_meta(dr):
+    """`_date_range_meta` plus the comparison window, for endpoints that trend."""
     return {
-        "from": dr["date_from"].isoformat(),
-        "to": dr["date_to"].isoformat(),
+        **_date_range_meta(dr),
         "prev_from": dr["prior_from"].isoformat(),
         "prev_to": dr["prior_to"].isoformat(),
     }
@@ -438,9 +425,7 @@ class AnalyticsView(BaseAnalyticsView):
         user = request.user
         date_range = resolve_date_range(request.query_params)
         cfg = get_role_config(role)
-        granularity = request.query_params.get("granularity", "day")
-        if granularity not in ("day", "week", "month", "quarter"):
-            granularity = "day"
+        granularity = _granularity(request)
 
         # Technician: two scopes in SEPARATE keys, never mixed (SoT §5.4).
         if role == "technician":

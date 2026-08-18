@@ -16,6 +16,8 @@ from apps.accounts.models import RoleAssignment
 from apps.accounts.services import resolve_campus_and_department_names
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.accounts.services import home_campus_from_user
+
 
 def ensure_floor_assignment(user):
     """Guarantee the user has a RoleAssignment, defaulting to role='user'.
@@ -24,14 +26,6 @@ def ensure_floor_assignment(user):
     user already has one (of any role), so it is safe to call unconditionally.
     """
     RoleAssignment.objects.get_or_create(user=user, defaults={"role": "user"})
-
-
-def _campus_id_for_user(user):
-    """Return the user's home campus id from their UserProfile, or None."""
-    try:
-        return user.profile.campus_id
-    except Exception:
-        return None
 
 
 def _department_id_for_assignment(role_assignment):
@@ -73,7 +67,7 @@ def build_tokens_for_assignment(user, role_assignment):
     scope_claims = {
         "email": user.email,
         "role": role,
-        "campus_id": _campus_id_for_user(user),
+        "campus_id": campus.pk if (campus := home_campus_from_user(user)) else None,
         "department_id": department_id,
         "campus_department_id": (
             role_assignment.campus_department_id if role_assignment else None

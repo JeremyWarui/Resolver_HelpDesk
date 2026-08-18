@@ -1,10 +1,9 @@
 """Auth and user-management views."""
 
-from rest_framework import generics, status
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import RoleAssignment, UserProfile
@@ -20,7 +19,8 @@ from apps.accounts.jwt_utils import (
     get_assignment,
     serialize_auth_user,
 )
-from apps.common.permissions import get_request_role
+from apps.common.permissions import IsAdminGroup
+from apps.accounts.identity import display_name
 
 REFRESH_COOKIE = "resolver_refresh"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
@@ -169,6 +169,15 @@ def _sync_org_scope(target, ra, old_ra, actor=None):
     return incumbent
 
 
+def _get_user(pk):
+    """Fetch a user by pk or 404. Deferred model import — this module is
+    imported from settings-time code paths."""
+    from django.contrib.auth import get_user_model
+    from django.shortcuts import get_object_or_404
+
+    return get_object_or_404(get_user_model(), pk=pk)
+
+
 class UserRoleAssignmentView(APIView):
     """GET + POST /users/{user_pk}/role-assignments/ — admin only.
 
@@ -180,22 +189,10 @@ class UserRoleAssignmentView(APIView):
     arrange and a single Maintenance HOS per campus is an org-level decision.
     """
 
-    permission_classes = [IsAuthenticated]
-
-    def _get_target_user(self):
-        from django.contrib.auth import get_user_model
-        from django.shortcuts import get_object_or_404
-
-        User = get_user_model()
-        return get_object_or_404(User, pk=self.kwargs["user_pk"])
+    permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def get(self, request, user_pk):
-        if get_request_role(request) != "admin":
-            return Response(
-                {"detail": "Only an admin may read role assignments."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        target = self._get_target_user()
+        target = _get_user(self.kwargs["user_pk"])
         ra = (
             RoleAssignment.objects.filter(user=target)
             .select_related(
@@ -214,13 +211,7 @@ class UserRoleAssignmentView(APIView):
     def post(self, request, user_pk):
         from django.db import transaction
 
-        if get_request_role(request) != "admin":
-            return Response(
-                {"detail": "Only an admin may assign roles."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        target = self._get_target_user()
+        target = _get_user(self.kwargs["user_pk"])
         serializer = RoleAssignmentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vd = serializer.validated_data
@@ -271,10 +262,10 @@ class UserRoleAssignmentView(APIView):
             # than the one they asked for.
             body["displaced"] = {
                 "id": displaced.id,
-                "full_name": displaced.get_full_name() or displaced.username,
+                "full_name": display_name(displaced),
                 "email": displaced.email,
                 "detail": (
-                    f"{displaced.get_full_name() or displaced.username} held this "
+                    f"{display_name(displaced)} held this "
                     "post and is now a requester. Assign them a new role if they "
                     "are moving rather than leaving."
                 ),
@@ -291,7 +282,6 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken as _RefreshToken
 from apps.accounts.identity import identity_from_email
 from apps.accounts.jwt_utils import ensure_floor_assignment
 
@@ -464,7 +454,7 @@ def jwt_refresh(request):
         )
 
     try:
-        refresh = _RefreshToken(raw_refresh)
+        refresh = RefreshToken(raw_refresh)
         refresh.verify()
 
         # Rotate: blacklist old, issue new pair scoped to the user's *current*
@@ -512,7 +502,7 @@ def jwt_logout(request):
     raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
     if raw_refresh:
         try:
-            _RefreshToken(raw_refresh).blacklist()
+            RefreshToken(raw_refresh).blacklist()
         except Exception:
             pass
 
@@ -536,16 +526,9 @@ def _get_user_id_claim():
 class UserListCreateView(APIView):
     """GET + POST /api/v1/users/ — admin-only user management."""
 
-    permission_classes = [IsAuthenticated]
-
-    def _require_admin(self, request):
-        if get_request_role(request) != "admin":
-            from rest_framework.exceptions import PermissionDenied
-
-            raise PermissionDenied("Only admins may manage users.")
+    permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def get(self, request):
-        self._require_admin(request)
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
@@ -572,7 +555,6 @@ class UserListCreateView(APIView):
         )
 
     def post(self, request):
-        self._require_admin(request)
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -585,31 +567,17 @@ class UserListCreateView(APIView):
 class UserDetailView(APIView):
     """PATCH + DELETE /api/v1/users/<pk>/ — admin-only."""
 
-    permission_classes = [IsAuthenticated]
-
-    def _require_admin(self, request):
-        if get_request_role(request) != "admin":
-            from rest_framework.exceptions import PermissionDenied
-
-            raise PermissionDenied("Only admins may manage users.")
-
-    def _get_user(self, pk):
-        from django.contrib.auth import get_user_model
-        from django.shortcuts import get_object_or_404
-
-        return get_object_or_404(get_user_model(), pk=pk)
+    permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def patch(self, request, pk):
-        self._require_admin(request)
-        user = self._get_user(pk)
+        user = _get_user(pk)
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(UserAdminSerializer(user).data)
 
     def delete(self, request, pk):
-        self._require_admin(request)
-        user = self._get_user(pk)
+        user = _get_user(pk)
         if user == request.user:
             return Response(
                 {"detail": "You cannot delete your own account."},
