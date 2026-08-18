@@ -53,7 +53,35 @@ class MeView(APIView):
         return Response(serialize_auth_user(request.user, assignment))
 
 
-def _sync_org_scope(target, ra, old_ra):
+def _demote_displaced(incumbent, actor):
+    """Drop a displaced supervisor to plain `user`, scope cleared.
+
+    A supervisor post holds exactly one person (SOT §3b). Handing it to someone
+    else therefore *demotes* whoever had it — and until this existed, only half
+    of that happened: `_sync_org_scope` overwrote `Section.hos` and left the old
+    holder's RoleAssignment untouched, so they kept the HOS label, the HOS
+    dashboard and the HOS JWT claim while `scoped_ticket_qs` — which reads the
+    structural FK — showed them nothing. A section head with a working portal
+    and zero tickets, and no event anywhere saying why.
+
+    Demoting to `user` rather than deleting the row keeps the invariant that
+    every user has exactly one RoleAssignment, and `user` is the floor role
+    everyone has anyway. It is deliberately not a guess at what they should be
+    instead: if they are moving to another section, the admin assigns that next,
+    and this simply stops them holding a post that is no longer theirs.
+    """
+    RoleAssignment.objects.filter(user=incumbent).delete()
+    return RoleAssignment.objects.create(
+        user=incumbent,
+        role="user",
+        section=None,
+        campus_department=None,
+        department=None,
+        assigned_by=actor,
+    )
+
+
+def _sync_org_scope(target, ra, old_ra, actor=None):
     """Keep the org-structural FKs in sync with the RoleAssignment.
 
     `scoped_ticket_qs` / `scoped_section_qs` read `Section.hos`,
@@ -61,6 +89,11 @@ def _sync_org_scope(target, ra, old_ra):
     `SectionTechnician` directly — never RoleAssignment — so a promotion that
     only writes a RoleAssignment row would be a silent no-op for the promoted
     user's actual access. This is what closes that gap, in both directions.
+
+    Returns the user displaced from a supervisor post by this assignment, or
+    None. The caller reports it, because "you have just demoted Peter" is not
+    something an admin should have to infer from a screen that no longer
+    mentions him.
     """
     from apps.org.models import (
         CampusDepartment,
@@ -86,6 +119,7 @@ def _sync_org_scope(target, ra, old_ra):
             SectionTechnician.objects.filter(user=target).delete()
 
     # Forward: grant scope for the new assignment.
+    displaced = None
     if ra.role == "technician" and ra.section_id:
         # One link per trade. Technician scope is the set of (section,
         # sub_section) pairs, so this is where a technician's access actually
@@ -95,14 +129,44 @@ def _sync_org_scope(target, ra, old_ra):
                 user=target, section_id=ra.section_id, sub_section=sub_section
             )
     elif ra.role == "hos" and ra.section_id:
-        # One HOS per section: whoever held it is displaced by this assignment.
+        # One HOS per section: whoever held it is displaced by this assignment,
+        # and displaced means demoted — read the incumbent *before* the update
+        # overwrites them, or there is nothing left to demote.
+        displaced = (
+            Section.objects.filter(pk=ra.section_id)
+            .values_list("hos", flat=True)
+            .first()
+        )
         Section.objects.filter(pk=ra.section_id).update(hos=target)
     elif ra.role == "hod" and ra.campus_department_id:
+        displaced = (
+            CampusDepartment.objects.filter(pk=ra.campus_department_id)
+            .values_list("head_of_department", flat=True)
+            .first()
+        )
         CampusDepartment.objects.filter(pk=ra.campus_department_id).update(
             head_of_department=target
         )
     elif ra.role == "manager" and ra.department_id:
+        displaced = (
+            Department.objects.filter(pk=ra.department_id)
+            .values_list("manager_user", flat=True)
+            .first()
+        )
         Department.objects.filter(pk=ra.department_id).update(manager_user=target)
+
+    # Re-assigning someone to the post they already hold is a scope edit, not a
+    # displacement — demoting them here would revoke the role being granted.
+    if displaced in (None, target.pk):
+        return None
+
+    from django.contrib.auth import get_user_model
+
+    incumbent = get_user_model().objects.filter(pk=displaced).first()
+    if incumbent is None:
+        return None
+    _demote_displaced(incumbent, actor)
+    return incumbent
 
 
 class UserRoleAssignmentView(APIView):
@@ -189,7 +253,7 @@ class UserRoleAssignmentView(APIView):
                 user=target, assigned_by=request.user, **vd
             )
             ra._sub_sections = sub_sections
-            _sync_org_scope(target, ra, old_ra)
+            displaced = _sync_org_scope(target, ra, old_ra, actor=request.user)
 
         ra = RoleAssignment.objects.select_related(
             "section__campus_department__campus",
@@ -200,9 +264,22 @@ class UserRoleAssignmentView(APIView):
             "department",
             "assigned_by",
         ).get(pk=ra.pk)
-        return Response(
-            RoleAssignmentSerializer(ra).data, status=status.HTTP_201_CREATED
-        )
+        body = RoleAssignmentSerializer(ra).data
+        if displaced is not None:
+            # Surfaced, not buried in an audit log: the admin filling a post
+            # rarely knows who was in it, and the demotion is a bigger change
+            # than the one they asked for.
+            body["displaced"] = {
+                "id": displaced.id,
+                "full_name": displaced.get_full_name() or displaced.username,
+                "email": displaced.email,
+                "detail": (
+                    f"{displaced.get_full_name() or displaced.username} held this "
+                    "post and is now a requester. Assign them a new role if they "
+                    "are moving rather than leaving."
+                ),
+            }
+        return Response(body, status=status.HTTP_201_CREATED)
 
 
 # ── Auth endpoints: login / refresh / logout ───────────────────────────────────

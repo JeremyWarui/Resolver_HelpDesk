@@ -147,11 +147,12 @@ the address is being typed (register form, admin Add/Edit User, technician
 form). It is a preview only — the server decides — but it must stay in step, or
 the name someone is shown before submitting is not the name they get.
 
-## 3b. PENDING — displacing a supervisor leaves them half-demoted
+## 3b. Displacing a supervisor demotes them
 
-**Open defect. Not yet fixed; the options below are a decision, not a plan.**
+**One post, one holder.** Filling a supervisor post takes it off whoever had it,
+and that person becomes a plain requester.
 
-There are two answers to "who runs this section", and they can disagree:
+There are two answers to "who runs this section", and they must not disagree:
 
 | | Written by | Read by |
 |---|---|---|
@@ -159,38 +160,44 @@ There are two answers to "who runs this section", and they can disagree:
 | `Section.hos`, `CampusDepartment.head_of_department`, `Department.manager_user` | `_sync_org_scope`, on the same request | **`scoped_ticket_qs` — i.e. all actual access** (§3 table) |
 
 Those pointers are single-valued, so promoting a second HOS to a section
-displaces the first — `_sync_org_scope` says so out loud ("One HOS per section:
-whoever held it is displaced by this assignment"). But it updates only the
-right-hand column. The displaced person keeps their `RoleAssignment`, so:
+displaces the first. `_sync_org_scope` used to update only the right-hand
+column, which left the displaced person:
 
-- the admin Users page still lists them as Head of Section, with the section
-- their JWT still carries `role=hos`, so they still land on the HOS portal
-- and every scoped query returns **nothing**
+- still listed as Head of Section on the admin Users page, with the section
+- still carrying `role=hos` in their JWT, so still landing on the HOS portal
+- and returning **nothing** from every scoped query
 
 A Head of Section with no section. Observed live: promoting Grace Njeri to
 NRB-ADM-MTCE left Peter Kimani at 0 tickets while Grace saw 50, with Peter's
-role row untouched. The same shape applies to `hod` and `manager`.
+role row untouched. It was unreachable until the `select_for_update` fix in §7b,
+because the endpoint had been 500ing on every call — nobody had ever
+successfully displaced anyone.
 
-It contradicts invariant 1 only for *reads*: `RoleAssignment` is the source of
-truth for writes, and these FKs are the source of truth for access. It was
-unreachable until the `select_for_update` fix in §7b, because the endpoint had
-been 500ing on every call, so nobody had ever successfully displaced anyone.
+`_demote_displaced()` closes it. The incumbent is read *before* the `update()`
+overwrites them, then their `RoleAssignment` is replaced with `role="user"` and
+all three scope FKs null. Demoting rather than deleting keeps the one-row-per-user
+invariant, and `user` is the floor role everyone has anyway. It is deliberately
+not a guess at what they should be instead: if they are moving to another
+section, the admin assigns that next.
 
-Three ways out, to be decided:
+Two cases must not demote anybody, and both have tests:
 
-1. **Demote the displaced holder explicitly.** On displacement, also move their
-   `RoleAssignment` to `user` and tell the admin who was demoted. Keeps one
-   supervisor per scope and makes the outcome visible instead of silent.
-2. **Allow several holders per scope.** Scope reads `RoleAssignment` instead of
-   the FKs (`section__roleassignment__user=user`); `Section.hos` demotes to a
-   "primary contact" label. The largest change — it touches every scope branch
-   and needs a negative test per role.
-3. **Refuse the assignment.** 409 while the scope already has a holder; the
-   admin must demote the incumbent first. Smallest change, most clicks.
+- **Re-assigning the holder to their own post** is a scope edit, not a
+  displacement. Without the `displaced == target.pk` check they would be
+  demoted a moment after being promoted.
+- **A vacant post** — the common case for a new section.
 
-Whichever is chosen, the fix needs a test that asserts the *displaced* user's
-scope and role agree afterwards — the current suite only ever checks the
-promoted one.
+The POST response carries a `displaced` object when this fires, and
+`UserFormDialog` raises it as a 10-second warning toast. An admin filling a post
+rarely knows who was in it, and demoting someone is a larger change than the one
+they asked for; the only other place it would surface is an empty dashboard
+belonging to somebody nobody has told.
+
+The rejected alternatives, for the record: allowing several holders per scope
+(scope would read `RoleAssignment` and `Section.hos` would become a
+"primary contact" label — touches every scope branch), and refusing the
+assignment with 409 until the admin demotes the incumbent first (fewest lines,
+most clicks).
 
 ## 4. Scope enforcement
 

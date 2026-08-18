@@ -142,12 +142,23 @@ export function UserFormDialog({
 
       if (roleChanged) {
         try {
-          await createRoleAssignment(userId, {
+          const assignment = await createRoleAssignment(userId, {
             role: form.role,
             campus_id: form.campus_id ? Number(form.campus_id) : null,
             department_id: form.department_id ? Number(form.department_id) : null,
             section_id: form.section_id ? Number(form.section_id) : null,
           });
+          // A supervisor post holds one person, so filling it demoted whoever
+          // had it. Warned rather than confirmed, and given a long duration:
+          // it is a second change the admin did not ask for, and the only
+          // other place it shows up is an empty dashboard belonging to
+          // somebody who has not been told.
+          if (assignment.displaced) {
+            toast.warning(
+              `${assignment.displaced.full_name} was removed from this post`,
+              { description: assignment.displaced.detail, duration: 10000 },
+            );
+          }
         } catch (roleError) {
           handleDRFError(roleError, { fallbackMessage: 'User saved, but the role update failed — reopen this dialog to retry.' });
           onSuccess();

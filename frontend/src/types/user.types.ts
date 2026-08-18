@@ -59,6 +59,16 @@ export interface RoleAssignment {
   sub_section_ids: number[];
   assigned_by_username: string | null;
   assigned_at: string;
+  /** Present only on the POST response, and only when this assignment took a
+   *  supervisor post off someone. One person holds a post (SOT §3b), so filling
+   *  it demotes the incumbent to requester — a bigger change than the admin
+   *  asked for, and one they cannot see on a screen that no longer names him. */
+  displaced?: {
+    id: number;
+    full_name: string;
+    email: string;
+    detail: string;
+  };
 }
 
 export type BackendRoleAssignment = RoleAssignment;

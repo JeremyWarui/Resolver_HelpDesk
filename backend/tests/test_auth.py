@@ -11,6 +11,7 @@ from django.urls import reverse
 
 from apps.accounts.models import RoleAssignment
 from apps.common.roles import resolve_role
+from apps.org.models import Section
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -445,3 +446,101 @@ def test_only_an_admin_may_assign_a_role(api, nrb_hos, requester, nrb, nrb_secti
     )
     assert response.status_code == 403
     assert RoleAssignment.objects.get(user=requester).role == "user"
+
+
+def test_displacing_a_section_head_demotes_the_one_who_held_it(
+    api, admin_user, requester, nrb_hos, nrb, department, nrb_section
+):
+    """The defect SOT §3b recorded: displacement was doing only half the job.
+
+    `_sync_org_scope` overwrote `Section.hos` and left the old holder's
+    RoleAssignment alone, so they kept the HOS label, the HOS portal and the HOS
+    JWT claim while `scoped_ticket_qs` — which reads the structural FK — showed
+    them nothing. This asserts both halves now agree: the post moves, and the
+    person who lost it is a plain requester with no scope left over.
+    """
+    assert Section.objects.get(pk=nrb_section.pk).hos_id == nrb_hos.id
+
+    api.force_authenticate(admin_user)
+    response = _assign_role(
+        api,
+        requester,
+        role="hos",
+        campus_id=nrb.id,
+        department_id=department.id,
+        section_id=nrb_section.id,
+    )
+    assert response.status_code == 201, response.json()
+
+    # The post moved.
+    assert Section.objects.get(pk=nrb_section.pk).hos_id == requester.id
+
+    # And the incumbent is not still labelled its head.
+    old = RoleAssignment.objects.get(user=nrb_hos)
+    assert old.role == "user"
+    assert old.section_id is None
+    assert old.campus_department_id is None
+    assert old.department_id is None
+
+
+def test_the_displacement_is_reported_to_the_admin_who_caused_it(
+    api, admin_user, requester, nrb_hos, nrb, department, nrb_section
+):
+    """An admin filling a post rarely knows who was in it, and demoting someone
+    is a larger change than the one they asked for. Silence here is how a
+    section head finds out by opening an empty dashboard."""
+    api.force_authenticate(admin_user)
+    body = _assign_role(
+        api,
+        requester,
+        role="hos",
+        campus_id=nrb.id,
+        department_id=department.id,
+        section_id=nrb_section.id,
+    ).json()
+
+    assert body["displaced"]["id"] == nrb_hos.id
+    assert body["displaced"]["email"] == nrb_hos.email
+
+
+def test_reassigning_the_holder_to_their_own_post_does_not_demote_them(
+    api, admin_user, nrb_hos, nrb, department, nrb_section
+):
+    """A scope edit is not a displacement. Reading the incumbent and demoting
+    them unconditionally would revoke the very role being granted — the update
+    sets `hos` to the same person, so without the identity check they would be
+    demoted a moment after being promoted."""
+    api.force_authenticate(admin_user)
+    body = _assign_role(
+        api,
+        nrb_hos,
+        role="hos",
+        campus_id=nrb.id,
+        department_id=department.id,
+        section_id=nrb_section.id,
+    ).json()
+
+    assert "displaced" not in body
+    assert RoleAssignment.objects.get(user=nrb_hos).role == "hos"
+    assert Section.objects.get(pk=nrb_section.pk).hos_id == nrb_hos.id
+
+
+def test_an_empty_post_displaces_nobody(
+    api, admin_user, requester, nrb, department, nrb_section
+):
+    """A vacant seat is the common case for a new section, and must not trip
+    the demotion path."""
+    Section.objects.filter(pk=nrb_section.pk).update(hos=None)
+
+    api.force_authenticate(admin_user)
+    body = _assign_role(
+        api,
+        requester,
+        role="hos",
+        campus_id=nrb.id,
+        department_id=department.id,
+        section_id=nrb_section.id,
+    ).json()
+
+    assert "displaced" not in body
+    assert Section.objects.get(pk=nrb_section.pk).hos_id == requester.id
