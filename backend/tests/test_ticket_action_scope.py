@@ -323,3 +323,43 @@ def test_escalated_filter_leaves_out_finished_work(
     assert [t["ticket_no"] for t in body["results"]] == [
         nrb_electrical_ticket.ticket_no
     ]
+
+
+def test_a_technician_sees_escalation_in_their_own_trade_only(
+    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+):
+    """Escalation is about the technician holding the job, so they get the same
+    filter the HOS does — through their own (campus, trade) scope, not a wider
+    one. Escalating a plumbing job must not make it visible to an electrician:
+    the filter still narrows, and `escalated=1` is not a back door around the
+    pairwise technician scope.
+    """
+    for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
+        t.current_level = "hos"
+        t.save(update_fields=["current_level"])
+
+    api.force_authenticate(nrb_electrician)
+    body = api.get(reverse("ticket-list"), {"escalated": "1"}).json()
+
+    assert [t["ticket_no"] for t in body["results"]] == [
+        nrb_electrical_ticket.ticket_no
+    ]
+
+
+def test_the_escalation_level_reaches_the_technician_in_the_list_payload(
+    api, nrb_electrician, nrb_electrical_ticket
+):
+    """The row marker renders from `current_level`, so it has to survive the
+    list serializer — it was filterable long before anything displayed it."""
+    nrb_electrical_ticket.current_level = "hos"
+    nrb_electrical_ticket.save(update_fields=["current_level"])
+
+    api.force_authenticate(nrb_electrician)
+    body = api.get(reverse("ticket-list")).json()
+
+    row = next(
+        t
+        for t in body["results"]
+        if t["ticket_no"] == nrb_electrical_ticket.ticket_no
+    )
+    assert row["current_level"] == "hos"

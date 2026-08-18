@@ -4,6 +4,7 @@ import { ChevronDown, Eye, Edit, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/ticket/StatusBadge";
+import { EscalationBadge } from "@/components/shared/ticket/EscalationBadge";
 import { PriorityBadge } from "@/components/shared/ticket/PriorityBadge";
 import { SLACountdown } from "@/components/shared/ticket/SLACountdown";
 import type { Ticket } from "@/types";
@@ -221,9 +222,19 @@ export const statusColumn = <T,>(header: string = "Status"): ColumnDef<T> => ({
       </Button>
     </div>
   ),
-  cell: ({ row }) => (
-    <StatusBadge status={row.getValue("status") as Ticket["status"]} />
-  ),
+  // The escalation marker rides along with the status rather than taking a
+  // column: `status` is the one column no variant hides, so this is what makes
+  // an escalated job legible to the technician holding it and to the HOS on
+  // their ordinary Tickets list — neither of whom could see it before.
+  cell: ({ row }) => {
+    const ticket = row.original as unknown as Ticket;
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        <StatusBadge status={row.getValue("status") as Ticket["status"]} />
+        <EscalationBadge level={ticket.current_level} />
+      </div>
+    );
+  },
 });
 
 export const priorityColumn = <T,>(header: string = "Priority"): ColumnDef<T> => ({

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { useRoleContext } from '@/lib/auth/roleContext';
 import { useUIStore } from '@/stores/uiStore';
 import { useLogout } from '@/hooks/useLogout';
-import { SIDEBAR_CONFIG } from '@/constants/sidebarConfig';
+import { SIDEBAR_CONFIG, type SidebarCount } from '@/constants/sidebarConfig';
+import { useNavCounts } from '@/hooks/tickets/useNavCounts';
 import type { UserRole } from '@/types';
 
 const ROLE_BASE: Record<UserRole, string> = {
@@ -44,6 +45,14 @@ const SECTION_PATH: Record<string, string> = {
   settings:       '/settings',
 };
 
+/** Badge colour per counted queue — the same token the rows and status pills
+ *  use, so the sidebar number and the thing it counts are the same colour.
+ *  Both are dark enough at full saturation to carry white text. */
+const COUNT_COLOR: Record<SidebarCount, string> = {
+  escalated: 'var(--status-escalated)',
+  pending: 'var(--status-pending)',
+};
+
 export function AppSidebar() {
   const { role } = useRoleContext();
   const { sidebarOpen, toggleSidebar, isMyRequests, toggleMyRequests, setMyRequests } = useUIStore();
@@ -53,6 +62,11 @@ export function AppSidebar() {
   const effectiveRole = role ?? 'user';
   const config = SIDEBAR_CONFIG[effectiveRole];
   const base = ROLE_BASE[effectiveRole];
+
+  // Skipped for pure requesters and admins, whose sidebars carry no counted
+  // item — asking for counts nothing renders would be two requests per load.
+  const wantsCounts = config.items.some((item) => item.count);
+  const navCounts = useNavCounts(wantsCounts);
 
   return (
     <aside
@@ -94,9 +108,13 @@ export function AppSidebar() {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-        {config.items.map(({ id, label, icon: Icon }) => {
+        {config.items.map(({ id, label, icon: Icon, count }) => {
           const href = base + (SECTION_PATH[id] ?? '');
           const isBase = (SECTION_PATH[id] ?? '') === '';
+          // Zero is not rendered at all: an empty queue should recede, and a
+          // badge reading "0" draws the eye to precisely the item with nothing
+          // in it.
+          const n = count ? navCounts[count] : 0;
           return (
             <NavLink
               key={id}
@@ -115,10 +133,36 @@ export function AppSidebar() {
                   !sidebarOpen && 'justify-center px-0',
                 )
               }
-              title={!sidebarOpen ? label : undefined}
+              title={
+                !sidebarOpen
+                  ? n > 0 ? `${label} — ${n}` : label
+                  : undefined
+              }
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              {/* `relative` so the collapsed-rail dot can anchor to the icon. */}
+              <span className="relative shrink-0">
+                <Icon className="h-4 w-4" />
+                {/* Collapsed to the icon rail there is no room for a number, so
+                    the badge degrades to a dot: it still says "something is in
+                    here", and the count is in the tooltip. */}
+                {!sidebarOpen && n > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-1 -top-1 h-2 w-2 rounded-full ring-2 ring-card"
+                    style={{ backgroundColor: COUNT_COLOR[count!] }}
+                  />
+                )}
+              </span>
               {sidebarOpen && <span className="truncate">{label}</span>}
+              {sidebarOpen && n > 0 && (
+                <span
+                  className="ml-auto shrink-0 rounded-full px-1.5 min-w-5 text-center text-[11px] font-semibold leading-5 tabular-nums text-white"
+                  style={{ backgroundColor: COUNT_COLOR[count!] }}
+                  aria-label={`${n} ${label}`}
+                >
+                  {n > 99 ? '99+' : n}
+                </span>
+              )}
             </NavLink>
           );
         })}

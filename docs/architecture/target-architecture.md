@@ -481,6 +481,70 @@ at all when no pill represents it. Selecting a status also clears **Overdue**,
 which is a cross-status flag rather than a status — left set it would intersect
 with the choice and draw an empty table with nothing on screen explaining why.
 
+### Seeing that a ticket escalated
+
+Escalation is structural (§4): the engine moves a ticket technician → HOS → HOD
+when its *active* time passes the threshold on its priority. It runs from
+`manage.py process_auto_escalations` — nothing in the request path triggers it,
+so on a live demo nothing escalates until that command is run. The seed calls
+`run_escalations()` at the end for exactly that reason.
+
+`current_level` was serialised, typed and filterable long before anything
+rendered it. The only surface was the **Escalated** page, which HOS and HOD had
+and the technician did not — so the person actually holding an escalated job was
+the one person who could not tell it had escalated, and a HOS looking at their
+ordinary Tickets list saw an escalated row drawn identically to every other one.
+
+Two changes close that:
+
+- **The row tints red, and `EscalationBadge` rides in the status cell.** The
+  tint (`escalatedRowClass`) is the signal you read without looking; the badge
+  says only how far it climbed — `HOS` or `HOD`, abbreviated because spelled out
+  it was wider than the status pill it annotates and read as the row's headline
+  rather than a marker on it. The badge sits in the status cell rather than a
+  column of its own: `status` is the only column no variant in
+  `VARIANT_COLUMN_VISIBILITY` hides, so one edit to `TableUtils.statusColumn`
+  covers every table for every role, where a dedicated column would have meant
+  an entry in six visibility maps and an em dash in every cell of the tickets
+  that never escalate.
+
+  `TicketTable` applies the tint by default; a caller passing its own
+  `rowClassName` wins outright rather than composing. That is deliberate —
+  EscalatedWorkView tints on `is_breaching`, and on a page where every row is
+  escalated by definition the escalation tint says nothing while the breach tint
+  does. (The two are easy to confuse: that page looked like it marked escalation
+  only because its rows are mostly breaching too.)
+- **The technician gets the Escalated page**, `EscalatedWorkView role="technician"`.
+  Its scope is the technician's (campus, trade) pairs — the same pool as Section
+  Tickets, not only what they are assigned — so the copy says the section's
+  work, not "yours". Escalating reassigns nothing; the badge and the page are a
+  heads-up, and every action on the ticket stays where it was.
+
+### Counts on the sidebar
+
+`Escalated` and `Pending Work` carry a live count in the nav — "Escalated (28)".
+Both answer "is there anything here worth opening?", which was otherwise only
+answerable by opening the page. `useNavCounts` fetches them with `page_size: 1`
+and reads only `count`, so it costs one row rather than the two hundred the
+pages themselves ask for, and both queries are role-scoped server-side like
+every other ticket read — a HOS's badge counts their section, a technician's
+counts their trades, with no client-side filtering that could disagree with the
+page it labels.
+
+It renders as a notification pill on the right of the row, coloured with the
+same token as the thing it counts — `--status-escalated` red, `--status-pending`
+purple — so the number and the rows it refers to read as one signal. Collapsed
+to the icon rail there is no room for a number, so the pill degrades to a dot on
+the icon and the count moves into the tooltip.
+
+Zero is not rendered at all: a badge reading "0" draws the eye to precisely the
+item with nothing in it. Only those two items carry counts — a count on
+`Tickets` would be the whole backlog, a number nobody acts on.
+
+`?escalated=1` is a filter over the already-scoped queryset, so it narrows and
+never widens: `test_a_technician_sees_escalation_in_their_own_trade_only` is the
+negative — an escalated plumbing job stays invisible to an electrician.
+
 ## 7. Inherited bugs — do not port
 
 Found during the audit of `django_resolver`. These exist in the reference

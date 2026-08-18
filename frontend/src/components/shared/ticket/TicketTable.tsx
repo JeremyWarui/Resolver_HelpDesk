@@ -17,6 +17,7 @@ import {
   createVariantColumns,
   VARIANT_COLUMN_VISIBILITY,
 } from '@/components/shared/data/DataTable/utils/TicketTableColumns';
+import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 import type { FilterOption } from '@/components/shared/data/DataTable/DataTable';
 import type { Ticket, TicketTableVariant, BulkAction } from '@/types';
 
@@ -115,7 +116,11 @@ export function TicketTable({
       loading={loading}
       onRowClick={onRowClick}
       selectedRowId={selectedRowId}
-      rowClassName={rowClassName}
+      // Escalated rows tint red by default. A caller that passes its own
+      // `rowClassName` wins outright rather than composing — EscalatedWorkView
+      // tints on `is_breaching`, and on a list where every row is escalated by
+      // definition the escalation tint says nothing while the breach tint does.
+      rowClassName={rowClassName ?? escalatedRowClass}
       emptyStateMessage={emptyMessage}
       emptyStateDescription={emptyDescription}
       initialColumnVisibility={columnVisibility}

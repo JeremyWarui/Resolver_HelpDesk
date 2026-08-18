@@ -5,6 +5,7 @@ import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
 import { ROLE_NAV } from '@/config/roleNav';
 import TechSectionTickets from './TechSectionTickets';
 import TechTicketsPage from './TechTicketsPage';
+import EscalatedWorkView from '@/features/shared/EscalatedWorkView';
 import RoleReportsPage from '@/features/shared/RoleReportsPage';
 import FeedbackTab from '@/features/shared/FeedbackTab';
 
@@ -23,6 +24,7 @@ const TechnicianLayout = () => {
       sections={({ onTicketSelect, userId }) => ({
         dashboard:      <TechSectionTickets currentTechnicianId={userId} onTicketSelect={onTicketSelect} />,
         assignedTickets: <TechTicketsPage onTicketSelect={onTicketSelect} />,
+        escalated:      <EscalatedWorkView role="technician" onTicketSelect={onTicketSelect} />,
         feedback:       <FeedbackTab role="technician" />,
         report:         <RoleReportsPage role="technician" />,
         settings:       <ComingSoonSection section="Settings" />,

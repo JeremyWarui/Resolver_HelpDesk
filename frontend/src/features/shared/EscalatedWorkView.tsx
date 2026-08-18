@@ -22,7 +22,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Ticket } from '@/types';
 
-export type EscalatedRole = 'hos' | 'hod';
+export type EscalatedRole = 'technician' | 'hos' | 'hod';
 
 interface Props {
   role: EscalatedRole;
@@ -30,6 +30,18 @@ interface Props {
 }
 
 const COPY: Record<EscalatedRole, { subtitle: string }> = {
+  // The technician is the one person escalation is *about*, and was the only
+  // one who could not see it: no page, no badge, nothing they would read as
+  // "this is now your section head's problem too". Same rows, same filter —
+  // framed as a heads-up rather than a worklist, because escalating does not
+  // reassign anything; the job stays exactly where it was.
+  //
+  // Scope is the technician's (campus, trade) pairs, same as Section Tickets —
+  // so this lists what has escalated in their trades, not only what they hold.
+  technician: {
+    subtitle:
+      'Jobs in your trades that ran past their threshold and were raised to your section head. Escalating does not move the work — these are still the section’s to finish.',
+  },
   hos: {
     subtitle:
       'Jobs that passed their threshold and were raised to you. Each one is late enough that the system stopped waiting for the technician.',
@@ -38,6 +50,12 @@ const COPY: Record<EscalatedRole, { subtitle: string }> = {
     subtitle:
       'Jobs raised above the technician anywhere on your campus — including those still sitting with the section head.',
   },
+};
+
+const EMPTY_DESCRIPTION: Record<EscalatedRole, string> = {
+  technician: 'Nothing you hold has passed its threshold.',
+  hos: 'Every job in your scope is still with the technician it was assigned to.',
+  hod: 'Every job in your scope is still with the technician it was assigned to.',
 };
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -76,9 +94,7 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
           <CardContent className="flex flex-col items-center gap-2 py-14 text-center">
             <ShieldAlert className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">Nothing has escalated</p>
-            <p className="text-sm text-muted-foreground">
-              Every job in your scope is still with the technician it was assigned to.
-            </p>
+            <p className="text-sm text-muted-foreground">{EMPTY_DESCRIPTION[role]}</p>
           </CardContent>
         </Card>
       ) : (
@@ -134,7 +150,7 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
             onRowClick={(t) => onTicketSelect?.(t.id)}
             searchPlaceholder="Search by ticket number or job…"
             emptyMessage="Nothing has escalated"
-            emptyDescription="Every job in your scope is still with its technician."
+            emptyDescription={EMPTY_DESCRIPTION[role]}
             rowClassName={(t) =>
               t.is_breaching
                 ? 'border-l-2 border-status-escalated bg-status-escalated/5'
