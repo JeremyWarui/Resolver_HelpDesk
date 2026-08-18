@@ -15,7 +15,6 @@ import { TicketTimeline } from '@/components/shared/ticket/TicketTimeline';
 import { CommentThread } from '@/components/shared/ticket/CommentThread';
 import { StatusUpdateModal } from '@/features/technician/StatusUpdateModal';
 import { AssignmentModal } from '@/features/hos/AssignmentModal';
-import { EscalationModal } from '@/features/tickets/EscalationModal';
 import { RatingModal } from '@/features/user/RatingModal';
 import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { useTicketDetail, useTicketTimeline, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
@@ -28,7 +27,7 @@ import { formatSectionDisplay } from '@/utils/formatSection';
 import { formatPhoneLocal } from '@/utils/phone';
 import type { Ticket } from '@/types';
 
-type ActiveModal = 'status' | 'assign' | 'escalate' | 'rate' | 'reopen' | null;
+type ActiveModal = 'status' | 'assign' | 'rate' | 'reopen' | null;
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -182,11 +181,6 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     ['assigned', 'in_progress'].includes(ticket.status) &&
     ticket.assigned_to != null;
 
-  const showEscalate =
-    permissions.canEscalate &&
-    ticket != null &&
-    ['assigned', 'in_progress', 'pending'].includes(ticket.status);
-
   const showConfirmResolved =
     permissions.canCloseTicket &&
     ticket?.status === 'resolved' &&
@@ -277,7 +271,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
             </DialogHeader>
 
             {/* ── Action toolbar ─────────────────────────────────────────────── */}
-            {(showClaim || showStartWork || showStatusUpdate || showAssign || showReassign || showEscalate || showConfirmResolved || showReopen) && (
+            {(showClaim || showStartWork || showStatusUpdate || showAssign || showReassign || showConfirmResolved || showReopen) && (
               <div className="px-6 py-3 border-b bg-muted/30 shrink-0 flex items-center justify-between gap-2">
                 {/* Secondary actions — left */}
                 <div className="flex items-center gap-2 flex-wrap">
@@ -329,12 +323,6 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                     <Button size="sm" variant="outline" onClick={() => setActiveModal('status')}>
                       <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                       Update Status
-                    </Button>
-                  )}
-                  {showEscalate && (
-                    <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => setActiveModal('escalate')}>
-                      <AlertCircle className="h-3.5 w-3.5 mr-1.5" />
-                      Escalate
                     </Button>
                   )}
                   {showConfirmResolved && (
@@ -558,13 +546,6 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
               onClose={() => setActiveModal(null)}
               onSuccess={onModalSuccess}
               mode={showReassign && ticket.assigned_to != null ? 'reassign' : 'assign'}
-            />
-
-            <EscalationModal
-              ticket={ticket}
-              open={activeModal === 'escalate'}
-              onClose={() => setActiveModal(null)}
-              onSuccess={onModalSuccess}
             />
 
             {activeModal === 'rate' && (

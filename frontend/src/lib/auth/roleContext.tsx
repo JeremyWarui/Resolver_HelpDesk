@@ -62,7 +62,6 @@ export function usePermissions(): PermissionMap {
       canAssignTicket: false,
       canReassignTicket: false,
       canUpdateTicketStatus: false,
-      canEscalate: false,
       canCloseTicket: false,
       canReopenTicket: false,
       canRateTicket: false,
@@ -74,9 +73,5 @@ export function usePermissions(): PermissionMap {
       canManageUsers: false,
     }
   );
-}
-
-export function useScope(): UserScope | null {
-  return useRoleContext().scope;
 }
 

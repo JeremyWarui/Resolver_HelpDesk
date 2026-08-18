@@ -10,7 +10,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: false,
     canReassignTicket: false,
     canUpdateTicketStatus: false,
-    canEscalate: false,
     canCloseTicket: true,    // user confirms resolution
     canReopenTicket: true,   // user reopens resolved ticket
     canRateTicket: true,
@@ -28,7 +27,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: false,
     canReassignTicket: false,
     canUpdateTicketStatus: true,   // own assigned tickets
-    canEscalate: true,
     canCloseTicket: false,
     canReopenTicket: false,
     canRateTicket: false,
@@ -46,7 +44,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
-    canEscalate: true,
     canCloseTicket: false,
     canReopenTicket: false,
     canRateTicket: false,
@@ -64,7 +61,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
-    canEscalate: true,
     canCloseTicket: false,
     canReopenTicket: false,
     canRateTicket: false,
@@ -82,7 +78,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: false,
     canReassignTicket: false,
     canUpdateTicketStatus: false,
-    canEscalate: false,
     canCloseTicket: false,
     canReopenTicket: false,
     canRateTicket: false,
@@ -100,7 +95,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
-    canEscalate: true,
     canCloseTicket: true,
     canReopenTicket: true,
     canRateTicket: false,

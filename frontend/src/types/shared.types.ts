@@ -15,7 +15,6 @@ export interface PermissionMap {
   canAssignTicket: boolean;
   canReassignTicket: boolean;
   canUpdateTicketStatus: boolean;
-  canEscalate: boolean;
   canCloseTicket: boolean;
   canReopenTicket: boolean;
   canRateTicket: boolean;
@@ -83,45 +82,10 @@ export interface DRFPaginatedResponse<T> {
 }
 
 // Future cursor pagination shape (matches backend plan Phase B)
-export interface CursorPaginatedResponse<T> {
-  data: T[];
-  meta: {
-    nextCursor: string | null;
-    prevCursor: string | null;
-    total: number;
-  };
-  counts?: TicketListCounts;
-}
-
 // ─── Ticket priority ──────────────────────────────────────────────────────────
-export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
-
 // ─── Paginated response alias (plan name for DRFPaginatedResponse) ─────────────
-export type PaginatedResponse<T> = DRFPaginatedResponse<T>;
-
 // ─── Technician summary (used by TechnicianPicker and workload views) ─────────
-export interface TechnicianSummary {
-  id: number;
-  username: string;
-  name: string;
-  activeTicketCount: number;
-  slaComplianceRate: number;
-}
-
 // ─── Generic KPI metrics ──────────────────────────────────────────────────────
-export interface KPIMetrics {
-  totalTickets: number;
-  openTickets: number;
-  inProgressTickets: number;
-  resolvedTickets: number;
-  avgResolutionHours: number;
-  slaComplianceRate: number;
-  escalationCount: number;
-  satisfactionScore: number | null;
-  periodStart: string;
-  periodEnd: string;
-}
-
 // ─── Notification types ───────────────────────────────────────────────────────
 
 export type NotificationEventType =
@@ -155,12 +119,6 @@ export interface BulkAction {
 }
 
 // ─── API error shape ──────────────────────────────────────────────────────────
-
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: Record<string, string[]>;
-}
 
 // ─── Auth user (adapted for DRF token auth — no JWT fields) ──────────────────
 

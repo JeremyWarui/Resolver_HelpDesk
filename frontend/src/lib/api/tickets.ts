@@ -108,10 +108,6 @@ export async function updateTicket(
   return data;
 }
 
-export async function deleteTicket(id: number): Promise<void> {
-  await apiClient.delete(`/tickets/${id}/`);
-}
-
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 /** Assignment is also where priority is decided.
@@ -280,16 +276,6 @@ export async function claimTicket(id: number): Promise<Ticket> {
   return data;
 }
 
-// Manual escalation is not part of the SoT API surface — escalation is automatic.
-// This stub satisfies callers that have not yet been migrated; it always rejects.
-export async function escalateTicket(_id: number, _level: string, _reason: string): Promise<Ticket> {
-  throw new Error('Manual escalation is not supported. Escalation is automatic (SoT §4.3).');
-}
-
-export async function addTicketFeedback(ticketId: number, rating: number, comment?: string): Promise<Ticket> {
-  return addFeedback(ticketId, rating, comment);
-}
-
 // ── Attachments ───────────────────────────────────────────────────────────────
 
 export async function uploadAttachments(ticketId: number, files: File[]): Promise<void> {
@@ -341,7 +327,6 @@ const ticketsService = {
   getTicketById,
   createTicket,
   updateTicket,
-  deleteTicket,
   assignTicket,
   updateTicketStatus,
   addFeedback,
@@ -352,8 +337,6 @@ const ticketsService = {
   closeTicket,
   reopenTicket,
   claimTicket,
-  escalateTicket,
-  addTicketFeedback,
   getFeedback,
 };
 
