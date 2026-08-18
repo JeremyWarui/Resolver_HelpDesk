@@ -4,9 +4,8 @@ One function per domain event, called from the ticket services. Each persists
 `Notification` rows for the users who should hear about it; the frontend polls
 `/notifications/` on a one-minute interval and on window focus.
 
-Every emitter is wrapped in `@_never_fails` — a notification must never be the
-reason a ticket update fails. These rows are the courtesy; the ticket is the
-work.
+Every emitter is wrapped in `@_never_fails` (see its docstring). These rows are
+the courtesy; the ticket is the work.
 
 WebSockets are deferred, not removed: a maintenance helpdesk runs on a
 minutes-to-hours cadence, and live delivery would force ASGI plus Redis into
@@ -16,6 +15,7 @@ these functions a second sink, not restructuring them.
 
 import functools
 import logging
+from apps.accounts.identity import display_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,34 +54,32 @@ def _campus_department_id(ticket) -> int | None:
         return None
 
 
-def _hos_user_ids(section_id) -> list[int]:
-    """User IDs of the HOS role-holders for a section."""
-    try:
-        from apps.accounts.models import RoleAssignment
+def _role_holder_ids(role, **scope) -> list[int]:
+    """User IDs of the role-holders at a given scope — [] if the scope is unset.
 
-        return list(
-            RoleAssignment.objects.filter(
-                role="hos", section_id=section_id
-            ).values_list("user_id", flat=True)
-        )
-    except Exception:
-        return []
-
-
-def _hod_user_ids(cd_id) -> list[int]:
-    """User IDs of the HOD role-holders for a campus-department."""
-    if not cd_id:
+    Swallows its own errors for the same reason `_never_fails` exists: a
+    recipient lookup must not be what breaks the ticket update.
+    """
+    if any(v is None for v in scope.values()):
         return []
     try:
         from apps.accounts.models import RoleAssignment
 
         return list(
-            RoleAssignment.objects.filter(
-                role="hod", campus_department_id=cd_id
-            ).values_list("user_id", flat=True)
+            RoleAssignment.objects.filter(role=role, **scope).values_list(
+                "user_id", flat=True
+            )
         )
     except Exception:
         return []
+
+
+def _supervisor_ids(ticket) -> list[int]:
+    """The HOS and HOD who should hear about this ticket. Order is immaterial —
+    `_notify_users` de-duplicates."""
+    return _role_holder_ids("hos", section_id=ticket.section_id) + _role_holder_ids(
+        "hod", campus_department_id=_campus_department_id(ticket)
+    )
 
 
 # ── DB notification helper ────────────────────────────────────────────────────
@@ -122,9 +120,7 @@ def _notify_users(
 
 @_never_fails
 def emit_ticket_created(ticket) -> None:
-    cd_id = _campus_department_id(ticket)
-
-    recipients = _hos_user_ids(ticket.section_id) + _hod_user_ids(cd_id)
+    recipients = _supervisor_ids(ticket)
     _notify_users(
         recipients,
         "ticket_created",
@@ -138,7 +134,7 @@ def emit_ticket_created(ticket) -> None:
 def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
     assignee = ticket.assigned_to
     assignee_name = (
-        (assignee.get_full_name() or assignee.username) if assignee else None
+        display_name(assignee) if assignee else None
     )
     is_reassignment = previous_assignee is not None
     if assignee:
@@ -204,7 +200,7 @@ def emit_ticket_resolved(ticket) -> None:
 def emit_comment_added(ticket, comment) -> None:
     author = comment.author
     if author and author.id != ticket.raised_by_id:
-        author_name = author.get_full_name() or author.username
+        author_name = display_name(author)
         preview = (comment.body or "")[:100]
         _notify_users(
             [ticket.raised_by_id],
@@ -223,9 +219,7 @@ def emit_sla_breach(ticket) -> None:
     deadline is already gone, and the decision it calls for — reassign, chase,
     reprioritise — is theirs. The assignee already sees the ticket turn red.
     """
-    cd_id = _campus_department_id(ticket)
-
-    recipients = _hos_user_ids(ticket.section_id) + _hod_user_ids(cd_id)
+    recipients = _supervisor_ids(ticket)
     _notify_users(
         recipients,
         "sla_breach",
@@ -236,15 +230,38 @@ def emit_sla_breach(ticket) -> None:
 
 
 @_never_fails
-def emit_ticket_escalated(ticket) -> None:
-    cd_id = _campus_department_id(ticket)
+def emit_ticket_escalated(ticket, holder=None) -> None:
+    """Tell the two people an escalation actually concerns.
 
-    recipients = _hod_user_ids(cd_id) + _hos_user_ids(ticket.section_id)
-    _notify_users(
-        recipients,
-        "ticket_escalated",
-        "Ticket escalated",
-        f"Ticket #{ticket.ticket_no} has been escalated to {ticket.current_level.upper()}.",
-        ticket,
-    )
+    `holder` is the post the ticket escalated TO, resolved structurally by
+    `sla.services.escalation.resolve_active_holder` — the same user the
+    TicketLog records as `level_user`. It is passed in rather than looked up
+    again here because the structural FK and RoleAssignment can disagree, and
+    notifying a different person than the one the ticket was handed to is how
+    an escalation goes unanswered.
+
+    The assignee is told separately: the ticket is leaving their level, and
+    they are the one who has to act on that.
+    """
+    level = ticket.current_level.upper()
+
+    if holder is not None:
+        _notify_users(
+            [holder.pk],
+            "ticket_escalated",
+            "Ticket escalated to you",
+            f"Ticket #{ticket.ticket_no} has been escalated to you as {level}.",
+            ticket,
+        )
+
+    # Never notify the assignee twice — a technician who also holds the post
+    # the ticket escalated to has already had the message above.
+    if ticket.assigned_to_id and (holder is None or ticket.assigned_to_id != holder.pk):
+        _notify_users(
+            [ticket.assigned_to_id],
+            "ticket_escalated",
+            "Your ticket was escalated",
+            f"Ticket #{ticket.ticket_no}, assigned to you, has been escalated to {level}.",
+            ticket,
+        )
 

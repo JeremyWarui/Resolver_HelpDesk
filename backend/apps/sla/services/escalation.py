@@ -2,12 +2,12 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.tickets.statuses import ACTIVE_STATUSES
+from apps.tickets.statuses import ACTIVE_STATUSES, TERMINAL_STATUSES
 
 LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 
 
-def resolve_active_holder(section, level, now=None):
+def resolve_active_holder(section, level):
     """The user a ticket escalates to at `level`, or None if the post is vacant.
 
     Reads the org-structural FK, which is the only source of truth: there is no
@@ -24,7 +24,7 @@ def resolve_active_holder(section, level, now=None):
 def run_escalation_for_ticket(ticket, now, rules):
     from apps.tickets.models import TicketLog
 
-    if ticket.status in ("resolved", "closed"):
+    if ticket.status in TERMINAL_STATUSES:
         return False
 
     if ticket.paused_at is not None:
@@ -49,7 +49,7 @@ def run_escalation_for_ticket(ticket, now, rules):
         return False
 
     for rule in applicable:
-        holder = resolve_active_holder(ticket.section, rule.to_level, now)
+        holder = resolve_active_holder(ticket.section, rule.to_level)
         if holder is not None:
             old_level = ticket.current_level
             ticket.current_level = rule.to_level
@@ -64,7 +64,7 @@ def run_escalation_for_ticket(ticket, now, rules):
             )
             from apps.notifications.notify import emit_ticket_escalated
 
-            emit_ticket_escalated(ticket)
+            emit_ticket_escalated(ticket, holder)
             return True
 
     return False

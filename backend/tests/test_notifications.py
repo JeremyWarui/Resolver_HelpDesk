@@ -256,3 +256,101 @@ def test_a_paused_ticket_is_not_breached_by_the_command(
 
     assert not TicketLog.objects.filter(event_type="sla_breach").exists()
     assert not _for(nrb_hos, "sla_breach").exists()
+
+
+# ── Escalation reaches the two people it concerns ─────────────────────────────
+#
+# An escalation used to notify every HOS and HOD in the section by role lookup:
+# a broadcast that told supervisors about tickets that had not been handed to
+# them, and — because the role rows and the structural FKs can disagree — could
+# miss the person it was actually handed to. The two recipients that matter are
+# the holder the ticket escalated TO and the technician it is leaving.
+
+
+@pytest.fixture
+def escalation_rules(low_priority):
+    from apps.sla.models import EscalationRule
+
+    return [
+        EscalationRule.objects.create(
+            priority=low_priority, to_level="hos", threshold_minutes=1440, order=1
+        ),
+        EscalationRule.objects.create(
+            priority=low_priority, to_level="hod", threshold_minutes=2880, order=2
+        ),
+    ]
+
+
+def _age(ticket, days):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    type(ticket).objects.filter(pk=ticket.pk).update(
+        created_at=timezone.now() - timedelta(days=days)
+    )
+    ticket.refresh_from_db()
+    return ticket
+
+
+def test_escalation_notifies_the_holder_it_escalated_to(
+    nrb_electrical_ticket, escalation_rules, nrb_hos, nrb_hod
+):
+    from django.utils import timezone
+
+    from apps.sla.services.escalation import run_escalation_for_ticket
+
+    _age(nrb_electrical_ticket, days=2)
+    assert run_escalation_for_ticket(
+        nrb_electrical_ticket, timezone.now(), escalation_rules
+    )
+
+    assert _for(nrb_hos, "ticket_escalated").exists()
+    # The HOD is two rungs up and has not been handed anything yet.
+    assert not _for(nrb_hod, "ticket_escalated").exists()
+
+
+def test_escalation_tells_the_assigned_technician(
+    nrb_electrical_ticket, escalation_rules, nrb_hos, nrb_electrician
+):
+    from django.utils import timezone
+
+    from apps.sla.services.escalation import run_escalation_for_ticket
+
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+    _age(nrb_electrical_ticket, days=2)
+    run_escalation_for_ticket(nrb_electrical_ticket, timezone.now(), escalation_rules)
+
+    note = _for(nrb_electrician, "ticket_escalated").get()
+    assert "assigned to you" in note.body
+
+
+def test_an_unassigned_ticket_escalates_without_a_second_notification(
+    nrb_electrical_ticket, escalation_rules, nrb_hos
+):
+    from django.utils import timezone
+
+    from apps.sla.services.escalation import run_escalation_for_ticket
+
+    assert nrb_electrical_ticket.assigned_to_id is None
+    _age(nrb_electrical_ticket, days=2)
+    run_escalation_for_ticket(nrb_electrical_ticket, timezone.now(), escalation_rules)
+
+    assert Notification.objects.filter(event_type="ticket_escalated").count() == 1
+
+
+def test_a_technician_who_holds_the_post_is_told_once(
+    nrb_electrical_ticket, escalation_rules, nrb_hos
+):
+    """The holder and the assignee can be the same person — one notification."""
+    from django.utils import timezone
+
+    from apps.sla.services.escalation import run_escalation_for_ticket
+
+    nrb_electrical_ticket.assigned_to = nrb_hos
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+    _age(nrb_electrical_ticket, days=2)
+    run_escalation_for_ticket(nrb_electrical_ticket, timezone.now(), escalation_rules)
+
+    assert _for(nrb_hos, "ticket_escalated").count() == 1
