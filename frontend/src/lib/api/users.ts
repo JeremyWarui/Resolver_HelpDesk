@@ -19,11 +19,6 @@ export async function getUsers(_params?: UserListParams): Promise<UsersResponse>
   return data;
 }
 
-export async function getUserById(id: number): Promise<User> {
-  const { data } = await apiClient.get<User>(`/users/${id}/`);
-  return data;
-}
-
 export async function createUser(payload: CreateUserPayload): Promise<User> {
   const { data } = await apiClient.post<User>('/users/', payload);
   return data;
@@ -56,7 +51,6 @@ export async function createRoleAssignment(
 
 const usersService = {
   getUsers,
-  getUserById,
   createUser,
   updateUser,
   deleteUser,

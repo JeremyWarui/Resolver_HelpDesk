@@ -71,8 +71,6 @@ export interface RoleAssignment {
   };
 }
 
-export type BackendRoleAssignment = RoleAssignment;
-
 /** POST /users/{id}/role-assignments/ — a user has one role, so this replaces
  *  whatever they had. No is_primary and no valid_until: there is no cover to
  *  arrange, and the fields are what would let time-boxed roles back in.

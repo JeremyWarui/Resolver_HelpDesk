@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { Plus, Download } from "lucide-react";
 import TicketsTable from "@/features/admin/TicketsPage/TicketsTable";
 import {
   AdminStatsCards,
@@ -50,23 +48,6 @@ const RoleTicketsPage = ({ role, onTicketSelect }: Props) => {
       <div className="flex justify-between mb-2">
         <div>
           <p className="text-sm text-gray-600">{subtitle}</p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
-          <Button
-            size="sm"
-            className="flex items-center gap-1 bg-primary hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            New Ticket
-          </Button>
         </div>
       </div>
 

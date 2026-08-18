@@ -58,7 +58,6 @@ export interface DataTableProps<TData, TValue> {
   onRowClick?: (row: TData) => void;
   selectedRowId?: number | null;
   totalItems?: number;
-  totalSystemItems?: number;
   loading?: boolean;
   manualPagination?: boolean;
   onPageChange?: (pageIndex: number) => void;
@@ -205,8 +204,6 @@ const DataTable = <TData, TValue>({
 
   // Determine the variant and corresponding layout
   const isAdminVariant = variant === "admin";
-  const isUserVariant = variant === "user";
-  const isTechVariant = variant === "tech";
 
   // Extract filter rendering to a function to avoid duplication
   const renderFilters = () => {
@@ -275,8 +272,6 @@ const DataTable = <TData, TValue>({
     renderFilters,
     renderColumnVisibilityDropdown,
     isAdminVariant,
-    isUserVariant,
-    isTechVariant,
   };
 
   // Build tableContentProps for the RenderTableContent component

@@ -4,7 +4,6 @@
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import type { SLAComplianceResponse } from '@/types';
 
 interface SLAComplianceGaugeProps {
   value: number;         // 0–100
@@ -90,35 +89,3 @@ export function SLAComplianceGauge({
   );
 }
 
-// Convenience component that accepts a full SLAComplianceResponse
-interface SLACompliancePanelProps {
-  data: SLAComplianceResponse | null;
-  loading?: boolean;
-  className?: string;
-}
-
-export function SLACompliancePanel({ data, loading = false, className }: SLACompliancePanelProps) {
-  return (
-    <div className={cn('flex flex-wrap items-start gap-8 justify-center', className)}>
-      <div className="flex flex-col items-center gap-2">
-        <SLAComplianceGauge
-          value={data?.resolution_sla_pct ?? 0}
-          loading={loading}
-          label="Resolution SLA"
-          size={120}
-        />
-        {data && (
-          <p className="text-xs text-muted-foreground">
-            {data.at_risk} at-risk · {data.breached} breached
-          </p>
-        )}
-      </div>
-      <SLAComplianceGauge
-        value={data?.response_sla_pct ?? 0}
-        loading={loading}
-        label="Response SLA"
-        size={120}
-      />
-    </div>
-  );
-}

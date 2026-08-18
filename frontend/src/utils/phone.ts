@@ -1,7 +1,7 @@
 /** Kenyan numbers are stored E.164 (+254712345678) and read locally.
  *
- * Mirrors `format_phone_local` in apps/common/phone.py. Display only — never
- * send this back to the server; the stored form is the dialable one, and the
+ * Display only — never send this back to the server; the stored form is the
+ * dialable one, and the
  * `tel:` href should use it too so the dialler gets an unambiguous number.
  */
 export function formatPhoneLocal(e164: string | null | undefined): string {

@@ -28,11 +28,6 @@ export interface AssignedUser {
   role?: string;
 }
 
-export interface EscalationStatus {
-  code: 'none' | 'hos' | 'hod' | 'manager' | 'unknown';
-  label: string;
-}
-
 export interface OrganizationalPath {
   campus: NestedRef | null;
   department: NestedRef | null;
@@ -167,11 +162,6 @@ export interface UpdateTicketPayload {
   assigned_to_id?: number | null;
   pending_reason?: string | null;
   pending_reason_note?: string | null;
-}
-
-export interface BulkStatusUpdatePayload {
-  ticket_ids: number[];
-  status: Ticket['status'];
 }
 
 // Params for GET /tickets/ — role scoping enforced server-side from JWT.

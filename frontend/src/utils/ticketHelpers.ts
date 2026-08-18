@@ -5,11 +5,6 @@
 
 import type { Ticket, UpdateTicketPayload } from '@/types';
 
-export function getRaisedByDisplay(raised_by: Ticket['raised_by']): string {
-  if (typeof raised_by === 'string') return raised_by;
-  return raised_by.full_name || raised_by.username;
-}
-
 /**
  * Extracts only writable fields from a Ticket object for API updates
  * This prevents sending read-only fields to the backend which can cause 500 errors
@@ -55,19 +50,3 @@ export function extractWritableFields(
   return payload;
 }
 
-/**
- * Creates a complete update payload with ticket ID
- * 
- * @param ticket - The ticket to update
- * @param fields - Fields to update
- * @returns Object with id and update fields
- */
-export function createUpdatePayload(
-  ticket: Ticket,
-  fields: Partial<UpdateTicketPayload>
-): { id: number } & UpdateTicketPayload {
-  return {
-    id: ticket.id,
-    ...extractWritableFields(ticket, fields),
-  };
-}

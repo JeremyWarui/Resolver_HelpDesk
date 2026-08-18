@@ -361,7 +361,7 @@ export function UnifiedDetailsSheet({
                   </h3>
                   <div className="bg-white border rounded-lg divide-y">
                     {config.editFields.map((field, idx) => (
-                      <div key={idx} className={field.type === 'sections' ? 'px-6 py-4' : 'px-6 py-4'}>
+                      <div key={idx} className="px-6 py-4">
                         <div className={field.type === 'textarea' ? 'space-y-2' : 'flex items-center gap-4'}>
                           <label className="text-sm font-medium text-gray-700 min-w-30">
                             {field.label}:

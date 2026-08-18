@@ -11,11 +11,3 @@ export function formatSectionDisplay(
   return section.name
 }
 
-/** For full Section objects from SectionSerializer (campus is a nested NestedRef). */
-export function formatSectionObj(
-  section: { name: string; campus?: { code: string } | null } | null | undefined
-): string {
-  if (!section) return '—'
-  if (section.campus?.code) return `${section.campus.code}-${section.name}`
-  return section.name
-}

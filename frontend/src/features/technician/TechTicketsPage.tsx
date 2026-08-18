@@ -1,5 +1,3 @@
-import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
 import TechTicketsTable from './TechTickets';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -15,12 +13,6 @@ const TechTicketsPage = ({ onTicketSelect }: TechTicketsPageProps) => {
       <div className="flex justify-between mb-2">
         <div>
           <p className="text-sm text-gray-600">Tickets assigned to you</p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" className="flex items-center gap-1">
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
         </div>
       </div>
 

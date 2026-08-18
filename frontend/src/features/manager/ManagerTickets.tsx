@@ -5,7 +5,7 @@ import { createTicketTableColumns } from '@/components/shared/data/DataTable/uti
 import { createTicketColumnVisibility } from '@/components/shared/data/DataTable/utils/TicketColumnVisibility';
 import DataTable from '@/components/shared/data/DataTable/DataTable';
 import { useManagerDashboard } from '@/hooks/dashboard';
-import ManagerStatsCards from './ManagerStatsCards';
+import ManagerStatsCards from '@/components/shared/data/StatCards/ManagerStatsCards';
 
 const ManagerTickets = ({ userId, onTicketSelect }: { userId?: number; onTicketSelect?: (ticketId: number) => void }) => {
   const { data, loading } = useManagerDashboard();

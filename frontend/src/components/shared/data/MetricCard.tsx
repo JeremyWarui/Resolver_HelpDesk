@@ -7,7 +7,6 @@ interface MetricCardProps {
   value: string | number;
   icon?: ReactNode;
   iconBgColor?: string;
-  iconColor?: string;
   badge?: {
     value: string;
     color: 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';

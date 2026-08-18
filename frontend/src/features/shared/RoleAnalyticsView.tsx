@@ -19,10 +19,6 @@ import ChartCard from '@/components/shared/data/ChartCard';
 import InsightsPanel from '@/components/shared/data/InsightsPanel';
 import LazyMount from '@/components/shared/LazyMount';
 import {
-  useSLACompliance,
-  useResolutionTimes,
-  useFlow,
-  useQuality,
   usePerformanceTechnicians,
   usePerformanceTrades,
   usePerformanceCampusDepts,
@@ -85,10 +81,6 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
   const [params, setParams] = useState<AnalyticsParams>({ days: 30 });
   const [granularity, setGranularity] = useState<Granularity>('day');
 
-  const { data: sla, loading: slaLoading } = useSLACompliance(params);
-  const { data: resTimes, loading: resLoading } = useResolutionTimes(params);
-  const { data: flow, loading: flowLoading } = useFlow({ ...params, granularity });
-  const { data: quality } = useQuality(params);
   const { data: perfTechs, loading: perfTechsLoading } = usePerformanceTechnicians(params);
   const { data: perfTrades, loading: perfTradesLoading } = usePerformanceTrades(params);
 
@@ -103,10 +95,25 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
   // Unified envelope for the actionable insights panel. Insights are computed
   // server-side over the caller's scope; group_by only shapes the breakdown
   // (campus for managers, section otherwise).
-  const { data: analyticsEnvelope } = useAnalytics({
+  const { data: analyticsEnvelope, loading: analyticsLoading } = useAnalytics({
     ...params,
+    granularity,
     group_by: isManager ? 'campus_department' : 'sub_section',
   });
+
+  // /analytics/sla-compliance/, /resolution-times/, /flow/ and /quality/ were
+  // four slices of this same envelope, and each one re-ran the full ~40-query
+  // aggregate() over the identical scope and window. One call now serves all
+  // four; the names below are the slices those endpoints used to return.
+  const headline = analyticsEnvelope?.headline ?? null;
+  const series = analyticsEnvelope?.series ?? null;
+  const sla = headline;
+  const resTimes = headline;
+  const quality = headline;
+  const flow = headline;
+  const slaLoading = analyticsLoading;
+  const resLoading = analyticsLoading;
+  const flowLoading = analyticsLoading;
 
   const resolutionKPIs: KPIMetric[] = [
     {
@@ -139,12 +146,12 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
     },
   ];
 
-  const statusData = (flow?.status_distribution ?? []).map(s => ({
+  const statusData = (series?.status_distribution ?? []).map(s => ({
     name: s.status.replace(/_/g, ' '),
     value: s.count,
   }));
 
-  const priorityData = (flow?.priority_distribution ?? []).map(p => ({
+  const priorityData = (series?.priority_distribution ?? []).map(p => ({
     name: p.name,
     value: p.count,
   }));
@@ -163,7 +170,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       colorClass: (sla?.resolution_sla_pct ?? 0) >= 95
         ? 'bg-status-resolved/10 text-status-resolved'
         : 'bg-status-escalated/10 text-status-escalated',
-      trend: sla?.delta.resolution_sla_pct ?? undefined,
+      trend: sla?.delta?.resolution_sla_pct ?? undefined,
       description: `${sla?.at_risk ?? 0} at-risk · ${sla?.breached ?? 0} breached`,
     },
     {
@@ -173,17 +180,17 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       colorClass: (sla?.response_sla_pct ?? 0) >= 95
         ? 'bg-status-resolved/10 text-status-resolved'
         : 'bg-status-escalated/10 text-status-escalated',
-      trend: sla?.delta.response_sla_pct ?? undefined,
+      trend: sla?.delta?.response_sla_pct ?? undefined,
     },
     {
       label: 'Net Flow / Backlog',
-      value: flow
-        ? `${flow.net_flow >= 0 ? '+' : ''}${flow.net_flow} / ${flow.open_backlog}`
+      value: flow?.net_flow != null
+        ? `${flow.net_flow >= 0 ? '+' : ''}${flow.net_flow} / ${flow.open_backlog ?? 0}`
         : '—',
       icon: <TrendingUp className="h-4 w-4" />,
       colorClass: 'bg-primary/10 text-primary',
-      trend: flow?.delta.created ?? undefined,
-      description: flow ? `${flow.created} created · ${flow.resolved} resolved` : undefined,
+      trend: flow?.delta?.created ?? undefined,
+      description: flow ? `${flow.created ?? 0} created · ${flow.resolved ?? 0} resolved` : undefined,
     },
     {
       label: 'CSAT',
@@ -191,7 +198,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       value: quality?.csat != null ? `${quality.csat.toFixed(1)} / 5` : '—',
       icon: <Star className="h-4 w-4" />,
       colorClass: 'bg-purple-500/10 text-purple-500',
-      trend: quality?.delta.csat ?? undefined,
+      trend: quality?.delta?.csat ?? undefined,
     },
     {
       label: 'Reopen Rate',
@@ -200,7 +207,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       colorClass: (quality?.reopen_rate ?? 0) > 5
         ? 'bg-status-escalated/10 text-status-escalated'
         : 'bg-muted text-muted-foreground',
-      trend: quality?.delta.reopen_rate != null ? -(quality.delta.reopen_rate) : undefined,
+      trend: quality?.delta?.reopen_rate != null ? -(quality.delta.reopen_rate) : undefined,
       description: 'lower is better',
     },
   ];
@@ -225,7 +232,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
       {role === 'hod' || role === 'hos' ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <FlowTrendChart
-            flow={flow}
+            trend={series?.flow_trend ?? null}
             loading={flowLoading}
             totalOnly
             height={400}
@@ -258,7 +265,7 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
         <>
           {/* Flow Trend Chart */}
           <FlowTrendChart
-            flow={flow}
+            trend={series?.flow_trend ?? null}
             loading={flowLoading}
             totalOnly
             height={400}

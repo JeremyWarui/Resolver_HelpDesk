@@ -21,15 +21,6 @@ import type {
   AnalyticsParams,
 } from '@/types';
 
-export function useTicketAnalytics(params?: AnalyticsParams) {
-  const { data, isLoading, error, refetch } = useQuery<FlowResponse>({
-    queryKey: ['analytics', 'flow', params],
-    queryFn: () => getFlow(params),
-    staleTime: 2 * 60 * 1000,
-  });
-  return { data: data ?? null, loading: isLoading, error, refetch };
-}
-
 export function useFlow(params?: AnalyticsParams) {
   const { data, isLoading, error, refetch } = useQuery<FlowResponse>({
     queryKey: ['analytics', 'flow', params],
@@ -119,4 +110,3 @@ export function usePerformanceCampusDepts(
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
 
-export default useTicketAnalytics;

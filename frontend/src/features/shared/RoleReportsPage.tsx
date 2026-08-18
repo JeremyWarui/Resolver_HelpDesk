@@ -14,11 +14,9 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
-  Filter,
-  RefreshCw,
   MapPin,
 } from 'lucide-react';
-import { useTicketAnalytics } from '@/hooks/analytics';
+import { useFlow } from '@/hooks/analytics';
 import { DateRangeSelector } from '@/components/shared/data/DateRangeSelector';
 import MetricCard from '@/components/shared/data/MetricCard';
 import ServiceHealthCards from '@/components/shared/data/ServiceHealthCards';
@@ -134,7 +132,7 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
   const [params, setParams] = useState<AnalyticsParams>({ days: 30 });
 
   // Fetch analytics for overview
-  const { data: ticketAnalytics } = useTicketAnalytics(params);
+  const { data: ticketAnalytics } = useFlow(params);
 
   // The roster is scoped server-side and includes idle technicians, which the
   // ticket-derived workload list does not.
@@ -181,14 +179,6 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
             {/* Action Buttons - Right */}
             <div className="flex items-center gap-2 shrink-0">
               <DateRangeSelector value={params} onChange={setParams} />
-              <Button variant="outline" size="sm" className="gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Refresh
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Filters
-              </Button>
             </div>
           </div>
         </div>

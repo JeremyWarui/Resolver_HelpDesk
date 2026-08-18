@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { type ColumnDef } from "@tanstack/react-table";
-import { ChevronDown, Eye, Edit, Play, RefreshCw } from "lucide-react";
+import { ChevronDown, Eye, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/ticket/StatusBadge";
@@ -136,30 +136,6 @@ export const facilityColumn = <T,>(header: string = "Location"): ColumnDef<T> =>
     );
   },
   enableSorting: false,
-});
-
-export const sectionColumn = <T,>(header: string = "Section"): ColumnDef<T> => ({
-  id: "sectionName",
-  accessorFn: (row) => {
-    const r = row as Record<string, unknown>;
-    // Backend _SectionMinSerializer returns section_type_name (the human name),
-    // not a top-level `name` field.
-    const s = r.section as { section_type_name?: string; name?: string } | undefined;
-    return s?.section_type_name ?? s?.name ?? '';
-  },
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
-  cell: ({ row }) => <div>{(row.getValue("sectionName") as string) || "N/A"}</div>,
 });
 
 /**
@@ -450,80 +426,6 @@ export const searchFieldColumn = <T,>(header: string = "Search Field"): ColumnDe
 });
 
 // Action columns for different user roles
-export function userActionsColumn<T>(options: {
-  setSelectedTicket: (ticket: T) => void;
-  setIsTicketDialogOpen: (open: boolean) => void;
-}): ColumnDef<T> {
-  return {
-    id: "actions",
-    header: "Actions",
-    cell: ({ row }) => {
-      const ticket = row.original;
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center space-x-1"
-          onClick={(e) => {
-            e.stopPropagation();
-            options.setSelectedTicket(ticket);
-            options.setIsTicketDialogOpen(true);
-          }}
-        >
-          <Eye className="mr-1 h-4 w-4" />
-          <span>View</span>
-        </Button>
-      );
-    },
-  };
-}
-
-export function AdminActionsColumn<T>(options: {
-  technicians: string[];
-  statuses: string[];
-  setSelectedTicket: (ticket: T) => void;
-  setIsTicketDialogOpen: (open: boolean) => void;
-  setActiveTab?: (tab: "view" | "edit") => void;
-}): ColumnDef<T> {
-  return {
-    id: "actions",
-    header: "Actions",
-    cell: ({ row }) => {
-      const ticket = row.original;
-      return (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              options.setSelectedTicket(ticket);
-              options.setActiveTab?.("view");
-              options.setIsTicketDialogOpen(true);
-            }}
-          >
-            <Eye className="mr-1 h-4 w-4" />
-            View
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              options.setSelectedTicket(ticket);
-              options.setActiveTab?.("edit");
-              options.setIsTicketDialogOpen(true);
-            }}
-          >
-            <Edit className="mr-1 h-4 w-4" />
-            Edit
-          </Button>
-        </div>
-      );
-    },
-  };
-}
-
 export function technicianViewColumn<T>(options: {
   setSelectedTicket: (ticket: T | null) => void;
   setIsTicketDialogOpen: (open: boolean) => void;

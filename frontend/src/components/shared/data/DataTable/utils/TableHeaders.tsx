@@ -11,8 +11,6 @@ export interface TableHeaderProps {
   renderFilters: () => ReactNode;
   renderColumnVisibilityDropdown: () => ReactElement;
   isAdminVariant: boolean;
-  isUserVariant: boolean;
-  isTechVariant: boolean;
 }
 
 export const DefaultTableHeader = ({
@@ -80,36 +78,6 @@ export const AdminTableHeader = ({
   );
 };
 
-export const UserTableHeader = ({
-  title,
-  handleSearch,
-  searchValue,
-  searchPlaceholder,
-  renderFilters,
-  renderColumnVisibilityDropdown,
-}: TableHeaderProps) => {
-  return (
-    <>
-      {title && (
-        <CardHeader className="px-0">
-          <CardTitle>{title}</CardTitle>
-        </CardHeader>
-      )}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center py-4">
-        <Input
-          placeholder={searchPlaceholder}
-          value={searchValue}
-          onChange={(event) => handleSearch(event.target.value)}
-          className="max-w-sm"
-        />
-        <div className="flex flex-col gap-4 md:flex-row">
-          {renderFilters()}
-        </div>
-        {renderColumnVisibilityDropdown()}
-      </div>
-    </>
-  );
-};
 
 export const TechTableHeader = ({
   title,

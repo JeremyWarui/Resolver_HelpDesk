@@ -5,14 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
 import { useFeedback } from '@/hooks/tickets/useFeedback';
 import type { UserRole } from '@/types';
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString('en-KE', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
-}
+import { formatDateTimeLocal } from '@/utils/date';
 
 const SUBTITLES: Partial<Record<UserRole, string>> = {
   technician: 'Ratings and comments on tickets you resolved',
@@ -133,8 +126,8 @@ export function FeedbackTab({ role }: { role: UserRole }) {
                           ? (row.assigned_to.full_name || row.assigned_to.username)
                           : 'Unassigned'}{' '}
                         · {row.resolved_at
-                          ? `resolved ${formatDate(row.resolved_at)}`
-                          : formatDate(row.created_at)}
+                          ? `resolved ${formatDateTimeLocal(row.resolved_at)}`
+                          : formatDateTimeLocal(row.created_at)}
                       </p>
                     </div>
                     <div className="shrink-0">

@@ -29,21 +29,17 @@ export function formatDateTime(dateString: string): string {
 }
 
 /**
- * Get relative time from now (e.g., "2 hours ago")
- * @param dateString ISO date string
- * @returns Relative time string
+ * Compact relative time — "5m ago" / "3h ago" / "2d ago".
+ *
+ * The terse form the mobile shell and the notification list want, where a row
+ * is a few characters wide. Was defined identically in three mobile components.
  */
-export function getRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return 'just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-  
-  return formatDate(dateString);
+export function timeAgo(dateString: string): string {
+  const mins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 /**
@@ -61,4 +57,19 @@ export function formatSeconds(s: number | null): string {
   const m = Math.floor((s % 3600) / 60);
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+
+/**
+ * Local 24-hour timestamp — "15 Jan 2025, 14:30".
+ *
+ * en-KE and `hour12: false` because that is how the stamps read on site; the
+ * en-US `formatDateTime` above is the 12-hour variant used elsewhere. Was
+ * defined identically in the feedback tab and the audit log.
+ */
+export function formatDateTimeLocal(iso: string): string {
+  return new Date(iso).toLocaleString('en-KE', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
 }

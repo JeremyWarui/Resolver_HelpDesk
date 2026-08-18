@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { getAuditLog, type AuditLogEntry } from '@/lib/api/admin';
 import { useSortableColumn } from '@/hooks/useSortableColumn';
+import { formatDateTimeLocal } from '@/utils/date';
 
 const ACTION_BADGE: Record<string, { bg: string; text: string }> = {
   created:        { bg: 'var(--status-resolved-bg)', text: 'var(--status-resolved-text)' },
@@ -37,14 +38,6 @@ function actionBadgeStyle(action: string) {
     backgroundColor: badge.bg,
     color: badge.text,
   };
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString('en-KE', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
 }
 
 const PAGE_SIZE = 20;
@@ -194,7 +187,7 @@ export default function AuditLogPage() {
       header: 'Date',
       cell: ({ row }) => (
         <span className="text-xs text-gray-500 whitespace-nowrap">
-          {formatDate(row.getValue('created_at'))}
+          {formatDateTimeLocal(row.getValue('created_at'))}
         </span>
       ),
     },

@@ -9,7 +9,7 @@ import { TechTableHeader } from '@/components/shared/data/DataTable/utils/TableH
 import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import type { FilterPill } from '@/types';
-import TechnicianStatsCards from './TechnicianStatsCards';
+import TechnicianStatsCards from '@/components/shared/data/StatCards/TechnicianStatsCards';
 import type { Section } from '@/types';
 
 type TechTicketsProps = {

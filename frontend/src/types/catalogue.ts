@@ -1,15 +1,3 @@
-export type FormFieldType = 'text' | 'textarea' | 'select' | 'multiselect' | 'number' | 'date'
-
-export interface FormSchemaField {
-  name: string
-  label: string
-  type: FormFieldType
-  required: boolean
-  options?: string[]
-  placeholder?: string
-  help_text?: string
-}
-
 /** A trade under the Maintenance section type — Carpentry, Plumbing, and so on.
  *  This is both the catalogue's top level and the technician scoping boundary,
  *  so its `code` is the one the seed and the roster share. */

@@ -19,7 +19,7 @@ import {
 } from '@/components/shared/data/DataTable/utils/TicketTableColumns';
 import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 import type { FilterOption } from '@/components/shared/data/DataTable/DataTable';
-import type { Ticket, TicketTableVariant, BulkAction } from '@/types';
+import type { Ticket, TicketTableVariant, } from '@/types';
 
 export interface TicketTableProps {
   tickets: Ticket[];
@@ -40,7 +40,6 @@ export interface TicketTableProps {
     onPageSizeChange: (size: number) => void;
   };
   selectedRowId?: number | null;
-  bulkActions?: BulkAction[];
   rowClassName?: (ticket: Ticket) => string;
   title?: string;
   emptyMessage?: string;

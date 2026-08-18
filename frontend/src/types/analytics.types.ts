@@ -346,9 +346,6 @@ export interface ManagerAnalytics extends OverviewResponse {
 }
 
 // Alias for backwards-compat with components that import this name
-export type RoleAnalyticsParams = AnalyticsParams;
-export type TicketAnalyticsParams = AnalyticsParams;
-
 // TicketAnalytics was a stale type; bind to FlowResponse for Phase 7 alignment
 export type TicketAnalytics = FlowResponse;
 

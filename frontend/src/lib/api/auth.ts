@@ -197,10 +197,6 @@ export async function getProfile(): Promise<MeResponse> {
 
 // ── Sync helpers (read the auth store, no API call) ───────────────────────────
 
-export function isAuthenticated(): boolean {
-  return useAuthStore.getState().isAuthenticated;
-}
-
 export function getCurrentUser(): User | null {
   return useAuthStore.getState().user;
 }

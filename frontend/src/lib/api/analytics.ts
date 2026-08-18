@@ -101,7 +101,7 @@ export async function getPerformanceCampusDepts(
 // Role-scoped overview aliases — all map to /analytics/overview/ (scope comes from JWT).
 // The non-technician roles always receive an OverviewResponse; the shim return types
 // extend OverviewResponse (adding only optional legacy fields), so no cast is needed.
-import type { HODAnalytics, SectionHeadAnalytics, ManagerAnalytics, OrganisationAnalytics } from '@/types/analytics.types';
+import type { HODAnalytics, SectionHeadAnalytics, ManagerAnalytics } from '@/types/analytics.types';
 
 async function getRoleOverview(params?: AnalyticsParams): Promise<OverviewResponse> {
   const { data } = await apiClient.get<OverviewResponse>('/analytics/overview/', { params });
@@ -116,28 +116,3 @@ export const getSectionHeadAnalytics = (params?: AnalyticsParams): Promise<Secti
 
 export const getManagerAnalytics = (params?: AnalyticsParams): Promise<ManagerAnalytics> =>
   getRoleOverview(params);
-
-export const getOrganisationAnalytics = (params?: AnalyticsParams): Promise<OrganisationAnalytics> =>
-  getRoleOverview(params);
-
-const analyticsService = {
-  getPerformanceFacilities,
-  getPerformanceTradeMix,
-  getAnalytics,
-  getOverview,
-  getSLACompliance,
-  getResolutionTimes,
-  getFlow,
-  getQuality,
-  getDemand,
-  getPerformanceTechnicians,
-  getPerformanceSections,
-  getPerformanceTrades,
-  getPerformanceCampusDepts,
-  getOrganisationAnalytics,
-  getHODAnalytics,
-  getSectionHeadAnalytics,
-  getManagerAnalytics,
-};
-
-export default analyticsService;

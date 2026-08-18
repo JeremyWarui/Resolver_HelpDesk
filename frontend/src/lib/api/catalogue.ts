@@ -43,19 +43,6 @@ export const getSubSections = (params?: {
   is_active?: boolean;
 }) => apiClient.get<SubSection[]>(`/sub-sections/`, { params });
 
-export const getServiceItemsBySubSection = (subSectionId: number) =>
-  apiClient.get<ServiceItem[]>(`/service-items/`, {
-    params: { sub_section: subSectionId },
-  });
-
-export const getAllServiceItems = (params?: {
-  sub_section?: number;
-  is_active?: boolean;
-}) => apiClient.get<ServiceItem[]>(`/service-items/`, { params });
-
-export const getServiceItemDetail = (itemId: number) =>
-  apiClient.get<ServiceItem>(`/service-items/${itemId}/`);
-
 // ── Sub-section CRUD ──────────────────────────────────────────────────────────
 
 export const createSubSection = (data: {

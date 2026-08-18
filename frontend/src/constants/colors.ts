@@ -42,38 +42,3 @@ export const CHART_COLORS = [
 
 export type FluentUIColor = typeof FLUENT_UI_COLORS[keyof typeof FLUENT_UI_COLORS];
 export type BadgeColor = 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray' | 'amber';
-
-/**
- * Convert badge color names to CSS variable tokens.
- * Used by StatusBadge, PriorityBadge, and MetricCard badge rendering.
- */
-export const BADGE_COLOR_CSS_VARS: Record<BadgeColor, { bg: string; text: string }> = {
-  blue: {
-    bg: '--status-open-bg',
-    text: '--status-open-text',
-  },
-  green: {
-    bg: '--status-resolved-bg',
-    text: '--status-resolved-text',
-  },
-  orange: {
-    bg: '--status-progress-bg',
-    text: '--status-progress-text',
-  },
-  red: {
-    bg: '--status-escalated-bg',
-    text: '--status-escalated-text',
-  },
-  purple: {
-    bg: '--status-pending-bg',
-    text: '--status-pending-text',
-  },
-  gray: {
-    bg: '--status-closed-bg',
-    text: '--status-closed-text',
-  },
-  amber: {
-    bg: '--status-approval-bg',
-    text: '--status-approval-text',
-  },
-};

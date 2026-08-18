@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { FlowResponse } from '@/types';
+import type { FlowTrendPoint } from '@/types';
 import type { Granularity } from '@/components/shared/GranularitySelector';
 import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
 
@@ -29,7 +29,7 @@ interface TicketVolumeChartProps {
 }
 
 interface TicketVolumeChartFlowProps {
-  flow: FlowResponse | null;
+  trend: FlowTrendPoint[] | null;
   loading?: boolean;
   title?: string;
   totalOnly?: boolean;
@@ -94,14 +94,14 @@ export function TicketVolumeChart({
 }
 
 export function FlowTrendChart({
-  flow,
+  trend,
   loading = false,
   title = 'Ticket Flow',
   totalOnly = false,
   height,
   granularity = 'day',
 }: TicketVolumeChartFlowProps) {
-  const data: VolumeSeries[] = (flow?.flow_trend ?? []).map((pt) => ({
+  const data: VolumeSeries[] = (trend ?? []).map((pt) => ({
     date: formatFlowDate(pt.date, granularity),
     created: pt.created,
     resolved: pt.resolved,

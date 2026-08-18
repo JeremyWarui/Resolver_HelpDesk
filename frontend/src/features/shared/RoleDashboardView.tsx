@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Filter, Download, Calendar } from "lucide-react";
+import { Download, Calendar } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,7 @@ import InsightsPanel from "@/components/shared/data/InsightsPanel";
 import LazyMount from "@/components/shared/LazyMount";
 import reportsService from "@/lib/api/reports";
 import type { GenerateReportParams } from "@/lib/api/reports";
-import { useTicketAnalytics, useRoleAnalytics, usePerformanceCampusDepts, usePerformanceTrades, useAnalytics } from "@/hooks/analytics";
+import { useFlow, useRoleAnalytics, usePerformanceCampusDepts, usePerformanceTrades, useAnalytics } from "@/hooks/analytics";
 import { getDemand } from "@/lib/api/analytics";
 
 export type DashboardRole = "admin" | "manager" | "hod" | "hos";
@@ -91,8 +91,8 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
   // Two independent fetches — trend chart and category donut have their own timeframes.
   const trendDays = ticketTimeframe === 'day' ? 1 : ticketTimeframe === 'week' ? 7 : 30;
   const categoryDays = categoryTimeframe === 'day' ? 1 : categoryTimeframe === 'week' ? 7 : 30;
-  const { data: chartsAnalyticsData, loading: chartsLoading } = useTicketAnalytics({ days: trendDays });
-  const { data: categoryAnalyticsData, loading: categoryLoading } = useTicketAnalytics({ days: categoryDays });
+  const { data: chartsAnalyticsData, loading: chartsLoading } = useFlow({ days: trendDays });
+  const { data: categoryAnalyticsData, loading: categoryLoading } = useFlow({ days: categoryDays });
 
   // Demand analytics for facility chart (Phase 7: DemandResponse bound to /analytics/demand/)
   const { data: facilityAnalyticsData, loading: facilityLoading } = useRoleAnalytics(
@@ -204,25 +204,10 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
             variant="outline"
             size="sm"
             className="flex items-center gap-1"
-          >
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1"
             onClick={() => setShowExportDialog(true)}
           >
             <Download className="h-4 w-4" />
             Export
-          </Button>
-          <Button
-            size="sm"
-            className="flex items-center gap-1 bg-primary hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            New Ticket
           </Button>
         </div>
       </div>
@@ -234,7 +219,7 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
         <div className="space-y-2 mt-2">
           {/* Ticket flow over the window (created vs resolved) */}
           <FlowTrendChart
-            flow={chartsAnalyticsData}
+            trend={chartsAnalyticsData?.flow_trend ?? null}
             loading={chartsLoading}
             title={`Ticket Flow — Last ${trendDays} Days`}
           />

@@ -28,10 +28,3 @@ export async function markAllRead(): Promise<void> {
   await apiClient.post('/notifications/read-all/');
 }
 
-const notificationsService = {
-  getNotifications,
-  markRead,
-  markAllRead,
-};
-
-export default notificationsService;
