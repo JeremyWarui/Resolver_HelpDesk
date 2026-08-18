@@ -41,20 +41,19 @@ no schema change.**
 
 One reporting consequence, recorded here because it is invisible from the code:
 with Maintenance the only section type, a Section *is* a campus, so a per-section
-breakdown and a per-campus breakdown draw the same rows. The Section Analysis tab
-was therefore removed from the reports page for every role, and admin and manager
-— whose scopes both resolve to the whole organisation, there being one department
-— were given the same tab list.
+breakdown and a per-campus breakdown draw the same rows. **Every display
+dimension that was `section` is therefore `sub_section` (trade)** — the reports
+page's Section Analysis tab (removed outright), the dashboard volume and
+distribution charts, the analytics donut and performance table, the HOD
+"Sections" page, and the ticket tables' Section column and filter. A HOD had been
+reading "Section Ticket Volume: Maintenance 11" and a donut at 100% Maintenance;
+a manager's section chart restated the campus chart directly above it.
 
-The same collapse applies everywhere else the section was a display dimension,
-and those followed later: the dashboard volume/distribution charts, the analytics
-donut and performance table, the HOD "Sections" page, and the ticket tables'
-Section column and filter now all group by **trade** (`sub_section`). A HOD had
-been reading "Section Ticket Volume: Maintenance 11" and a donut at 100%
-Maintenance; a manager's section chart restated the campus chart directly above
-it. `role_config` had encoded this from the start — HOD defaults to `sub_section`
-and is not allowed `section` — so this only brought the UI into line with the
-role config. Backing endpoint: `/analytics/performance/trades/`.
+`role_config` had encoded this from the start — HOD defaults to `sub_section` and
+is not allowed `section` — so the change only brought the UI into line with the
+role config. Backing endpoint: `/analytics/performance/trades/`. Admin and
+manager, whose scopes both resolve to the whole organisation there being one
+department, were given the same tab list.
 
 The section plumbing is intact underneath. `PerformanceBreakdownReport` keeps its
 `section` dimension, `usePerformanceSections` still exists, and
@@ -69,14 +68,12 @@ lines — and switch the charts back where a section split becomes meaningful.
 `catalog.ServiceCategory` is deleted; `ServiceItem.category` becomes
 `ServiceItem.sub_section`.
 
-`location_details` went too. It moved to `SubSection` first, then out
-altogether: every trade needed it, so it was a switch with one position — see
-§5b.
+`location_details` went too — it moved to `SubSection` first, then out
+altogether (§5b).
 
 **Priority leaves the catalogue entirely.** `ServiceCategory.default_priority`
-and `ServiceItem.default_priority` are both gone. A ticket opens at the lowest
-priority (`Priority.default()`) and the HOS sets the real one when they assign
-it — see §5a.
+and `ServiceItem.default_priority` are both gone; a ticket opens at
+`Priority.default()` and the HOS sets the real one at assignment (§5a).
 
 Rationale: SubSection "Carpentry" and ServiceCategory "Carpentry Services" are a 1:1
 redundancy — two tables for one concept, plus a dead step in the ticket wizard. If a
@@ -169,9 +166,8 @@ column, which left the displaced person:
 
 A Head of Section with no section. Observed live: promoting Grace Njeri to
 NRB-ADM-MTCE left Peter Kimani at 0 tickets while Grace saw 50, with Peter's
-role row untouched. It was unreachable until the `select_for_update` fix in §7b,
-because the endpoint had been 500ing on every call — nobody had ever
-successfully displaced anyone.
+role row untouched. It was unreachable until role assignment stopped 500ing on
+every call, because until then nobody had ever successfully displaced anyone.
 
 `_demote_displaced()` closes it. The incumbent is read *before* the `update()`
 overwrites them, then their `RoleAssignment` is replaced with `role="user"` and
@@ -235,8 +231,14 @@ The two forms agree for a technician assigned at a single campus and diverge onl
 for multi-campus technicians — which is exactly why the bug would survive casual
 testing and reach production. Use the pairwise form unconditionally.
 
-`Ticket.sub_section` must be **non-nullable**, or the `Exists` never matches and
-technicians silently see nothing.
+`Ticket.sub_section` is denormalised from `service_item.sub_section`, and
+**non-nullable**, for two independent reasons — either alone would justify it:
+
+- the `Exists` above matches on it, so a null makes the technician queryset
+  silently empty;
+- `analytics.aggregate()` may only touch direct `Ticket` columns (join fan-out
+  there previously caused 500s and timeouts on Neon), and per-trade breakdown is
+  the headline dimension of this system.
 
 Required negative tests (both must exist before the branch is written):
 
@@ -315,10 +317,6 @@ realistically take it — so choosing the person first, then the urgency from
 below a scrolling list, is the wrong order. It is pre-selected to what the
 ticket already carries, so "leave it at Low" costs nothing.
 
-`Ticket.sub_section` is denormalised deliberately: `analytics.aggregate()` may only
-touch direct `Ticket` columns (join fan-out there previously caused 500s and
-timeouts on Neon), and per-trade breakdown is the headline dimension of this system.
-
 ## 5b. Location
 
 **Every ticket carries one.** There is no service for which the question is
@@ -385,8 +383,11 @@ express sub-section scope (see §7).
 **Web push dropped.** Needs HTTPS + VAPID key rotation for a browser toast, and its
 notification helpers depend on the `is_primary` filters being deleted.
 
-**Mobile PWA kept** — offline queue, mobile ticket views, service-worker caching.
-`PushSubscriptionManager` is dropped with the push backend.
+**Mobile PWA kept** — mobile ticket views and service-worker caching.
+`PushSubscriptionManager` is dropped with the push backend, and the offline
+action queue went later: nothing ever wrote to it. Both places that would have
+(`MobileTicketDetail`'s status actions and its comment box) abort with "you are
+offline" instead, so the queue only ever replayed an empty list.
 
 ## 6a. Rating the work
 
@@ -409,7 +410,13 @@ read the ticket it belongs to. A technician therefore sees ratings across their
 whole trade, not only work they personally did — a trade's reputation is shared —
 while the campus and trade boundaries still hold.
 
-## 6b. Starting work
+## 6b. Working a ticket
+
+How a ticket moves once it exists, and how the people who own it can tell:
+claiming vs assignment, the handover note, the technician's two lists, the
+status filter, escalation visibility, and the sidebar counts.
+
+### Claiming vs being assigned
 
 Claiming and being assigned are different, and the UI treats them differently.
 
@@ -490,7 +497,8 @@ with the choice and draw an empty table with nothing on screen explaining why.
 
 ### Seeing that a ticket escalated
 
-Escalation is structural (§4): the engine moves a ticket technician → HOS → HOD
+Escalation is structural, not configurable workflow (CLAUDE.md invariant 4):
+the engine moves a ticket technician → HOS → HOD
 when its *active* time passes the threshold on its priority. It runs from
 `manage.py process_auto_escalations` — nothing in the request path triggers it,
 so on a live demo nothing escalates until that command is run. The seed calls
@@ -564,35 +572,43 @@ negative — an escalated plumbing job stays invisible to an electrician.
 
 ## 7. Inherited bugs — do not port
 
-Found during the audit of `django_resolver`. These exist in the reference
-implementation today.
+Found during the audit of `django_resolver`. **Still open** — these are live in
+this codebase or deliberately reproduced in it. Anything fixed moves to the list
+below rather than staying here struck through, so this list is only ever the
+work remaining.
 
-1. **WS channel guard has no ownership check** (`apps/realtime/consumers.py:100-115`).
-   `ticket_*` returns `True` for any authenticated user; `section_*` and
-   `campus_department_*` check only the role *name*, so any technician can subscribe
-   to any section's feed. `tests/test_phase6_ws.py:124-139` asserts this as correct.
-   Deferring WS avoids inheriting it; a correct scheme needs groups keyed on
-   `(section, sub_section)` with membership re-derived from `SectionTechnician`
-   rather than a JWT claim.
-2. ~~**Frontend posts a backend field that does not exist.**~~ `SectionTypeForm.tsx`
-   and `organizations.ts` sent `parent` / `specialty_ids` for a "specialty within
-   a section type" feature that exists nowhere in the Python; DRF discarded it
-   silently. **Fixed** — the UI was reused for SubSection admin, which is the
-   feature it was reaching for.
-3. **Tailwind config is inert.** `src/index.css:1` is `@import 'tailwindcss';` with
+1. **WS channel guard has no ownership check** (`apps/realtime/consumers.py:100-115`,
+   in the reference repo). `ticket_*` returns `True` for any authenticated user;
+   `section_*` and `campus_department_*` check only the role *name*, so any
+   technician can subscribe to any section's feed. `tests/test_phase6_ws.py:124-139`
+   asserts this as correct. Deferring WS (§6) avoids inheriting it; a correct
+   scheme needs groups keyed on `(section, sub_section)` with membership
+   re-derived from `SectionTechnician` rather than a JWT claim.
+2. **Tailwind config is inert.** `src/index.css:1` is `@import 'tailwindcss';` with
    no `@config`, so under Tailwind v4 + `@tailwindcss/vite` the config file is never
    loaded and `tailwindcss-animate` is never registered — every `animate-in` /
    `fade-in-0` / `zoom-in-95` class is a no-op and overlays snap open. Reproduced
    verbatim to preserve the current look; wiring it up would double-wrap the
    already-`oklch()` tokens and break every colour. Tech debt, recorded not fixed.
-4. `process_auto_escalations --dry-run` returns without reporting what would change.
-   (Its unread `--verbose` flag has since been removed.)
-5. `routing.py:27` uses `.first()` with no `order_by` — nondeterministic if a campus
-   ever has two matching active sections.
+3. `process_auto_escalations --dry-run` prints a warning and returns without
+   reporting what it would have changed.
 
-Fixed since: the dead WS emit in `check_sla.py`; `report_views.py`'s naive date
-parse under `USE_TZ=True`, which also made the Summary sheet disagree with the
-data sheets — both parsers are now `_build_date_range_params` + `resolve_date_range`.
+### Fixed since
+
+- **Frontend posted a backend field that did not exist.** `SectionTypeForm.tsx`
+  and `organizations.ts` sent `parent` / `specialty_ids` for a "specialty within
+  a section type" feature that exists nowhere in the Python; DRF discarded it
+  silently. The UI was reused for SubSection admin, which is the feature it was
+  reaching for.
+- **`check_sla.py` emitted to WS groups no consumer joins** — dead code, removed.
+- **`report_views.py` parsed dates naive under `USE_TZ=True`**, which also made
+  the Summary sheet disagree with the data sheets. Both parsers are now
+  `_build_date_range_params` + `resolve_date_range`.
+- **`process_auto_escalations --verbose`** was declared and never read; removed.
+- **`routing.py` picked a section with `.first()` and no `order_by`** —
+  nondeterministic had a campus ever had two matching active sections. It now
+  orders by `pk`, with a comment saying why. (Fixed in `6bdf179`; this list had
+  not caught up.)
 
 ## 7a. Keeping the two halves in step
 
@@ -648,7 +664,8 @@ suite was testing the enterprise Service Desk.
 
 ```
 apps/
-  common/      roles, permissions, pagination, admin, seed   (no time_windows)
+  common/      roles, permissions, pagination, phone, admin, seed
+                                                           (no time_windows)
   accounts/    CustomUser, UserProfile, RoleAssignment(1:1)  (no switch-role)
   org/         Campus, Department, CampusDepartment, SectionType,
                SubSection, Section, SectionTechnician, ServiceItem
@@ -660,4 +677,4 @@ apps/
   notifications/  Notification model + REST                  (ex-realtime slice)
 ```
 
-9 apps → 8. 24 models → ~20.
+9 apps → 8. 24 models → 23.
