@@ -16,7 +16,6 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { MobileTicketList } from './MobileTicketList';
 import { MobileTicketDetail } from './MobileTicketDetail';
 import { MobileNotifications } from './MobileNotifications';
-import { OfflineQueue } from './OfflineQueue';
 import type { Ticket as TicketType } from '@/types';
 
 type Tab = 'tickets' | 'notifications' | 'settings';
@@ -130,7 +129,6 @@ export function MobileShell() {
         </nav>
       )}
 
-      <OfflineQueue isOnline={isOnline} />
     </div>
   );
 }

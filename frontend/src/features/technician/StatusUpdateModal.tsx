@@ -23,14 +23,9 @@ import { updateTicketStatus } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import type { Ticket } from '@/types';
+import { VALID_NEXT_STATUS } from '@/constants/tickets';
 
-// Mirror of the backend ALLOWED map (apps/tickets/services/lifecycle.py),
-// restricted to the transitions a technician drives. Keep the two in sync.
-const VALID_NEXT: Partial<Record<Ticket['status'], Ticket['status'][]>> = {
-  assigned:    ['in_progress'],
-  in_progress: ['pending', 'resolved'],
-  pending:     ['in_progress', 'resolved'],
-};
+
 
 const STATUS_LABEL: Record<string, string> = {
   open:        'Return to queue (open)',
@@ -58,7 +53,7 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
   // shared with the tickets-table filters, so opening this costs no extra call.
   const { pendingReasons } = useTicketFilterOptions(open);
 
-  const validNextStatuses = VALID_NEXT[ticket.status] ?? [];
+  const validNextStatuses = VALID_NEXT_STATUS[ticket.status] ?? [];
   const needsPendingReason = selectedStatus === 'pending';
   // `other` says nothing on its own, so the note carries the meaning — the
   // server refuses it blank and the button should not pretend otherwise.

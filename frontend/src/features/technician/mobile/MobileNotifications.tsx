@@ -1,6 +1,7 @@
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNotifications } from '@/hooks/useNotifications';
+import { timeAgo } from '@/utils/date';
 
 const EVENT_COLOR: Record<string, string> = {
   ticket_created:        'bg-blue-100 text-blue-700',
@@ -23,15 +24,6 @@ const EVENT_LABEL: Record<string, string> = {
   sla_warning:           'SLA Warning',
   sla_breach:            'SLA Breach',
 };
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 export function MobileNotifications() {
   const {

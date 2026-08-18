@@ -3,8 +3,9 @@ import { RefreshCw, WifiOff, ClipboardList, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMobileTickets } from './useMobileTickets';
 import type { Ticket } from '@/types';
+import { timeAgo } from '@/utils/date';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   open:        { label: 'Open',        color: 'bg-blue-100 text-blue-700' },
   assigned:    { label: 'Assigned',    color: 'bg-yellow-100 text-yellow-700' },
   in_progress: { label: 'In Progress', color: 'bg-purple-100 text-purple-700' },
@@ -27,15 +28,6 @@ const FILTERS = [
   { key: 'pending',     label: 'On Hold' },
   { key: 'resolved',    label: 'Resolved' },
 ];
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 interface Props {
   onSelect: (ticket: Ticket) => void;

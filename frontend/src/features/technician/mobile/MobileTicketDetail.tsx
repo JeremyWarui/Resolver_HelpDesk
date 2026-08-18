@@ -12,36 +12,21 @@ import {
   useAddComment,
 } from './useMobileTickets';
 import type { Ticket } from '@/types';
+import { VALID_NEXT_STATUS } from '@/constants/tickets';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
+import { timeAgo } from '@/utils/date';
+import { STATUS_CONFIG } from './MobileTicketList';
 
-const STATUS_TRANSITIONS: Record<string, { label: string; next: string; icon: React.ElementType; color: string }[]> = {
-  assigned:    [{ label: 'Start Work',    next: 'in_progress', icon: ArrowUpCircle, color: 'bg-purple-600 text-white' }],
-  open:        [{ label: 'Start Work',    next: 'in_progress', icon: ArrowUpCircle, color: 'bg-purple-600 text-white' }],
-  in_progress: [
-    { label: 'Put On Hold',   next: 'pending',  icon: Clock,         color: 'bg-orange-500 text-white' },
-    { label: 'Mark Resolved', next: 'resolved', icon: CheckCircle2,  color: 'bg-green-600 text-white' },
-  ],
-  pending:  [{ label: 'Resume Work', next: 'in_progress', icon: ArrowUpCircle, color: 'bg-purple-600 text-white' }],
-  resolved: [],
-  closed:   [],
+// Decoration only — which transitions are legal comes from VALID_NEXT_STATUS,
+// the single mirror of the backend lifecycle map. This used to be a second,
+// undeclared copy and it had drifted: it offered `open → in_progress` (the
+// backend refuses that; `open` is unassigned and the way out is claim) and it
+// dropped `pending → resolved`, so a job could not be closed out from hold.
+const ACTION_STYLE: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  in_progress: { label: 'Resume Work',   icon: ArrowUpCircle, color: 'bg-purple-600 text-white' },
+  pending:     { label: 'Put On Hold',   icon: Clock,         color: 'bg-orange-500 text-white' },
+  resolved:    { label: 'Mark Resolved', icon: CheckCircle2,  color: 'bg-green-600 text-white' },
 };
-
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  open:        { label: 'Open',        color: 'bg-blue-100 text-blue-700' },
-  assigned:    { label: 'Assigned',    color: 'bg-yellow-100 text-yellow-700' },
-  in_progress: { label: 'In Progress', color: 'bg-purple-100 text-purple-700' },
-  pending:     { label: 'On Hold',     color: 'bg-orange-100 text-orange-700' },
-  resolved:    { label: 'Resolved',    color: 'bg-green-100 text-green-700' },
-  closed:      { label: 'Closed',      color: 'bg-gray-100 text-gray-600' },
-};
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 // ── Status action buttons ─────────────────────────────────────────────────────
 
@@ -54,8 +39,15 @@ interface StatusActionProps {
 function StatusActions({ ticketId, status, isOnline }: StatusActionProps) {
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [reasonCode, setReasonCode] = useState('');
   const { mutate, isPending } = useUpdateTicketStatus(ticketId);
-  const transitions = STATUS_TRANSITIONS[status] ?? [];
+  const { pendingReasons } = useTicketFilterOptions();
+  const transitions = (VALID_NEXT_STATUS[status as Ticket['status']] ?? []).map(next => ({
+    next,
+    ...(ACTION_STYLE[next] ?? { label: next, icon: ArrowUpCircle, color: 'bg-purple-600 text-white' }),
+    // `assigned → in_progress` is where work starts, not resumes.
+    label: status === 'assigned' && next === 'in_progress' ? 'Start Work' : ACTION_STYLE[next]?.label ?? next,
+  }));
 
   const handleAction = (next: string) => {
     if (!isOnline) {
@@ -73,11 +65,11 @@ function StatusActions({ ticketId, status, isOnline }: StatusActionProps) {
   };
 
   const submitWithReason = () => {
-    if (!reasonFor) return;
+    if (!reasonFor || !reasonCode) return;
     mutate(
-      { status: reasonFor, reason: reason.trim() || 'On hold' },
+      { status: reasonFor, reason: reason.trim(), pendingReason: reasonCode, pendingReasonNote: reason.trim() },
       {
-        onSuccess: () => { toast.success('Ticket put on hold'); setReasonFor(null); setReason(''); },
+        onSuccess: () => { toast.success('Ticket put on hold'); setReasonFor(null); setReason(''); setReasonCode(''); },
         onError:   () => toast.error('Failed to update status.'),
       }
     );
@@ -107,22 +99,32 @@ function StatusActions({ ticketId, status, isOnline }: StatusActionProps) {
       {reasonFor && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
           <p className="text-sm font-medium text-orange-800">Why is this ticket on hold?</p>
+          <select
+            className="w-full rounded-lg border border-orange-200 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            value={reasonCode}
+            onChange={e => setReasonCode(e.target.value)}
+          >
+            <option value="">Choose a reason…</option>
+            {pendingReasons.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
           <textarea
             className="w-full rounded-lg border border-orange-200 bg-white p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-400"
             rows={3}
-            placeholder="Waiting for parts, awaiting requester response…"
+            placeholder="Anything else worth recording (required for 'Other')"
             value={reason}
             onChange={e => setReason(e.target.value)}
           />
           <div className="flex gap-2">
             <button
-              onClick={() => { setReasonFor(null); setReason(''); }}
+              onClick={() => { setReasonFor(null); setReason(''); setReasonCode(''); }}
               className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground"
             >
               Cancel
             </button>
             <button
-              disabled={isPending}
+              disabled={isPending || !reasonCode || (reasonCode === 'other' && !reason.trim())}
               onClick={submitWithReason}
               className="flex-1 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold disabled:opacity-50"
             >
@@ -235,7 +237,7 @@ interface Props {
 export function MobileTicketDetail({ ticket, onBack, isOnline }: Props) {
   const { data: detail } = useMobileTicketDetail(ticket.id);
   const t = detail ?? ticket;
-  const st = STATUS_LABEL[t.status] ?? STATUS_LABEL.open;
+  const st = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.open;
   const priorityName = (t.priority as unknown as { name?: string })?.name ?? '—';
   const isBreaching = (t as unknown as { is_breaching?: boolean }).is_breaching;
 

@@ -7,6 +7,7 @@ import { useFacilities } from '@/hooks/facilities/useFacilities';
 import { extractWritableFields } from '@/utils/ticketHelpers';
 import { formatSectionDisplay } from '@/utils/formatSection';
 import type { Ticket, Section, Facility, Technician, User, TicketsParams } from '@/types';
+import { ALL_TICKET_STATUSES } from '@/constants/tickets';
 
 export interface UseTicketTableConfig {
   role: 'admin' | 'user' | 'technician' | 'hos' | 'hod' | 'manager';
@@ -90,11 +91,6 @@ export interface UseTicketTableResult {
     manualPagination: boolean;
   };
 }
-
-const ALL_TICKET_STATUSES = [
-  'open', 'assigned', 'in_progress', 'pending',
-  'resolved', 'closed',
-];
 
 const COMMON_TABLE_PROPS = {
   searchPlaceholder: 'Search by ID or title...',

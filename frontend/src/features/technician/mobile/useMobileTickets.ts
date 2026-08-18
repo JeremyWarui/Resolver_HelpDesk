@@ -5,8 +5,6 @@ import { useAuthStore } from '@/stores/authStore';
 import type { Ticket } from '@/types';
 import type { TicketComment } from '@/lib/api/tickets';
 
-export type MobileTicketStatus = 'assigned' | 'in_progress' | 'pending' | 'resolved';
-
 export function useMobileTickets() {
   const userId = useAuthStore(s => s.user?.id);
   return useQuery<Ticket[]>({
@@ -51,8 +49,9 @@ export function useUpdateTicketStatus(ticketId: number) {
   const qc = useQueryClient();
   const userId = useAuthStore(s => s.user?.id);
   return useMutation({
-    mutationFn: ({ status, reason }: { status: string; reason: string }) =>
-      updateTicketStatus(ticketId, status, reason),
+    mutationFn: ({ status, reason, pendingReason, pendingReasonNote }: {
+      status: string; reason: string; pendingReason?: string; pendingReasonNote?: string;
+    }) => updateTicketStatus(ticketId, status, reason, pendingReason, pendingReasonNote),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['mobile-tickets', userId] });
       qc.invalidateQueries({ queryKey: ['mobile-ticket', ticketId] });
