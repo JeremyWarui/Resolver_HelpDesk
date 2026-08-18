@@ -502,7 +502,17 @@ and the technician did not — so the person actually holding an escalated job w
 the one person who could not tell it had escalated, and a HOS looking at their
 ordinary Tickets list saw an escalated row drawn identically to every other one.
 
-Two changes close that:
+Escalation also notifies, and it notifies exactly two people: the holder the
+ticket escalated **to** (the same user the `TicketLog` records as `level_user`,
+resolved structurally by `resolve_active_holder`) and the technician it was
+assigned to, told that the job on their list has moved up a level. The holder is
+passed into `emit_ticket_escalated` rather than looked up again there — the
+structural FKs and `RoleAssignment` can disagree, and the earlier emitter
+broadcast to every HOS and HOD found by role lookup, which both told supervisors
+about tickets never handed to them and could miss the one person it was. When
+the assignee *is* the holder they are told once, not twice.
+
+Two further changes close the visibility gap:
 
 - **The row tints red, and `EscalationBadge` rides in the status cell.** The
   tint (`escalatedRowClass`) is the signal you read without looking; the badge
@@ -575,12 +585,14 @@ implementation today.
    `fade-in-0` / `zoom-in-95` class is a no-op and overlays snap open. Reproduced
    verbatim to preserve the current look; wiring it up would double-wrap the
    already-`oklch()` tokens and break every colour. Tech debt, recorded not fixed.
-4. `check_sla.py:96-101` emits to WS groups no consumer joins — dead code.
-5. `process_auto_escalations --dry-run` returns without reporting what would change;
-   `--verbose` is declared and never read.
-6. `report_views.py:96-97` parses dates naive under `USE_TZ=True`.
-7. `routing.py:27` uses `.first()` with no `order_by` — nondeterministic if a campus
+4. `process_auto_escalations --dry-run` returns without reporting what would change.
+   (Its unread `--verbose` flag has since been removed.)
+5. `routing.py:27` uses `.first()` with no `order_by` — nondeterministic if a campus
    ever has two matching active sections.
+
+Fixed since: the dead WS emit in `check_sla.py`; `report_views.py`'s naive date
+parse under `USE_TZ=True`, which also made the Summary sheet disagree with the
+data sheets — both parsers are now `_build_date_range_params` + `resolve_date_range`.
 
 ## 7a. Keeping the two halves in step
 
@@ -593,6 +605,14 @@ every Django route, diff them. Doing it once found six unmatched calls: five
 dead (push, `/admin/config/`, `/auth/profile/`, `assign-hos`) and one live —
 `GET /tickets/feedback/`, which four roles' Feedback tab was calling and which
 had never been ported. Worth re-running after any batch of endpoint changes.
+
+**There is one API mount.** `/api/v1/` is it. `apps.accounts.urls` used to be
+included a second time at bare `/api/` "for backward compatibility", so every
+auth and user endpoint answered on two paths — a second, unwatched copy of the
+login surface that nothing in this repo called. Both mounts shared URL names, so
+`reverse()` silently resolved to the v1 copy and the duplicate was invisible from
+inside the code. Removed; if a path outside `/api/v1/` ever answers again, that
+is the bug.
 
 **Compare trailing slashes exactly.** The first version of this check
 normalised them on both sides, which hid a real bug: the client posted to

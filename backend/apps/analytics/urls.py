@@ -12,9 +12,23 @@ urlpatterns = [
         report_views.GenerateReportView.as_view(),
         name="report-generate",
     ),
-    # Unified endpoint — one view, full envelope, every role. The role-specific
-    # endpoints below are kept as backward-compatible shims until the frontend
-    # cutover, then removed.
+    # Unified endpoint — one view, full envelope, every role.
+    #
+    # The four slice endpoints below (sla-compliance, resolution-times, flow,
+    # quality) each re-run the whole ~40-query aggregate() to return a handful
+    # of scalars that `/analytics/` already carries in `headline` and `series`.
+    # RoleAnalyticsView used to call all four *and* `/analytics/` for one page
+    # render — five aggregates over the same scope and window. It now reads the
+    # envelope alone.
+    #
+    # They are not removable yet. ServiceHealthCards (sla + quality) and
+    # MyPerformancePanel (resolution-times) are also reachable from
+    # `RoleReportsPage role="technician"`, and the technician branch of
+    # AnalyticsView deliberately returns `individual`/`sectional` instead of
+    # `headline` — so pointing those two at the envelope is a decision about
+    # *which* scope a technician's cards should show (today the slice endpoints
+    # give them the sectional pool), not a mechanical swap. Make that call
+    # before deleting these.
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
     path("analytics/overview/", views.OverviewView.as_view(), name="overview"),
     path(
