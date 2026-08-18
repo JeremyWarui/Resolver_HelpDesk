@@ -101,51 +101,8 @@ export interface TechnicianOverviewResponse {
   }>;
 }
 
-// GET /analytics/sla-compliance/
-export interface SLAComplianceResponse {
-  date_range: DateRange;
-  resolution_sla_pct: number | null;
-  response_sla_pct: number | null;
-  at_risk: number;
-  breached: number;
-  delta: {
-    resolution_sla_pct: number | null;
-    response_sla_pct: number | null;
-  };
-}
-
-// GET /analytics/resolution-times/
-export interface ResolutionTimesResponse {
-  date_range: DateRange;
-  resolution_time_p50_seconds: number | null;
-  resolution_time_p90_seconds: number | null;
-  first_response_p50_seconds: number | null;
-  first_response_p90_seconds: number | null;
-}
-
 // GET /analytics/flow/
 export interface FlowTrendPoint { date: string; created: number; resolved: number; net: number; }
-
-export interface FlowResponse {
-  date_range: DateRange;
-  open_backlog: number;
-  created: number;
-  resolved: number;
-  net_flow: number;
-  flow_trend: FlowTrendPoint[];
-  status_distribution: StatusCount[];
-  priority_distribution: PriorityCount[];
-  delta: { created: number | null; resolved: number | null; };
-}
-
-// GET /analytics/quality/
-export interface QualityResponse {
-  date_range: DateRange;
-  csat: number | null;
-  feedback_response_rate: number | null;
-  reopen_rate: number | null;
-  delta: { csat: number | null; reopen_rate: number | null; };
-}
 
 // GET /analytics/demand/
 export interface DemandSubSectionItem { sub_section_id: number; sub_section_name: string; count: number; }
@@ -344,10 +301,6 @@ export interface ManagerAnalytics extends OverviewResponse {
   trend?: Array<{ period: string; count: number }>;
   period_days?: number;
 }
-
-// Alias for backwards-compat with components that import this name
-// TicketAnalytics was a stale type; bind to FlowResponse for Phase 7 alignment
-export type TicketAnalytics = FlowResponse;
 
 // OrganisationAnalytics — admin-wide aggregate; mirrors ManagerAnalytics shape
 export type OrganisationAnalytics = ManagerAnalytics;

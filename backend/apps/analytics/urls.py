@@ -12,37 +12,23 @@ urlpatterns = [
         report_views.GenerateReportView.as_view(),
         name="report-generate",
     ),
-    # Unified endpoint — one view, full envelope, every role.
+    # Unified endpoint — one view, full envelope, every role. `headline` and
+    # `series` carry what four separate slice endpoints (sla-compliance,
+    # resolution-times, flow, quality) used to return, each of which re-ran the
+    # whole ~40-query aggregate() for a handful of scalars. RoleAnalyticsView
+    # called all four *and* this one for a single render.
     #
-    # The four slice endpoints below (sla-compliance, resolution-times, flow,
-    # quality) each re-run the whole ~40-query aggregate() to return a handful
-    # of scalars that `/analytics/` already carries in `headline` and `series`.
-    # RoleAnalyticsView used to call all four *and* `/analytics/` for one page
-    # render — five aggregates over the same scope and window. It now reads the
-    # envelope alone.
+    # Those four are gone. Anything wanting an SLA percentage, a percentile, a
+    # flow trend or a CSAT reads the envelope — adding a fifth slice endpoint
+    # is how the five-aggregates-per-page problem comes back.
     #
-    # They are not removable yet. ServiceHealthCards (sla + quality) and
-    # MyPerformancePanel (resolution-times) are also reachable from
-    # `RoleReportsPage role="technician"`, and the technician branch of
-    # AnalyticsView deliberately returns `individual`/`sectional` instead of
-    # `headline` — so pointing those two at the envelope is a decision about
-    # *which* scope a technician's cards should show (today the slice endpoints
-    # give them the sectional pool), not a mechanical swap. Make that call
-    # before deleting these.
+    # A technician is answered with `individual`/`sectional` instead of
+    # `headline` (SoT 5.4). MyPerformancePanel reads `individual`: their own
+    # numbers, which is what a panel titled "my performance" must show — it
+    # previously took its resolution percentiles from the sectional pool.
+    # ServiceHealthCards reads `headline` and is never rendered for them.
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
     path("analytics/overview/", views.OverviewView.as_view(), name="overview"),
-    path(
-        "analytics/sla-compliance/",
-        views.SLAComplianceView.as_view(),
-        name="sla-compliance",
-    ),
-    path(
-        "analytics/resolution-times/",
-        views.ResolutionTimesView.as_view(),
-        name="resolution-times",
-    ),
-    path("analytics/flow/", views.FlowView.as_view(), name="flow"),
-    path("analytics/quality/", views.QualityView.as_view(), name="quality"),
     path("analytics/demand/", views.DemandView.as_view(), name="demand"),
     path(
         "analytics/performance/technicians/",

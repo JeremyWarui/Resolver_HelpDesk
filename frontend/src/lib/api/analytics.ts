@@ -4,10 +4,6 @@ import type {
   AnalyticsEnvelope,
   OverviewResponse,
   TechnicianOverviewResponse,
-  SLAComplianceResponse,
-  ResolutionTimesResponse,
-  FlowResponse,
-  QualityResponse,
   DemandResponse,
   PerformanceTechniciansResponse,
   PerformanceSectionsResponse,
@@ -30,26 +26,6 @@ export async function getOverview(
   params?: AnalyticsParams
 ): Promise<OverviewResponse | TechnicianOverviewResponse> {
   const { data } = await apiClient.get('/analytics/overview/', { params });
-  return data;
-}
-
-export async function getSLACompliance(params?: AnalyticsParams): Promise<SLAComplianceResponse> {
-  const { data } = await apiClient.get('/analytics/sla-compliance/', { params });
-  return data;
-}
-
-export async function getResolutionTimes(params?: AnalyticsParams): Promise<ResolutionTimesResponse> {
-  const { data } = await apiClient.get('/analytics/resolution-times/', { params });
-  return data;
-}
-
-export async function getFlow(params?: AnalyticsParams): Promise<FlowResponse> {
-  const { data } = await apiClient.get('/analytics/flow/', { params });
-  return data;
-}
-
-export async function getQuality(params?: AnalyticsParams): Promise<QualityResponse> {
-  const { data } = await apiClient.get('/analytics/quality/', { params });
   return data;
 }
 

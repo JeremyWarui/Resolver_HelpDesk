@@ -6,12 +6,14 @@ import ChartCard from "@/components/shared/data/ChartCard";
 import { ChartPlaceholder } from "@/components/shared/data/ChartPlaceholder";
 import { AppBarChart } from "@/components/shared/data/AppBarChart";
 import { AppPieChart } from "@/components/shared/data/AppPieChart";
-import type { FlowResponse } from "@/types/analytics.types";
+import type { FlowTrendPoint, StatusCount } from "@/types/analytics.types";
 
 interface ChartSectionProps {
-  trendData: FlowResponse | null;
+  // Only ever the two series, never a whole flow response — so a caller
+  // holding the unified analytics envelope can pass `series` straight through.
+  trend: FlowTrendPoint[] | null;
   trendLoading: boolean;
-  categoryData: FlowResponse | null;
+  statusDistribution: StatusCount[] | null;
   categoryLoading: boolean;
   ticketTimeframe: 'day' | 'week' | 'month';
   setTicketTimeframe: (t: 'day' | 'week' | 'month') => void;
@@ -20,9 +22,9 @@ interface ChartSectionProps {
 }
 
 const ChartSection = ({
-  trendData,
+  trend,
   trendLoading,
-  categoryData,
+  statusDistribution,
   categoryLoading,
   ticketTimeframe,
   setTicketTimeframe,
@@ -32,30 +34,30 @@ const ChartSection = ({
 
   // Today → 1 bar; This Week → 7 day-name bars; This Month → 4 week-number bars
   const ticketsRaisedData = useMemo(() => {
-    if (!trendData?.flow_trend?.length) return [];
+    if (!trend?.length) return [];
 
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     if (ticketTimeframe === 'day') {
-      return trendData.flow_trend.slice(-1).map(item => ({
+      return trend.slice(-1).map(item => ({
         name: 'Today',
         tickets: item.created,
       }));
     } else if (ticketTimeframe === 'week') {
-      return trendData.flow_trend.slice(-7).map(item => {
+      return trend.slice(-7).map(item => {
         const date = new Date(item.date);
         return { name: dayNames[date.getDay()], tickets: item.created };
       });
     } else {
-      return trendData.flow_trend.slice(-4).map((item, index) => ({
+      return trend.slice(-4).map((item, index) => ({
         name: `Week ${index + 1}`,
         tickets: item.created,
       }));
     }
-  }, [trendData, ticketTimeframe]);
+  }, [trend, ticketTimeframe]);
 
   // Status distribution from the category fetch
-  const pieData = (categoryData?.status_distribution ?? []).map(s => ({
+  const pieData = (statusDistribution ?? []).map(s => ({
     name: s.status,
     value: s.count,
   }));

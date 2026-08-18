@@ -1,5 +1,5 @@
 import { ShieldCheck, Star, AlertTriangle } from 'lucide-react';
-import { useSLACompliance, useQuality } from '@/hooks/analytics';
+import { useAnalytics } from '@/hooks/analytics';
 import MetricCard from '@/components/shared/data/MetricCard';
 import type { AnalyticsParams } from '@/types';
 
@@ -13,10 +13,18 @@ interface Props {
  * Service-health KPI row — Resolution SLA, Response SLA, CSAT, Breached.
  * Self-fetching (scoped server-side by JWT). Reused by the Reports landing and
  * the role dashboards.
+ *
+ * Never rendered for a technician: the Reports landing puts this whole block
+ * behind `!isTechnician` (their overview is MyPerformancePanel), and no
+ * technician reaches RoleDashboardView. That matters because the unified
+ * envelope answers a technician with `individual`/`sectional` instead of
+ * `headline` — which is why reading `headline` here is safe.
  */
 export default function ServiceHealthCards({ params, heading = true }: Props) {
-  const { data: sla } = useSLACompliance(params);
-  const { data: quality } = useQuality(params);
+  // These four were two endpoints, each re-running the whole ~40-query
+  // aggregate() to slice out two scalars the envelope already carries.
+  const { data: envelope } = useAnalytics(params);
+  const headline = envelope?.headline ?? null;
 
   return (
     <div>
@@ -24,7 +32,7 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Resolution SLA %"
-          value={sla?.resolution_sla_pct != null ? `${sla.resolution_sla_pct.toFixed(1)}%` : '—'}
+          value={headline?.resolution_sla_pct != null ? `${headline.resolution_sla_pct.toFixed(1)}%` : '—'}
           description="SLA compliance for resolution"
           icon={<ShieldCheck className="h-6 w-6 text-status-resolved" />}
           iconBgColor="bg-status-resolved/10"
@@ -32,7 +40,7 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
         />
         <MetricCard
           title="Response SLA %"
-          value={sla?.response_sla_pct != null ? `${sla.response_sla_pct.toFixed(1)}%` : '—'}
+          value={headline?.response_sla_pct != null ? `${headline.response_sla_pct.toFixed(1)}%` : '—'}
           description="SLA compliance for first response"
           icon={<ShieldCheck className="h-6 w-6 text-blue-600" />}
           iconBgColor="bg-blue-100"
@@ -40,7 +48,7 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
         />
         <MetricCard
           title="CSAT"
-          value={quality?.csat != null ? `${quality.csat.toFixed(1)} / 5` : '—'}
+          value={headline?.csat != null ? `${headline.csat.toFixed(1)} / 5` : '—'}
           description="Customer satisfaction score"
           icon={<Star className="h-6 w-6 text-purple-600" />}
           iconBgColor="bg-purple-100"
@@ -48,7 +56,7 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
         />
         <MetricCard
           title="Breached"
-          value={sla?.breached ?? 0}
+          value={headline?.breached ?? 0}
           description="SLA breached tickets"
           icon={<AlertTriangle className="h-6 w-6 text-status-escalated" />}
           iconBgColor="bg-status-escalated/10"

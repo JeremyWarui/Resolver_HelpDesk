@@ -5,8 +5,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KPICardGrid, type KPIMetric } from '@/components/shared/data/KPICardGrid';
 import { SLAComplianceGauge } from '@/components/shared/data/SLAComplianceGauge';
-import { useTechnicianDashboard } from '@/hooks/dashboard';
-import { useResolutionTimes } from '@/hooks/analytics';
+import { useAnalytics } from '@/hooks/analytics';
 import { formatSeconds } from '@/utils/date';
 import type { AnalyticsParams } from '@/types';
 
@@ -30,11 +29,19 @@ import type { AnalyticsParams } from '@/types';
  * backend will not serve a ranking — and this must not imply one exists.
  */
 export function MyPerformancePanel({ params }: { params: AnalyticsParams }) {
-  const { data, loading } = useTechnicianDashboard(params);
-  const { data: times } = useResolutionTimes(params);
+  // One envelope, two keys. `individual` is aggregate() over
+  // `assigned_to = me`; `sectional` is the trade-and-campus pool. The backend
+  // keeps them in separate keys precisely so they can never be shown as each
+  // other (SoT 5.4), and this panel is the caller's own performance.
+  //
+  // Resolution times used to come from /analytics/resolution-times/, which
+  // scopes a technician to the *sectional* pool — so the one panel promising
+  // "one person, no comparison" was quoting the section's median as theirs.
+  // `individual` carries them, scoped to the person.
+  const { data: envelope, loading } = useAnalytics(params);
 
-  const me = data?.individual ?? null;
-  const section = data?.sectional ?? null;
+  const me = envelope?.individual ?? null;
+  const section = envelope?.sectional ?? null;
   const aging = me?.aging_buckets;
 
   const pct = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(1)}%`);
@@ -107,8 +114,8 @@ export function MyPerformancePanel({ params }: { params: AnalyticsParams }) {
     },
     {
       label: 'Typical resolution',
-      value: formatSeconds(times?.resolution_time_p50_seconds ?? null),
-      description: `Slowest 10%: ${formatSeconds(times?.resolution_time_p90_seconds ?? null)}`,
+      value: formatSeconds(me?.resolution_time_p50_seconds ?? null),
+      description: `Slowest 10%: ${formatSeconds(me?.resolution_time_p90_seconds ?? null)}`,
       icon: <Clock className="h-5 w-5" />,
       colorClass: 'text-muted-foreground',
     },

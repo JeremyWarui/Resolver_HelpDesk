@@ -32,7 +32,7 @@ import InsightsPanel from "@/components/shared/data/InsightsPanel";
 import LazyMount from "@/components/shared/LazyMount";
 import reportsService from "@/lib/api/reports";
 import type { GenerateReportParams } from "@/lib/api/reports";
-import { useFlow, useRoleAnalytics, usePerformanceCampusDepts, usePerformanceTrades, useAnalytics } from "@/hooks/analytics";
+import { useRoleAnalytics, usePerformanceCampusDepts, usePerformanceTrades, useAnalytics } from "@/hooks/analytics";
 import { getDemand } from "@/lib/api/analytics";
 
 export type DashboardRole = "admin" | "manager" | "hod" | "hos";
@@ -91,8 +91,10 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
   // Two independent fetches — trend chart and category donut have their own timeframes.
   const trendDays = ticketTimeframe === 'day' ? 1 : ticketTimeframe === 'week' ? 7 : 30;
   const categoryDays = categoryTimeframe === 'day' ? 1 : categoryTimeframe === 'week' ? 7 : 30;
-  const { data: chartsAnalyticsData, loading: chartsLoading } = useFlow({ days: trendDays });
-  const { data: categoryAnalyticsData, loading: categoryLoading } = useFlow({ days: categoryDays });
+  // Two windows, two envelopes. /analytics/flow/ used to serve these and ran
+  // the same full aggregate() to return a subset of what the envelope carries.
+  const { data: trendEnvelope, loading: chartsLoading } = useAnalytics({ days: trendDays });
+  const { data: categoryEnvelope, loading: categoryLoading } = useAnalytics({ days: categoryDays });
 
   // Demand analytics for facility chart (Phase 7: DemandResponse bound to /analytics/demand/)
   const { data: facilityAnalyticsData, loading: facilityLoading } = useRoleAnalytics(
@@ -219,7 +221,7 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
         <div className="space-y-2 mt-2">
           {/* Ticket flow over the window (created vs resolved) */}
           <FlowTrendChart
-            trend={chartsAnalyticsData?.flow_trend ?? null}
+            trend={trendEnvelope?.series?.flow_trend ?? null}
             loading={chartsLoading}
             title={`Ticket Flow — Last ${trendDays} Days`}
           />
@@ -269,9 +271,9 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
         <>
           {/* Charts - First Row (total bar + status pie) */}
           <ChartSection
-            trendData={chartsAnalyticsData}
+            trend={trendEnvelope?.series?.flow_trend ?? null}
             trendLoading={chartsLoading}
-            categoryData={categoryAnalyticsData}
+            statusDistribution={categoryEnvelope?.series?.status_distribution ?? null}
             categoryLoading={categoryLoading}
             ticketTimeframe={ticketTimeframe}
             setTicketTimeframe={setTicketTimeframe}
@@ -316,9 +318,9 @@ const RoleDashboardView = ({ role, onTicketSelect }: RoleDashboardViewProps) => 
         <>
           {/* Charts - First Row */}
           <ChartSection
-            trendData={chartsAnalyticsData}
+            trend={trendEnvelope?.series?.flow_trend ?? null}
             trendLoading={chartsLoading}
-            categoryData={categoryAnalyticsData}
+            statusDistribution={categoryEnvelope?.series?.status_distribution ?? null}
             categoryLoading={categoryLoading}
             ticketTimeframe={ticketTimeframe}
             setTicketTimeframe={setTicketTimeframe}

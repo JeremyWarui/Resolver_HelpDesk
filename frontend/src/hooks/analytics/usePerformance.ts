@@ -1,61 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  getFlow,
-  getResolutionTimes,
-  getQuality,
-  getSLACompliance,
   getPerformanceTechnicians,
   getPerformanceSections,
   getPerformanceTrades,
   getPerformanceCampusDepts,
 } from '@/lib/api/analytics';
 import type {
-  FlowResponse,
-  ResolutionTimesResponse,
-  QualityResponse,
-  SLAComplianceResponse,
   PerformanceTechniciansResponse,
   PerformanceSectionsResponse,
   PerformanceTradesResponse,
   PerformanceCampusDeptsResponse,
   AnalyticsParams,
 } from '@/types';
-
-export function useFlow(params?: AnalyticsParams) {
-  const { data, isLoading, error, refetch } = useQuery<FlowResponse>({
-    queryKey: ['analytics', 'flow', params],
-    queryFn: () => getFlow(params),
-    staleTime: 2 * 60 * 1000,
-  });
-  return { data: data ?? null, loading: isLoading, error, refetch };
-}
-
-export function useResolutionTimes(params?: AnalyticsParams) {
-  const { data, isLoading, error, refetch } = useQuery<ResolutionTimesResponse>({
-    queryKey: ['analytics', 'resolution-times', params],
-    queryFn: () => getResolutionTimes(params),
-    staleTime: 2 * 60 * 1000,
-  });
-  return { data: data ?? null, loading: isLoading, error, refetch };
-}
-
-export function useQuality(params?: AnalyticsParams) {
-  const { data, isLoading, error, refetch } = useQuery<QualityResponse>({
-    queryKey: ['analytics', 'quality', params],
-    queryFn: () => getQuality(params),
-    staleTime: 2 * 60 * 1000,
-  });
-  return { data: data ?? null, loading: isLoading, error, refetch };
-}
-
-export function useSLACompliance(params?: AnalyticsParams) {
-  const { data, isLoading, error, refetch } = useQuery<SLAComplianceResponse>({
-    queryKey: ['analytics', 'sla-compliance', params],
-    queryFn: () => getSLACompliance(params),
-    staleTime: 2 * 60 * 1000,
-  });
-  return { data: data ?? null, loading: isLoading, error, refetch };
-}
 
 export function usePerformanceTechnicians(params?: AnalyticsParams) {
   const { data, isLoading, error, refetch } = useQuery<PerformanceTechniciansResponse>({

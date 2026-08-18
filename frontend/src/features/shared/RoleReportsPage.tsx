@@ -16,7 +16,7 @@ import {
   CheckCircle2,
   MapPin,
 } from 'lucide-react';
-import { useFlow } from '@/hooks/analytics';
+import { useAnalytics } from '@/hooks/analytics';
 import { DateRangeSelector } from '@/components/shared/data/DateRangeSelector';
 import MetricCard from '@/components/shared/data/MetricCard';
 import ServiceHealthCards from '@/components/shared/data/ServiceHealthCards';
@@ -132,7 +132,11 @@ export default function RoleReportsPage({ role }: RoleReportsPageProps) {
   const [params, setParams] = useState<AnalyticsParams>({ days: 30 });
 
   // Fetch analytics for overview
-  const { data: ticketAnalytics } = useFlow(params);
+  // Only the three counts below, and only for the non-technician overview —
+  // a technician's overview is MyPerformancePanel, so `headline` being absent
+  // from their envelope costs nothing here.
+  const { data: reportsEnvelope } = useAnalytics(params);
+  const ticketAnalytics = reportsEnvelope?.headline ?? null;
 
   // The roster is scoped server-side and includes idle technicians, which the
   // ticket-derived workload list does not.
