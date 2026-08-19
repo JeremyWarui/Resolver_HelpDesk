@@ -20,6 +20,7 @@ import { useTickets } from '@/hooks/tickets/useTickets';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuthStore } from '@/stores/authStore';
 import type { Ticket } from '@/types';
 
 export type EscalatedRole = 'technician' | 'hos' | 'hod';
@@ -36,11 +37,15 @@ const COPY: Record<EscalatedRole, { subtitle: string }> = {
   // framed as a heads-up rather than a worklist, because escalating does not
   // reassign anything; the job stays exactly where it was.
   //
-  // Scope is the technician's (campus, trade) pairs, same as Section Tickets —
-  // so this lists what has escalated in their trades, not only what they hold.
+  // Scoped to what they hold, not their whole trade. It listed the trade
+  // originally, on the reasoning that escalation is the section's problem —
+  // but a page of colleagues' late jobs is a list nobody owns, and a
+  // technician cannot act on any of it (`TicketStatusUpdateView` gives section
+  // scope view-only). Their own late work is the part they can do something
+  // about, and Section Tickets already shows the trade.
   technician: {
     subtitle:
-      'Jobs in your trades that ran past their threshold and were raised to your section head. Escalating does not move the work — these are still the section’s to finish.',
+      'Jobs assigned to you that ran past their threshold and were raised to your section head. Escalating does not move the work — these are still yours to finish.',
   },
   hos: {
     subtitle:
@@ -64,7 +69,19 @@ const LEVEL_LABEL: Record<string, string> = {
 };
 
 export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
-  const { tickets, loading } = useTickets({ escalated: '1', page_size: 200 });
+  const userId = useAuthStore((st) => st.user?.id);
+  const isTechnician = role === 'technician';
+
+  // Narrows within the server's scope, never past it. Skipped until the id is
+  // known, so the un-narrowed request never fires and briefly shows the trade.
+  const { tickets, loading } = useTickets(
+    {
+      escalated: '1',
+      page_size: 200,
+      ...(isTechnician && userId ? { assigned_to: userId } : {}),
+    },
+    isTechnician && !userId,
+  );
 
   const byLevel = useMemo(() => {
     const counts = new Map<string, number>();

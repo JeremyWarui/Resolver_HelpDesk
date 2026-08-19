@@ -547,6 +547,36 @@ Two further changes close the visibility gap:
   work, not "yours". Escalating reassigns nothing; the badge and the page are a
   heads-up, and every action on the ticket stays where it was.
 
+### The technician's two queues
+
+The technician has Pending Work and Escalated, the same two pages the section
+heads have, rendered by the same `PendingWorkView` and `EscalatedWorkView`.
+
+Both are **scoped to what the technician holds**, not to their server scope.
+That is the one place in the app a page narrows past `scoped_ticket_qs`, and it
+is deliberate: a technician's scope is their whole (campus, trade) pool, but
+`TicketStatusUpdateView` lets them change status only on tickets assigned to
+*them* — "section scope alone gives view-only". A section-mate's held job
+listed here would carry a Resume button the server answers 403 for, and a page
+of colleagues' late work is a list nobody owns. Section Tickets already shows
+the trade.
+
+The narrowing is `assigned_to`, which filters *within* the server's scope and
+can never widen it, and the fetch is skipped until the user id is known so the
+un-narrowed request never fires. `useNavCounts` applies the same rule to both
+badges — the counts and the pages would otherwise disagree, which is the whole
+reason the counts live in one hook.
+
+Escalated originally listed the whole trade for a technician, on the reasoning
+that escalation is the section's problem. That reasoning was sound about
+escalation and wrong about the page: nothing on it was theirs to act on.
+
+`e2e/technician-queues.spec.ts` asserts the request carries `assigned_to`
+rather than that the page renders — the un-narrowed version renders perfectly
+well. It matches on `page_size=200` to pin the page's own request; matching
+`status=pending` alone caught the sidebar badge's `page_size=1` query, which is
+narrowed separately, and passed against a broken page.
+
 ### Counts on the sidebar
 
 `Escalated` and `Pending Work` carry a live count in the nav — "Escalated (28)".
@@ -733,6 +763,14 @@ work remaining.
   data, and they are unscoped too, so a Nairobi HOS can read Mombasa's open
   counts. Aggregate counts rather than ticket content, but it sits against the
   rule that every ticket read goes through `scoped_ticket_qs`.
+- **`truncate` with no bounded width does nothing.** The pending-reason cell
+  carried `truncate` on its note and a table cell sizes to its content, so the
+  note simply widened the column: the Pending Work table ran 1787px inside a
+  1208px wrapper and pushed the Resume buttons — the point of the page — off
+  the right edge behind a horizontal scrollbar, for the section heads as well.
+  A `max-w` makes the existing class mean something (1787 → 1281). Nine columns
+  still overflow a 1280px viewport, as every wide table here does; the spec
+  pins the width it actually guarantees rather than pretending otherwise.
 - **`DataTable` printed the words "Data Table" on screen.** Its `title` prop
   defaulted to that placeholder, and `DefaultTableHeader` already renders no
   header at all when the title is absent — so the default did nothing except

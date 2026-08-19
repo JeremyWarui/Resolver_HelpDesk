@@ -9,14 +9,19 @@
  * `page_size: 1` on purpose: only `count` is read, so this fetches one row
  * rather than the two-hundred the pages themselves ask for. The queries are
  * role-scoped server-side like every other ticket read, so a HOS's badge counts
- * their section and a technician's counts their trades — no client filtering,
- * and no way for the number to disagree with the page it labels.
+ * their section. Both counts narrow by `assigned_to` for a technician, because
+ * both of their pages list only what they hold — a technician's server scope is
+ * their whole (campus, trade) pool, so counting that would badge a number
+ * neither page can show. The narrowing lives here rather than at the call sites
+ * so a count and its page cannot drift apart.
  *
  * Shared query keys with the pages would be wrong here (different params), but
  * TanStack still dedupes these two across every consumer of the sidebar.
  */
 import { useQuery } from '@tanstack/react-query';
 import ticketsService from '@/lib/api/tickets';
+import { useAuthStore } from '@/stores/authStore';
+import { useRoleContext } from '@/lib/auth/roleContext';
 
 export interface NavCounts {
   escalated: number;
@@ -28,17 +33,36 @@ export interface NavCounts {
 const STALE_MS = 60_000;
 
 export function useNavCounts(enabled = true): NavCounts {
+  // The one exception to "server scope is the whole story": a technician's
+  // Pending Work page lists only what is assigned to *them*, because that is
+  // the only thing they may resume. Server scope for a technician is their
+  // whole (campus, trade) pool, so counting it here would badge a number the
+  // page cannot show. The narrowing lives here rather than at the call site so
+  // the count and the page cannot drift apart.
+  const { role } = useRoleContext();
+  const userId = useAuthStore((s) => s.user?.id);
+  const ownWorkOnly = role === 'technician';
+  const escalatedParams = {
+    escalated: '1' as const,
+    page_size: 1,
+    ...(ownWorkOnly && userId ? { assigned_to: userId } : {}),
+  };
   const escalated = useQuery({
-    queryKey: ['nav-count', 'escalated'],
-    queryFn: () => ticketsService.getTickets({ escalated: '1', page_size: 1 }),
-    enabled,
+    queryKey: ['nav-count', 'escalated', escalatedParams],
+    queryFn: () => ticketsService.getTickets(escalatedParams),
+    enabled: enabled && !(ownWorkOnly && !userId),
     staleTime: STALE_MS,
   });
 
+  const pendingParams = {
+    status: 'pending' as const,
+    page_size: 1,
+    ...(ownWorkOnly && userId ? { assigned_to: userId } : {}),
+  };
   const pending = useQuery({
-    queryKey: ['nav-count', 'pending'],
-    queryFn: () => ticketsService.getTickets({ status: 'pending', page_size: 1 }),
-    enabled,
+    queryKey: ['nav-count', 'pending', pendingParams],
+    queryFn: () => ticketsService.getTickets(pendingParams),
+    enabled: enabled && !(ownWorkOnly && !userId),
     staleTime: STALE_MS,
   });
 

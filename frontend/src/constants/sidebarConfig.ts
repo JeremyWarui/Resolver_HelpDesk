@@ -53,6 +53,7 @@ export const SIDEBAR_CONFIG: Record<UserRole, SidebarConfig> = {
     items: [
       { id: 'dashboard',       label: 'Section Tickets',  icon: LayoutDashboard },
       { id: 'assignedTickets', label: 'Assigned Tickets', icon: ClipboardList },
+      { id: 'pending',         label: 'Pending Work',     icon: PauseCircle, count: 'pending' },
       { id: 'escalated',       label: 'Escalated',        icon: ShieldAlert, count: 'escalated' },
       { id: 'feedback',        label: 'Feedback',         icon: MessageSquare },
       { id: 'report',          label: 'Reports',          icon: FileText },

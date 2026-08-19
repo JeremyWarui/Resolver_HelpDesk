@@ -6,6 +6,7 @@ import { ROLE_NAV } from '@/config/roleNav';
 import TechSectionTickets from './TechSectionTickets';
 import TechTicketsPage from './TechTicketsPage';
 import EscalatedWorkView from '@/features/shared/EscalatedWorkView';
+import PendingWorkView from '@/features/shared/PendingWorkView';
 import RoleReportsPage from '@/features/shared/RoleReportsPage';
 import FeedbackTab from '@/features/shared/FeedbackTab';
 
@@ -24,6 +25,7 @@ const TechnicianLayout = () => {
       sections={({ onTicketSelect, userId }) => ({
         dashboard:      <TechSectionTickets currentTechnicianId={userId} onTicketSelect={onTicketSelect} />,
         assignedTickets: <TechTicketsPage onTicketSelect={onTicketSelect} />,
+        pending:        <PendingWorkView role="technician" onTicketSelect={onTicketSelect} />,
         escalated:      <EscalatedWorkView role="technician" onTicketSelect={onTicketSelect} />,
         feedback:       <FeedbackTab role="technician" />,
         report:         <RoleReportsPage role="technician" />,

@@ -27,9 +27,10 @@ import ChartCard from '@/components/shared/data/ChartCard';
 import { ResumeWorkModal } from '@/components/shared/ticket/ResumeWorkModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuthStore } from '@/stores/authStore';
 import type { Ticket } from '@/types';
 
-export type PendingWorkRole = 'manager' | 'hod' | 'hos';
+export type PendingWorkRole = 'manager' | 'hod' | 'hos' | 'technician';
 
 interface Props {
   role: PendingWorkRole;
@@ -49,7 +50,19 @@ const COPY: Record<PendingWorkRole, { title: string; subtitle: string }> = {
     title: 'Pending Work',
     subtitle: 'Jobs your section has stopped, and what each one is waiting for.',
   },
+  // Only the technician's *own* held jobs, unlike the other three roles. The
+  // difference is that this page acts: `TicketStatusUpdateView` lets a
+  // technician change status only on tickets assigned to them — section scope
+  // alone is view-only — so listing a section-mate's held job here would put a
+  // Resume button on a row the server answers 403 for.
+  technician: {
+    title: 'Pending Work',
+    subtitle: 'Your jobs that are stopped, why, and for how long. Resume one when the thing it was waiting for arrives.',
+  },
 };
+
+/** Stable reference: a fresh array each render would re-memo the column map. */
+const HIDE_FOR_TECHNICIAN = ['assigned_to'];
 
 /** Days a ticket has been on hold. Null when it somehow has no pause stamp. */
 function pendingDays(ticket: Ticket): number | null {
@@ -61,7 +74,22 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
   // page_size is generous on purpose: this list is bounded by how much work is
   // stuck, which is a small number in any healthy section — and if it is not
   // small, seeing all of it is the point.
-  const { tickets, loading, refetch } = useTickets({ status: 'pending', page_size: 200 });
+  const userId = useAuthStore((st) => st.user?.id);
+  const isTechnician = role === 'technician';
+
+  // `assigned_to` narrows *within* the server's scope — it never widens it, so
+  // this is a filter on the technician's own rows rather than a claim about
+  // who they are. Skipped until the id is known: without it the same request
+  // would return their whole trade for a frame, which is the one thing this
+  // page must not show.
+  const { tickets, loading, refetch } = useTickets(
+    {
+      status: 'pending',
+      page_size: 200,
+      ...(isTechnician && userId ? { assigned_to: userId } : {}),
+    },
+    isTechnician && !userId,
+  );
   const [acting, setActing] = useState<{ ticket: Ticket; mode: 'resume' | 'change' } | null>(null);
 
   const isManager = role === 'manager';
@@ -107,7 +135,9 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
             <PauseCircle className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">Nothing is on hold</p>
             <p className="text-sm text-muted-foreground">
-              Every job in your scope is either being worked on or finished.
+              {isTechnician
+                ? 'Every job you hold is either being worked on or finished.'
+                : 'Every job in your scope is either being worked on or finished.'}
             </p>
           </CardContent>
         </Card>
@@ -192,6 +222,8 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
               tickets={tickets}
               variant="pending"
               loading={loading}
+              // Every row on a technician's page is assigned to them.
+              hideColumns={isTechnician ? HIDE_FOR_TECHNICIAN : undefined}
               title="Jobs on hold"
               onRowClick={(t) => onTicketSelect?.(t.id)}
               onResume={(t) => setActing({ ticket: t, mode: 'resume' })}

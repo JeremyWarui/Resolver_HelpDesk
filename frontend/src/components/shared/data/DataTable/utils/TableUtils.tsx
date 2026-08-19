@@ -282,7 +282,12 @@ export const pendingReasonColumn = <T,>(header: string = "Reason"): ColumnDef<T>
     const t = row.original as unknown as Ticket;
     if (!t.pending_reason_display) return <div className="text-muted-foreground">—</div>;
     return (
-      <div className="min-w-0">
+      // The width cap is what makes `truncate` mean anything: a table cell
+      // sizes to its content, so without one the note simply widened the
+      // column — pushing the Resume buttons, the whole point of the Pending
+      // Work page, off the right edge behind a horizontal scrollbar. Full text
+      // stays in the title attribute.
+      <div className="min-w-0 max-w-[20rem]">
         <div className="font-medium">{t.pending_reason_display}</div>
         {t.pending_reason_note && (
           <div className="truncate text-xs text-muted-foreground" title={t.pending_reason_note}>

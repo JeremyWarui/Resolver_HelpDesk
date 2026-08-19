@@ -44,6 +44,17 @@ export interface TicketTableProps {
   emptyDescription?: string;
   searchPlaceholder?: string;
   filterOptions?: FilterOption[];
+  /**
+   * Extra column ids to hide on top of the variant's own map.
+   *
+   * A per-call override rather than a new variant: the technician's Pending
+   * Work is the `pending` view minus one column — their own name, repeated
+   * down the Assigned To column of a list that is theirs by definition — and
+   * "pending minus one column" is not a view purpose the way `queue`, `sla`
+   * and `pending` are. A variant for it would be a near-duplicate map entry,
+   * which is how this file came to hold six of them.
+   */
+  hideColumns?: string[];
 }
 
 export function TicketTable({
@@ -57,6 +68,7 @@ export function TicketTable({
   onResume,
   onChangeReason,
   pagination,
+  hideColumns,
   selectedRowId = null,
   rowClassName,
   title,
@@ -78,7 +90,13 @@ export function TicketTable({
     [variant, onOpenTicket, onOpenTicketDialog, onRate, onResume, onChangeReason],
   );
 
-  const columnVisibility = VARIANT_COLUMN_VISIBILITY[variant];
+  const columnVisibility = useMemo(
+    () => ({
+      ...VARIANT_COLUMN_VISIBILITY[variant],
+      ...Object.fromEntries((hideColumns ?? []).map((id) => [id, false])),
+    }),
+    [variant, hideColumns],
+  );
 
   // DataTable's search box filters a hidden `searchField` column. Callers pass
   // plain Ticket objects, which have no such property, so the accessor read

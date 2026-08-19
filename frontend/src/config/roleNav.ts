@@ -19,6 +19,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     sectionFromPath: {
       '':         'dashboard',
       assigned:   'assignedTickets',
+      pending:    'pending',
       escalated:  'escalated',
       feedback:   'feedback',
       reports:    'report',
@@ -27,6 +28,7 @@ export const ROLE_NAV: Record<'hod' | 'hos' | 'manager' | 'technician', RoleNavC
     headerTitle: {
       dashboard:      'Section Tickets',
       assignedTickets: 'Assigned Tickets',
+      pending:        'Pending Work',
       escalated:      'Escalated',
       feedback:       'Feedback',
       report:         'Reports',
