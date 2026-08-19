@@ -22,5 +22,3 @@ export const useSections = () => {
     refetch,
   };
 };
-
-export default useSections;

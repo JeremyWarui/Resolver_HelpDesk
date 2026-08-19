@@ -635,6 +635,28 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **~1,200 lines of dead frontend code, removed.** The bulk of it was code
+  that could not run rather than code nobody called: 30 `export default`s no
+  importer used (only `useTickets` was imported both ways, which is the drift
+  the pattern invites), the whole `section` branch of `UnifiedDetailsSheet`
+  and its config entry — both callers are typed to `facility` or `technician`,
+  so its roster fetch, `related-list` field type and loading skeleton were
+  unreachable — `SECTION_OVERVIEW_STATS` and `STAT_DEFINITIONS` (reachable
+  only through a `STAT_VIEWS` key nothing reads), four of five schemas in
+  `ticketValidation`, `ChartLegend`/`ChartLegendContent`, the `UserDashboard`
+  type chain, `hod.types.ts`, `manager.types.ts`, `useCreateTicket`,
+  `useTicketFilters`, seven single-fetch service methods, and the `uiStore`
+  modal slice. `AdminRoute`/`TechnicianRoute`/`UserRoute` went too: besides
+  having no callers, `UserRoute` required `role === 'user'`, which would have
+  locked five roles out of raising tickets (invariant 5) had anyone reached
+  for it.
+  Nine unused runtime dependencies went with it. `progress.tsx` and
+  `@radix-ui/react-progress` were live only for the simulated upload bar.
+  **What was deliberately kept:** types exported but only used inside their own
+  file (they document the API shape), the shadcn re-exports, and
+  `REPORTS_STYLING_GUIDE.md`, which is current and moved to `docs/` rather
+  than deleted — it sat under `features/reports/`, a directory with no code in
+  it.
 - **The my-tickets Actions cell read a detail-only field.** `rateAndCloseColumn`
   tested `ticket.feedback`, which only `TicketDetailReadSerializer` nests; the
   list sends `has_feedback`. The test was therefore always `undefined`. It is

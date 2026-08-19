@@ -32,5 +32,3 @@ export function useSectionTechnicians(
     retry: 1,
   });
 }
-
-export default useSectionTechnicians;

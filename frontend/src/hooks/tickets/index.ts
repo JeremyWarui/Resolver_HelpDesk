@@ -1,6 +1,4 @@
-export { default as useTickets } from './useTickets';
-export { default as useCreateTicket } from './useCreateTicket';
+export { useTickets } from './useTickets';
 export { default as useUpdateTicket } from './useUpdateTicket';
-export { default as useTicketTable, type UseTicketTableConfig, type UseTicketTableResult } from './useTicketTable';
-export { useTicketFilters } from './useTicketFilters';
+export { useTicketTable, type UseTicketTableConfig, type UseTicketTableResult } from './useTicketTable';
 export { useTicketDetail, useTicketTimeline, useTicketInvalidate } from './useTicketDetail';

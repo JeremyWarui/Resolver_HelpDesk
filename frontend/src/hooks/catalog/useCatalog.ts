@@ -1,20 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '@/lib/api/client';
 import {
   getCatalog,
   getCampusFacilities,
   type CampusFacility,
   type CatalogSubSection,
 } from '@/lib/api/catalogue';
-
-export interface SectionTypeDeptRef {
-  id: number;
-  name: string;
-  code: string;
-  department_id: number;
-  department_code: string;
-  department_name: string;
-}
 
 /** The trades a campus runs, with their service items nested. */
 export function useCatalog(campusId: number | null | undefined) {
@@ -38,17 +28,6 @@ export function useCampusFacilities(campusId: number | null | undefined) {
     queryKey: ['campus-facilities', campusId],
     queryFn: () => getCampusFacilities(campusId!),
     enabled: campusId != null,
-    staleTime: 10 * 60 * 1000,
-  });
-}
-
-export function useSectionTypes() {
-  return useQuery<SectionTypeDeptRef[]>({
-    queryKey: ['section-types'],
-    queryFn: async () => {
-      const { data } = await apiClient.get('/section-types/');
-      return Array.isArray(data) ? data : (data.results ?? []);
-    },
     staleTime: 10 * 60 * 1000,
   });
 }

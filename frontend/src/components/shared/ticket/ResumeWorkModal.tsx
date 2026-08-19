@@ -179,5 +179,3 @@ export function ResumeWorkModal({ ticket, mode, open, onClose, onDone }: Props) 
     </Dialog>
   );
 }
-
-export default ResumeWorkModal;

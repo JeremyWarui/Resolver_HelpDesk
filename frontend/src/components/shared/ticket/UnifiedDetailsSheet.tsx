@@ -21,9 +21,8 @@ import {
 import { Loader2 } from 'lucide-react';
 import { DETAILS_SHEET_CONFIG, type DetailSheetField, type DetailSheetFieldType } from '@/constants/detailsSheetConfig';
 import { useSections } from '@/hooks/sections/useSections';
-import useUpdateUser from '@/hooks/users/useUpdateUser';
-import useSectionTechnicians from '@/hooks/technicians/useSectionTechnicians';
-import { sectionsService, facilitiesService } from '@/lib/api/organizations';
+import { useUpdateUser } from '@/hooks/users/useUpdateUser';
+import { facilitiesService } from '@/lib/api/organizations';
 import { useFacilityTypes } from '@/hooks/facilities/useFacilityTypes';
 import type { Technician, Section, Facility } from '@/types';
 
@@ -53,7 +52,7 @@ interface UnifiedDetailsSheetProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   entity: Entity | null;
-  entityType: 'technician' | 'section' | 'facility';
+  entityType: 'technician' | 'facility';
   onUpdated?: () => void;
 }
 
@@ -79,11 +78,6 @@ export function UnifiedDetailsSheet({
     const s = sections.find(sec => sec.id === id);
     return s ? s.name : String(id);
   });
-
-  // For section technicians display — section-scoped roster via SectionTechnician.
-  const { data: technicians = [], isLoading: techLoading } = useSectionTechnicians(
-    entityType === 'section' && entity ? (entity as Section).id : null
-  );
 
   // Reset edit state when the entity (or its config) changes. Adjusted during
   // render — per React's "you might not need an effect" guidance — rather than
@@ -120,11 +114,6 @@ export function UnifiedDetailsSheet({
         // server has never read `sections` off this endpoint.
         await updateUser(entity.id, {
           email: asString(editedValues.email),
-        });
-      } else if (entityType === 'section') {
-        await sectionsService.updateSection(entity.id, {
-          name: asString(editedValues.name),
-          description: asString(editedValues.description),
         });
       } else if (entityType === 'facility') {
         await facilitiesService.updateFacility(entity.id, {
@@ -168,9 +157,6 @@ export function UnifiedDetailsSheet({
   const renderViewField = (fieldName: string, fieldType: DetailSheetFieldType): React.ReactNode => {
     if (fieldType === 'sections') {
       return technicianSectionNames.join(', ') || 'None';
-    }
-    if (fieldType === 'related-list') {
-      return null; // Handled separately below
     }
     return getEntityField(entity, fieldName) || '—';
   };
@@ -265,38 +251,10 @@ export function UnifiedDetailsSheet({
                 <div className="bg-white border rounded-lg divide-y">
                   {config.viewFields.map((field, idx) => (
                     <div key={idx} className="px-6 py-4">
-                      {field.type === 'related-list' ? (
-                        <>
-                          <span className="text-sm font-medium text-gray-600 block mb-2">{field.label}</span>
-                          {techLoading ? (
-                            <div className="space-y-2">
-                              {[1, 2].map(i => (
-                                <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" />
-                              ))}
-                            </div>
-                          ) : technicians.length > 0 ? (
-                            <div className="space-y-1">
-                              {technicians.map(t => (
-                                <div key={t.id} className="flex items-center gap-2">
-                                  <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                                    {(t.first_name || t.username).charAt(0).toUpperCase()}
-                                  </div>
-                                  <span className="text-sm text-gray-900">
-                                    {t.first_name && t.last_name ? `${t.first_name} ${t.last_name}` : t.username}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">No technicians assigned</span>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-600">{field.label}</span>
-                          <span className="text-sm text-gray-900">{renderViewField(field.name, field.type)}</span>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-600">{field.label}</span>
+                        <span className="text-sm text-gray-900">{renderViewField(field.name, field.type)}</span>
+                      </div>
                     </div>
                   ))}
                 </div>

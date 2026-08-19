@@ -33,5 +33,3 @@ export const useTickets = (params?: TicketsParams, skip = false): UseTicketsResu
     refetch,
   };
 };
-
-export default useTickets;

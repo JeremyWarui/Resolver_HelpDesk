@@ -54,5 +54,3 @@ export function AwaitingRatingBanner({
     </div>
   );
 }
-
-export default AwaitingRatingBanner;

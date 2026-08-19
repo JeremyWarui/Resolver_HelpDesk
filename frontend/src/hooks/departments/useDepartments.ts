@@ -32,5 +32,3 @@ export const useDepartments = (campusId?: number) => {
     refetch,
   };
 };
-
-export default useDepartments;

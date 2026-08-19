@@ -7,7 +7,6 @@
 // The "Rate & close" action column is unique to the my-tickets variant.
 //
 // Composed usage (all ticket list views):
-//   const { filters, setFilters } = useTicketFilters()
 //   <FilterPills pills={pills} active={filters.status ?? 'all'} onChange={(k) => setFilters({ status: k })} />
 //   <TicketTable tickets={data} variant="queue" loading={isLoading} onRowClick={...} />
 

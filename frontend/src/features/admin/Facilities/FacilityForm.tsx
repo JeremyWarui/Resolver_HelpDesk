@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FormDialog } from '@/components/shared/forms/FormDialog';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
-import useManageFacilities from '@/hooks/facilities/useManageFacilities';
+import { useManageFacilities } from '@/hooks/facilities/useManageFacilities';
 import { createFacilitySchema, type CreateFacilityFormValues } from '@/utils/entityValidation';
 import { useFacilityTypes } from '@/hooks/facilities/useFacilityTypes';
 

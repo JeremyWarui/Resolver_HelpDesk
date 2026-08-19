@@ -95,5 +95,3 @@ export function useNotifications() {
     markingAll: markAllRead.isPending,
   };
 }
-
-export default useNotifications;

@@ -30,5 +30,3 @@ export const useFeedback = (params?: TicketFeedbackParams, skip = false): UseFee
     refetch,
   };
 };
-
-export default useFeedback;

@@ -4,7 +4,7 @@
  * Keeps colors consistent across status badges, priority badges, and charts.
  */
 
-export const FLUENT_UI_COLORS = {
+const FLUENT_UI_COLORS = {
   blue: '#0078d4',    // Primary, open/assigned status
   green: '#107c10',   // Success, resolved status
   orange: '#ffaa44',  // Warning, in_progress status
@@ -40,5 +40,4 @@ export const CHART_COLORS = [
  * - Secondary/Pending: purple (pending status)
  */
 
-export type FluentUIColor = typeof FLUENT_UI_COLORS[keyof typeof FLUENT_UI_COLORS];
 export type BadgeColor = 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray' | 'amber';

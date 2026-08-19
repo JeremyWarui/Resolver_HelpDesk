@@ -20,8 +20,6 @@ export default function RecentTicketsTable({ role = 'admin', onTicketSelect }: R
 
   const columns = createTicketTableColumns({
     role,
-    technicians: table.technicians,
-    allStatuses: table.allStatuses,
     setSelectedTicket: table.setSelectedTicket,
     setIsTicketDialogOpen: table.setIsTicketDialogOpen,
   });

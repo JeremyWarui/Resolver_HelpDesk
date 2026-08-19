@@ -69,5 +69,3 @@ export const useManageFacilities = (): UseManageFacilitiesResult => {
     error,
   };
 };
-
-export default useManageFacilities;

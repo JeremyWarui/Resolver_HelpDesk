@@ -59,9 +59,6 @@ const UserLayoutContent = () => {
   return (
     <>
       <RoleLayout
-        activeSection={activeSection}
-        onSectionChange={handleSectionChange}
-        role={userData?.role || 'user'}
         title={selectedTicketId !== null ? 'Ticket Detail' : activeSection === 'userTickets' ? 'My Tickets' : activeSection === 'settings' ? 'Settings' : 'Dashboard'}
         currentUser={userData}
         loading={false}

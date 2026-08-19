@@ -20,5 +20,3 @@ export function useAnalytics(
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
-
-export default useAnalytics;

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  type ColumnDef, type SortingState, type VisibilityState,
+  type ColumnDef, type SortingState,
   getCoreRowModel, getSortedRowModel, useReactTable,
   flexRender,
 } from '@tanstack/react-table';
@@ -56,7 +56,6 @@ export default function AuditLogPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnVisibility] = useState<VisibilityState>({});
 
   const actorHeader = useSortableColumn('Actor');
   const actionHeader = useSortableColumn('Action');
@@ -202,7 +201,7 @@ export default function AuditLogPage() {
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    state: { sorting, columnVisibility },
+    state: { sorting },
     manualPagination: true,
     pageCount: Math.ceil(total / PAGE_SIZE),
   });

@@ -717,5 +717,3 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
     </Dialog>
   );
 }
-
-export default TicketCreationWizard;

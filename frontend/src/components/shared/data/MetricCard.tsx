@@ -29,7 +29,6 @@ const MetricCard: React.FC<MetricCardProps> = ({
   badge,
   description,
   className = "",
-  customContent,
   isLoading = false,
 }) => {
   if (isLoading) {
@@ -70,8 +69,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
           {description && (
             <p className='text-xs text-gray-500 truncate'>{description}</p>
           )}
-          {customContent}
-        </div>
+                  </div>
       </CardContent>
     </Card>
   );

@@ -15,5 +15,3 @@ export function usePerformanceFacilities(
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
-
-export default usePerformanceFacilities;

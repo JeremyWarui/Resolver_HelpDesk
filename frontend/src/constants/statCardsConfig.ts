@@ -1,4 +1,3 @@
-import type { UserRole } from '@/types';
 import {
   FileText,
   AlertTriangle,
@@ -6,7 +5,6 @@ import {
   Clock,
   AlertCircle,
   PauseCircle,
-  Zap,
   Inbox,
   Wrench,
 } from 'lucide-react';
@@ -156,107 +154,6 @@ function statusOverviewStats(
     },
   ];
 }
-
-// ============================================
-// SHARED STATS — SECTION OVERVIEW
-// Used by: Technician (section view) + Section Head (section view)
-// ============================================
-
-interface SectionOverviewData {
-  section?: {
-    name: string;
-    total_tickets: number;
-    open: number;
-    in_progress: number;
-    pending: number;
-    resolved: number;
-    avg_resolution_time: number;
-  };
-  overdue_count?: number;
-}
-
-export const SECTION_OVERVIEW_STATS: StatDefinition<SectionOverviewData>[] = [
-  {
-    id: 'section-total',
-    title: 'Section Tickets',
-    icon: FileText,
-    iconBgColor: 'bg-primary/10',
-    iconColor: 'text-primary',
-    calculate: (data) => ({
-      value: data.section?.total_tickets ?? 0,
-      description: 'All tickets in this section',
-      badge: {
-        value: 'Total',
-        color: 'blue',
-      },
-    }),
-  },
-  {
-    id: 'section-open',
-    title: 'Open & Unassigned',
-    icon: Inbox,
-    iconBgColor: 'bg-status-open/10',
-    iconColor: 'text-status-open',
-    calculate: (data) => {
-      const count = data.section?.open ?? 0;
-      return {
-        value: count,
-        description: 'Waiting for assignment',
-        badge: {
-          value: count > 0 ? 'Action needed' : 'Clear',
-          color: count > 0 ? 'blue' : 'green',
-        },
-      };
-    },
-  },
-  {
-    id: 'section-in-progress',
-    title: 'In Progress',
-    icon: Zap,
-    iconBgColor: 'bg-status-progress/10',
-    iconColor: 'text-status-progress',
-    calculate: (data) => ({
-      value: data.section?.in_progress ?? 0,
-      description: 'Currently being worked on',
-      badge: {
-        value: data.section?.avg_resolution_time
-          ? `${(data.section.avg_resolution_time / 60).toFixed(1)}h avg`
-          : 'Active',
-        color: 'amber',
-      },
-    }),
-  },
-  {
-    id: 'section-resolved',
-    title: 'Resolved',
-    icon: CheckCircle,
-    iconBgColor: 'bg-status-resolved/10',
-    iconColor: 'text-status-resolved',
-    calculate: (data) => ({
-      value: data.section?.resolved ?? 0,
-      description: 'Successfully completed',
-      badge: { value: 'Done', color: 'green' },
-    }),
-  },
-  {
-    id: 'section-overdue',
-    title: 'Overdue',
-    icon: AlertCircle,
-    iconBgColor: 'bg-status-escalated/10',
-    iconColor: 'text-status-escalated',
-    calculate: (data) => {
-      const count = data.overdue_count ?? 0;
-      return {
-        value: count,
-        description: count > 0 ? 'Attention needed' : 'On track',
-        badge: {
-          value: count > 0 ? `${count} overdue` : 'On track',
-          color: count > 0 ? 'red' : 'green',
-        },
-      };
-    },
-  },
-];
 
 // ============================================
 // TECHNICIAN STATS — PERSONAL (My Assigned)
@@ -613,7 +510,6 @@ export const USER_PERSONAL_STATS: StatDefinition<UserPersonalData>[] = [
 // ============================================
 
 export type StatCardView =
-  | 'section_overview' // Technician + Section Head (viewing section stats)
   | 'technician_section' // Technician (the claimable pool: their trades here)
   | 'technician_personal' // Technician (viewing assigned to me)
   | 'section_head_personal' // Section Head (personal dashboard)
@@ -623,7 +519,6 @@ export type StatCardView =
   | 'user_personal'; // User (personal dashboard)
 
 export const STAT_VIEWS: Record<StatCardView, AnyStatDefinition[]> = {
-  section_overview: SECTION_OVERVIEW_STATS,
   technician_section: TECHNICIAN_SECTION_STATS,
   technician_personal: TECHNICIAN_PERSONAL_STATS,
   section_head_personal: SECTION_HEAD_PERSONAL_STATS,
@@ -631,17 +526,4 @@ export const STAT_VIEWS: Record<StatCardView, AnyStatDefinition[]> = {
   manager_organization: MANAGER_ORGANIZATION_STATS,
   admin_system: ADMIN_SYSTEM_STATS,
   user_personal: USER_PERSONAL_STATS,
-};
-
-/**
- * Backward compatibility: role-based access
- * For roles that have a single primary view
- */
-export const STAT_DEFINITIONS: Record<UserRole, AnyStatDefinition[]> = {
-  admin: ADMIN_SYSTEM_STATS,
-  user: USER_PERSONAL_STATS,
-  technician: TECHNICIAN_PERSONAL_STATS,
-  hos: SECTION_HEAD_PERSONAL_STATS,
-  hod: HOD_DEPARTMENT_STATS,
-  manager: MANAGER_ORGANIZATION_STATS,
 };

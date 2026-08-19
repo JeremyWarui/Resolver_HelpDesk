@@ -33,5 +33,3 @@ export interface AuditLogParams {
 
 export const getAuditLog = (params?: AuditLogParams) =>
   apiClient.get<{ count: number; results: AuditLogEntry[] }>('/admin/audit-log/', { params });
-
-// ── System config ─────────────────────────────────────────────────────────────

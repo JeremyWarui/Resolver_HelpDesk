@@ -33,5 +33,3 @@ export function useScopedTechnicians() {
     refetch: query.refetch,
   };
 }
-
-export default useScopedTechnicians;

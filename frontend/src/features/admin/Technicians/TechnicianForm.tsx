@@ -14,10 +14,10 @@ import {
 } from '@/components/ui/select';
 import { FormDialog } from '@/components/shared/forms/FormDialog';
 import { MultiSelectCheckboxGroup } from '@/components/shared/forms/MultiSelectCheckboxGroup';
-import useCreateUser from '@/hooks/users/useCreateUser';
+import { useCreateUser } from '@/hooks/users/useCreateUser';
 import { useSections } from '@/hooks/sections/useSections';
 import { useDepartments } from '@/hooks/departments/useDepartments';
-import useUpdateUser from '@/hooks/users/useUpdateUser';
+import { useUpdateUser } from '@/hooks/users/useUpdateUser';
 import { createTechnicianSchema, type CreateTechnicianFormValues } from '@/utils/entityValidation';
 import { sectionsService } from '@/lib/api/organizations';
 import { getSubSections } from '@/lib/api/catalogue';

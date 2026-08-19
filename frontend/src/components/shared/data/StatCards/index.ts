@@ -4,7 +4,6 @@
  * Centralized, reusable stat card components for all roles/dashboards
  * Organized by view rather than role to enable shared stats
  *
- * @see STAT_CARDS_REFERENCE.md for detailed documentation
  * @see @/constants/statCardsConfig.ts for all stat definitions
  */
 

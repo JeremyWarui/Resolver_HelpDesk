@@ -10,5 +10,3 @@ export function useHODDashboard(params?: AnalyticsParams) {
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
-
-export default useHODDashboard;

@@ -46,31 +46,6 @@ export interface FilterPill {
            | 'open' | 'assigned' | 'in_progress' | 'pending' | 'resolved' | 'closed';
 }
 
-// Shared filter state — designed for URL search param sync via useTicketFilters
-export interface TicketFilters {
-  status?: string;
-  priority?: string;
-  assigneeId?: string;
-  search?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  overdue?: boolean;
-  page?: number;     // DRF PageNumberPagination — /tickets/ is ordered -updated_at,
-  pageSize?: number; // a mutable sort key that rules out cursor pagination by design.
-}
-
-// Counts returned alongside ticket list — all counts always reflect full unfiltered scope
-export interface TicketListCounts {
-  all: number;
-  open: number;
-  assigned: number;
-  in_progress: number;
-  pending: number;
-  resolved: number;
-  closed: number;
-  [key: string]: number;
-}
-
 // ─── Paginated response shapes ────────────────────────────────────────────────
 
 // Current DRF offset pagination shape
@@ -109,14 +84,6 @@ export interface AppNotification {
 }
 
 // ─── Bulk actions (for TicketTable queue/admin variants) ──────────────────────
-
-export interface BulkAction {
-  key: string;
-  label: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  variant?: 'default' | 'destructive';
-  onExecute: (ticketIds: number[]) => void | Promise<void>;
-}
 
 // ─── API error shape ──────────────────────────────────────────────────────────
 

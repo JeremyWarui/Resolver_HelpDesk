@@ -66,12 +66,6 @@ export function RoleDashboardLayout({ nav, sections, renderWrapper }: RoleDashbo
 
   return (
     <RoleLayout
-      activeSection={activeSection}
-      onSectionChange={(s) => {
-        setSelectedTicketId(null);
-        setActiveSection(s);
-      }}
-      role={userData?.role || nav.defaultRole}
       title={displayTitle}
       currentUser={userData}
       loading={false}
@@ -91,5 +85,3 @@ export function RoleDashboardLayout({ nav, sections, renderWrapper }: RoleDashbo
     </RoleLayout>
   );
 }
-
-export default RoleDashboardLayout;

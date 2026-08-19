@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, DragEvent } from 'react';
 import { toast } from 'sonner';
-import { X, FileText, AlertCircle, ExternalLink, Upload } from 'lucide-react';
+import { X, FileText, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /** A file the user has picked but not yet sent. The upload happens once,
@@ -11,19 +11,9 @@ interface UploadFile {
   file: File;
 }
 
-interface ExistingAttachment {
-  id: string;
-  filename: string;
-  url: string;
-  mimeType: string;
-  sizeBytes: number;
-}
-
 interface AttachmentUploaderProps {
   value?: File[];
   onChange?: (files: File[]) => void;
-  existingAttachments?: ExistingAttachment[];
-  onRemoveExisting?: (id: string) => void;
   maxFiles?: number;
   maxSizeMb?: number;
   accept?: string;
@@ -39,42 +29,17 @@ function formatBytes(bytes: number): string {
 interface AttachmentRowProps {
   name: string;
   sizeBytes: number;
-  isError?: boolean;
-  href?: string;
-  extra?: React.ReactNode;
   onRemove?: () => void;
 }
 
-function AttachmentRow({ name, sizeBytes, isError, href, extra, onRemove }: AttachmentRowProps) {
+function AttachmentRow({ name, sizeBytes, onRemove }: AttachmentRowProps) {
   return (
-    <li
-      className={cn(
-        'flex items-start gap-2 rounded-md border px-3 py-2',
-        isError && 'border-destructive bg-destructive/5',
-      )}
-    >
-      {isError ? (
-        <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-      ) : (
-        <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      )}
+    <li className="flex items-start gap-2 rounded-md border px-3 py-2">
+      <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium">{name}</p>
         <p className="text-[10px] text-muted-foreground">{formatBytes(sizeBytes)}</p>
-        {extra}
       </div>
-      {href && (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-          aria-label={`Open ${name}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ExternalLink className="size-3.5" />
-        </a>
-      )}
       {onRemove && (
         <button
           type="button"
@@ -92,8 +57,6 @@ function AttachmentRow({ name, sizeBytes, isError, href, extra, onRemove }: Atta
 export function AttachmentUploader({
   value,
   onChange,
-  existingAttachments = [],
-  onRemoveExisting,
   maxFiles = 5,
   maxSizeMb = 10,
   accept,
@@ -103,7 +66,7 @@ export function AttachmentUploader({
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const currentFileCount = (value?.length ?? uploadFiles.length) + existingAttachments.length;
+  const currentFileCount = value?.length ?? uploadFiles.length;
 
   const addFiles = useCallback(
     (incoming: FileList | File[]) => {
@@ -229,22 +192,6 @@ export function AttachmentUploader({
         </ul>
       )}
 
-      {existingAttachments.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-xs font-medium text-muted-foreground">Existing attachments</p>
-          <ul className="flex flex-col gap-1.5">
-            {existingAttachments.map((att) => (
-              <AttachmentRow
-                key={att.id}
-                name={att.filename}
-                sizeBytes={att.sizeBytes}
-                href={att.url}
-                onRemove={onRemoveExisting ? () => onRemoveExisting(att.id) : undefined}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

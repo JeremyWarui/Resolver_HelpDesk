@@ -1,6 +1,5 @@
 // FilterPills — canonical filter pill component
 // Usage (composed pattern with TicketTable):
-//   const { filters, setFilters } = useTicketFilters()
 //   <FilterPills pills={pills} active={filters.status ?? 'all'} onChange={(k) => setFilters({ status: k })} />
 //   <TicketTable tickets={data} variant="queue" ... />
 

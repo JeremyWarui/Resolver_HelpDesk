@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AlertTriangle, CheckCheck, CheckCircle, Clock, RefreshCw } from 'lucide-react';
-import useTickets from '@/hooks/tickets/useTickets';
+import { useTickets } from '@/hooks/tickets/useTickets';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import { SLAComplianceGauge } from '@/components/shared/data/SLAComplianceGauge';

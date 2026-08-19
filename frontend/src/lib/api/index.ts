@@ -11,22 +11,13 @@ export { default as usersService } from './users';
 
 export * from './analytics';
 
-
 export * from './organizations';
 export { default as organizationsService } from './organizations';
-export {
-  campusesService,
-  departmentsService,
-  campusDepartmentsService,
-  sectionsService,
-  facilitiesService,
-} from './organizations';
 
 export * from './catalogue';
 
 export * from './reports';
 export { default as reportsService } from './reports';
-
 
 export * from './notifications';
 

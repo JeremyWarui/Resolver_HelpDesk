@@ -30,5 +30,3 @@ export const useCreateUser = (): UseCreateUserResult => {
 
   return { createUser, loading, error };
 };
-
-export default useCreateUser;

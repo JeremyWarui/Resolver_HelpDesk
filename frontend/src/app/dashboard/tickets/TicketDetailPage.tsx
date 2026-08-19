@@ -620,5 +620,3 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     </Dialog>
   );
 }
-
-export default TicketDetailPage;

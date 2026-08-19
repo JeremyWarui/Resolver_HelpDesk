@@ -20,5 +20,3 @@ export function usePerformanceTradeMix(
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
-
-export default usePerformanceTradeMix;

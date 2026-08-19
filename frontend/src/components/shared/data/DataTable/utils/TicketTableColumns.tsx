@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import type { Ticket, Technician, TicketTableVariant } from '@/types';
+import type { Ticket, TicketTableVariant } from '@/types';
 import * as TableUtils from './TableUtils';
 
 /**
@@ -9,8 +9,6 @@ export interface TicketColumnsConfig {
   role: 'admin' | 'user' | 'technician' | 'hos' | 'hod' | 'manager';
   setSelectedTicket?: (ticket: Ticket | null) => void;
   setIsTicketDialogOpen?: (open: boolean) => void;
-  technicians?: Technician[];
-  allStatuses?: string[];
 }
 
 /**

@@ -35,5 +35,3 @@ export const useLogout = () => {
 
   return { handleLogout, isLoading };
 };
-
-export default useLogout;

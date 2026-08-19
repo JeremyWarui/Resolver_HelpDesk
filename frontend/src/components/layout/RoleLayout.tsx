@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react';
-import type { UserRole, User } from '@/types';
+import type { User } from '@/types';
 import { AppSidebar } from './AppSidebar';
 import FullScreenLoading from '@/components/shared/feedback/FullScreenLoading';
 import { NotificationCenter } from '@/components/shared/feedback/NotificationCenter';
 
 interface RoleLayoutProps {
-  activeSection: string;
-  onSectionChange: (id: string) => void;
-  role: UserRole;
   title: string;
   currentUser?: User | null;
   loading?: boolean;

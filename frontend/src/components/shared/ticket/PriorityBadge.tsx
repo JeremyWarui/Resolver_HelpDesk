@@ -20,7 +20,7 @@ const PRIORITY_CSS_BASE: Record<string, string> = {
   critical: '--priority-critical',
 };
 
-export function getPriorityStyle(priorityName: string): React.CSSProperties {
+function getPriorityStyle(priorityName: string): React.CSSProperties {
   const base = PRIORITY_CSS_BASE[priorityName.toLowerCase()] ?? '--priority-low';
   return {
     backgroundColor: `var(${base}-bg)`,

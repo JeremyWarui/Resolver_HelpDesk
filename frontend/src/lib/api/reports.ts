@@ -1,18 +1,5 @@
 import apiClient from './client';
 
-export interface ReportType {
-  id: string;
-  name: string;
-  description: string;
-  filters: string[];
-  columns: string[];
-}
-
-export interface ReportTypesResponse {
-  report_types: ReportType[];
-  timeframe_options: Array<{ value: string; label: string }>;
-}
-
 export interface GenerateReportParams {
   report_type:
     | 'ticket-lifecycle'
@@ -26,11 +13,6 @@ export interface GenerateReportParams {
   status?: string;
   section_id?: number;
   technician_id?: number;
-}
-
-export async function getReportTypes(): Promise<ReportTypesResponse> {
-  const { data } = await apiClient.get<ReportTypesResponse>('/reports/types/');
-  return data;
 }
 
 export async function generateReport(params: GenerateReportParams): Promise<Blob> {
@@ -68,7 +50,6 @@ export async function generateAndDownload(params: GenerateReportParams): Promise
 }
 
 const reportsService = {
-  getReportTypes,
   generateReport,
   downloadReport,
   generateAndDownload,

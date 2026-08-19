@@ -35,5 +35,3 @@ export function useTicketFilterOptions(enabled = true) {
     error: error as Error | null,
   };
 }
-
-export default useTicketFilterOptions;

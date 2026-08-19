@@ -82,5 +82,3 @@ export function EscalationBadge({ level, className }: EscalationBadgeProps) {
     </span>
   );
 }
-
-export default EscalationBadge;

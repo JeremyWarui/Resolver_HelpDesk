@@ -16,11 +16,9 @@ import {
 export function RoleScopeSelectFields({
   value,
   onChange,
-  compact = false,
 }: {
   value: RoleScopeValue;
   onChange: (next: RoleScopeValue) => void;
-  compact?: boolean;
 }) {
   const { role, campus_id, department_id, section_id } = value;
   const [campuses, setCampuses] = useState<Campus[]>([]);
@@ -68,8 +66,8 @@ export function RoleScopeSelectFields({
       .finally(() => setLoadingSections(false));
   }, [campus_id, department_id, needsSection]);
 
-  const triggerClass = compact ? 'h-8 text-sm' : '';
-  const labelClass = compact ? 'text-xs' : '';
+  const triggerClass = '';
+  const labelClass = '';
 
   return (
     <>

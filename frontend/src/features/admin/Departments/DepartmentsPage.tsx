@@ -31,7 +31,6 @@ interface HodEntry {
 type DepartmentExtended = Department & {
   campuses?: LinkedCampus[];
   heads_of_department?: HodEntry[];
-  manager_user?: { id: number; name?: string; username?: string };
 };
 
 // ── Department form ────────────────────────────────────────────────────────────

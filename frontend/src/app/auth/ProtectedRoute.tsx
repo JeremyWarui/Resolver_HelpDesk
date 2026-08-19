@@ -53,16 +53,3 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   return <>{children}</>;
 };
-
-// Convenience components for specific roles
-export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <ProtectedRoute requiredRoles={['admin', 'manager']}>{children}</ProtectedRoute>
-);
-
-export const TechnicianRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <ProtectedRoute requiredRoles={['technician', 'admin', 'manager']}>{children}</ProtectedRoute>
-);
-
-export const UserRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <ProtectedRoute requiredRoles={['user']}>{children}</ProtectedRoute>
-);

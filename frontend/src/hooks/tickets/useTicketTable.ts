@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import useTickets from './useTickets';
+import { useTickets } from './useTickets';
 import useUpdateTicket from './useUpdateTicket';
 import { useSections } from '@/hooks/sections/useSections';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
@@ -341,5 +341,3 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     commonTableProps: COMMON_TABLE_PROPS,
   };
 };
-
-export default useTicketTable;

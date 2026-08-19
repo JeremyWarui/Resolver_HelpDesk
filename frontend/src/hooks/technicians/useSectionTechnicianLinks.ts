@@ -38,5 +38,3 @@ export function useSectionTechnicianLinks(sectionId: number | null | undefined) 
     refetch: query.refetch,
   };
 }
-
-export default useSectionTechnicianLinks;

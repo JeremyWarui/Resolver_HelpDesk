@@ -64,7 +64,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
 
   const columns = useMemo(() => createTicketTableColumns({
     role: 'technician',
-    allStatuses: table.allStatuses,
     setSelectedTicket: table.setSelectedTicket,
     setIsTicketDialogOpen: table.setIsTicketDialogOpen,
   }), [table.allStatuses, table.setSelectedTicket, table.setIsTicketDialogOpen]);

@@ -24,7 +24,7 @@ const STATUS_CSS_BASE: Record<TicketStatusValue, string> = {
   closed:      '--status-closed',
 };
 
-export function getStatusStyle(status: string): React.CSSProperties {
+function getStatusStyle(status: string): React.CSSProperties {
   const base = STATUS_CSS_BASE[status as TicketStatusValue] ?? '--status-closed';
   return {
     backgroundColor: `var(${base}-bg)`,

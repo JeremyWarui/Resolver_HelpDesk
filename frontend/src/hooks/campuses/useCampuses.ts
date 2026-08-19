@@ -21,5 +21,3 @@ export const useCampuses = () => {
     refetch,
   };
 };
-
-export default useCampuses;

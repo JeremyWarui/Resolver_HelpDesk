@@ -18,7 +18,7 @@ const ReportsPage = lazy(() => import("./Reports").then(module => ({ default: mo
 const OrganisationAnalyticsPage = lazy(() => import("./OrganisationAnalytics").then(m => ({ default: m.OrganisationAnalytics })));
 const CampusesPage = lazy(() => import("./Campuses/CampusesPage"));
 const DepartmentsPage = lazy(() => import("./Departments/DepartmentsPage"));
-const ServicesPage = lazy(() => import("./ServicesPage"));
+const ServicesPage = lazy(() => import("./Catalogue/CataloguePage"));
 const UsersPage = lazy(() => import("./Users/UsersPage"));
 const SLARulesPage = lazy(() => import("./SLARulesPage"));
 const AuditLogPage = lazy(() => import("./AuditLogPage"));
@@ -103,9 +103,6 @@ function AdminLayoutContent() {
 
   return (
     <RoleLayout
-      activeSection={activeSection}
-      onSectionChange={(s) => { setSelectedTicketId(null); setActiveSection(s); }}
-      role={userData?.role || 'admin'}
       title={displayTitle}
       currentUser={userData}
       // Never pass a data-fetch loading flag here: RoleLayout renders it as a

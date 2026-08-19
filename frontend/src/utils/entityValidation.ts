@@ -34,4 +34,3 @@ export type CreateSectionFormValues = z.infer<typeof createSectionSchema>;
 export type CreateFacilityFormValues = z.infer<typeof createFacilitySchema>;
 export type CreateTechnicianFormValues = z.infer<typeof createTechnicianSchema>;
 
-export default {};

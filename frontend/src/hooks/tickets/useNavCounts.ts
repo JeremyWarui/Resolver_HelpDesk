@@ -47,5 +47,3 @@ export function useNavCounts(enabled = true): NavCounts {
     pending: pending.data?.count ?? 0,
   };
 }
-
-export default useNavCounts;

@@ -31,12 +31,6 @@ export const campusesService = {
     const { data } = await apiClient.get('/campuses/');
     return toArray<Campus>(data);
   },
-
-  getCampus: async (id: number): Promise<Campus> => {
-    const { data } = await apiClient.get<Campus>(`/campuses/${id}/`);
-    return data;
-  },
-
   createCampus: async (payload: {
     name: string;
     code: string;
@@ -63,12 +57,6 @@ export const departmentsService = {
     const { data } = await apiClient.get('/departments/', { params });
     return toArray<Department>(data);
   },
-
-  getDepartment: async (id: number): Promise<Department> => {
-    const { data } = await apiClient.get<Department>(`/departments/${id}/`);
-    return data;
-  },
-
   createDepartment: async (payload: {
     name: string;
     code: string;
@@ -98,12 +86,6 @@ export const campusDepartmentsService = {
     const { data } = await apiClient.get('/campus-departments/');
     return toArray<CampusDepartment>(data);
   },
-
-  getCampusDepartment: async (id: number): Promise<CampusDepartment> => {
-    const { data } = await apiClient.get<CampusDepartment>(`/campus-departments/${id}/`);
-    return data;
-  },
-
   createCampusDepartment: async (payload: {
     campus_id: number;
     department_id: number;
@@ -193,12 +175,6 @@ export const sectionsService = {
     const { data } = await apiClient.get('/sections/', { params });
     return toArray<Section>(data);
   },
-
-  getSection: async (id: number): Promise<Section> => {
-    const { data } = await apiClient.get<Section>(`/sections/${id}/`);
-    return data;
-  },
-
   createSection: async (payload: {
     name: string;
     code?: string;
@@ -245,10 +221,6 @@ export const sectionsService = {
   },
 
   /** `hos` is a plain field on Section — there is no separate assign action. */
-  assignHOS: async (id: number, hosUserId: number | null): Promise<Section> => {
-    const { data } = await apiClient.patch<Section>(`/sections/${id}/`, { hos: hosUserId });
-    return data;
-  },
 };
 
 // ── Facilities ────────────────────────────────────────────────────────────────
@@ -258,19 +230,6 @@ export const facilitiesService = {
     const { data } = await apiClient.get('/facilities/', { params });
     return toArray<Facility>(data);
   },
-
-  getFacility: async (id: number): Promise<Facility> => {
-    const { data } = await apiClient.get<Facility>(`/facilities/${id}/`);
-    return data;
-  },
-
-  getCampusFacilities: async (campusId: number): Promise<Facility[]> => {
-    const { data } = await apiClient.get('/facilities/', {
-      params: { campus: campusId },
-    });
-    return toArray<Facility>(data);
-  },
-
   createFacility: async (payload: {
     name: string;
     campus: number;

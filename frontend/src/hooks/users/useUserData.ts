@@ -63,5 +63,3 @@ export const useUserData = () => {
     refetch,
   };
 };
-
-export default useUserData;

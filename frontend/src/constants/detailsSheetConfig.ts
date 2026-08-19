@@ -8,8 +8,7 @@ export type DetailSheetFieldType =
   | 'readonly'
   /** Technician section membership. View-only: section assignment is a role
    *  assignment, edited in TechnicianForm, and this endpoint never accepted it. */
-  | 'sections'
-  | 'related-list';
+  | 'sections';
 
 export interface DetailSheetField {
   name: string;
@@ -42,20 +41,6 @@ export const DETAILS_SHEET_CONFIG: Record<string, DetailSheetConfig> = {
       { name: 'email', label: 'Email', type: 'text', placeholder: 'Enter email' },
     ],
     sheetWidth: 'sm:w-112.5 lg:w-125 xl:w-150',
-  },
-  section: {
-    titleField: 'name',
-    descriptionText: 'Section details and assigned technicians',
-    viewFields: [
-      { name: 'name', label: 'Name', type: 'readonly' },
-      { name: 'description', label: 'Description', type: 'readonly' },
-      { name: 'technicians', label: 'Technicians', type: 'related-list' },
-    ],
-    editFields: [
-      { name: 'name', label: 'Name', type: 'text', placeholder: 'Section name' },
-      { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Section description' },
-    ],
-    sheetWidth: 'sm:w-[450px] lg:w-[500px] xl:w-[600px]',
   },
   facility: {
     titleField: 'name',

@@ -6,8 +6,6 @@ export * from './facility.types';
 export * from './technician.types';
 export type { NestedRef, SectionHead } from './section.types';
 export * from './analytics.types';
-export * from './hod.types';
-export * from './manager.types';
 export type {
 	Campus,
 	Department,

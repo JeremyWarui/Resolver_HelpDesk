@@ -26,5 +26,3 @@ export const useFacilities = (campusId?: number) => {
     refetch,
   };
 };
-
-export default useFacilities;

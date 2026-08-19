@@ -30,5 +30,3 @@ export const useUpdateUser = (): UseUpdateUserResult => {
 
   return { updateUser, loading, error };
 };
-
-export default useUpdateUser;

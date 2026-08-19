@@ -16,7 +16,6 @@ const ManagerTickets = ({ userId, onTicketSelect }: { userId?: number; onTicketS
 
   const columns = useMemo(() => createTicketTableColumns({
     role: 'manager',
-    allStatuses: table.allStatuses,
     setSelectedTicket: table.setSelectedTicket,
     setIsTicketDialogOpen: table.setIsTicketDialogOpen,
   }), [table.allStatuses, table.setSelectedTicket, table.setIsTicketDialogOpen]);

@@ -28,5 +28,3 @@ export function useSubSections() {
     refetch: query.refetch,
   };
 }
-
-export default useSubSections;

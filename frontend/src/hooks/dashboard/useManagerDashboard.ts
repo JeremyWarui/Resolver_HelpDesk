@@ -10,5 +10,3 @@ export function useManagerDashboard(params?: AnalyticsParams) {
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
-
-export default useManagerDashboard;

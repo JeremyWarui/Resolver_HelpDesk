@@ -23,4 +23,3 @@ export interface ServiceItem {
   is_active: boolean
 }
 
-export type RequestData = Record<string, string | string[] | number | null>
