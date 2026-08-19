@@ -36,7 +36,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/authStore';
-import { createTicket } from '@/lib/api/tickets';
+import { createTicket, uploadAttachments } from '@/lib/api/tickets';
 import { useCatalog, useCampusFacilities } from '@/hooks/catalog/useCatalog';
 import type { CatalogItem, CatalogSubSection } from '@/lib/api/catalogue';
 import type { FacilityTypeValue } from '@/constants/facilityTypes';
@@ -221,7 +221,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   const [typeCode, setTypeCode]             = useState<FacilityTypeValue | null>(null);
   const [facilityId, setFacilityId]         = useState<number | null>(null);
   const [locationValues, setLocationValues] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting]         = useState(false);
+  const [submitting, setSubmitting]         = useState<false | 'creating' | 'uploading'>(false);
   const [submitted, setSubmitted]           = useState(false);
 
   // Data — two queries for the whole wizard. Facilities come back once for the
@@ -335,7 +335,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
 
   async function handleSubmit() {
     if (!item || !form || !facilityTypeId) return;
-    setSubmitting(true);
+    setSubmitting('creating');
     try {
       // Send only the fields this type knows about — the server rejects
       // strays, and a blank optional field is not an answer.
@@ -355,6 +355,26 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
           values,
         },
       });
+      // Attachments go up after the ticket exists — the endpoint is
+      // /tickets/<id>/attachments/, so there is no id to post to until now.
+      if (attachments.length > 0) {
+        setSubmitting('uploading');
+        try {
+          await uploadAttachments(result.id, attachments);
+        } catch {
+          // The ticket was created; only the files failed. Reporting a failed
+          // submission here would send the user back to raise a duplicate.
+          toast.warning(
+            `Ticket ${result.ticket_no} created, but the attachments could not be uploaded. ` +
+            `You can add them from the ticket.`,
+          );
+          queryClient.invalidateQueries({ queryKey: ['tickets'] });
+          setSubmitted(true);
+          onSuccess?.();
+          return;
+        }
+      }
+
       toast.success(`Ticket ${result.ticket_no} created`);
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       setSubmitted(true);
@@ -673,7 +693,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                     if (step === 2) setSubStep('item');
                   }
                 }}
-                disabled={submitting}
+                disabled={!!submitting}
                 className="gap-1"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -685,9 +705,9 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                   Next <ChevronRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button size="sm" onClick={handleSubmit} disabled={submitting} className="gap-1.5">
+                <Button size="sm" onClick={handleSubmit} disabled={!!submitting} className="gap-1.5">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  {submitting ? 'Submitting…' : 'Submit request'}
+                  {submitting === 'uploading' ? 'Uploading attachments…' : submitting ? 'Submitting…' : 'Submit request'}
                 </Button>
               )}
             </div>

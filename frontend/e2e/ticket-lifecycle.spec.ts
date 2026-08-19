@@ -45,6 +45,12 @@ async function openTicket(page: Page): Promise<void> {
   await expect(page.getByRole('dialog').getByText(ticketNo)).toBeVisible();
 }
 
+const EVIDENCE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+const EVIDENCE_NAME = 'evidence.png';
+
 test('a requester raises a plumbing ticket with an office-block location', async ({ page }) => {
   await login(page, USERS.requester);
 
@@ -62,6 +68,16 @@ test('a requester raises a plumbing ticket with an office-block location', async
   await wizard.getByPlaceholder('Describe the fault — what is wrong, and since when…').fill(DESCRIPTION);
   await wizard.getByPlaceholder('0712 345 678').fill('0712 345 678');
 
+  // The uploader stages the file; the request goes out after the ticket exists.
+  // This shipped as a mock — a timer filled a progress bar and nothing was ever
+  // sent — so the assertion that matters is the POST below, not the file row.
+  await wizard.locator('input[type="file"]').setInputFiles({
+    name: EVIDENCE_NAME,
+    mimeType: 'image/png',
+    buffer: EVIDENCE_PNG,
+  });
+  await expect(wizard.getByText(EVIDENCE_NAME)).toBeVisible();
+
   await wizard.getByRole('button', { name: 'Office' }).click();
   // office_block needs a facility plus floor and room (area is optional).
   await wizard.getByRole('combobox').last().click();
@@ -74,10 +90,18 @@ test('a requester raises a plumbing ticket with an office-block location', async
   await expect(wizard.getByText(PLUMBING.item)).toBeVisible();
 
   const created = page.waitForResponse(
-    (r) => r.url().includes('/tickets/') && r.request().method() === 'POST' && r.ok(),
+    (r) =>
+      /\/tickets\/$/.test(new URL(r.url()).pathname) &&
+      r.request().method() === 'POST' &&
+      r.ok(),
+  );
+  const uploaded = page.waitForResponse(
+    (r) =>
+      r.url().includes('/attachments/') && r.request().method() === 'POST' && r.ok(),
   );
   await wizard.getByRole('button', { name: 'Submit request' }).click();
   const body = await (await created).json();
+  expect((await uploaded).status(), 'the staged file must actually be uploaded').toBe(201);
 
   // Create answers `{id, ticket_no}` and nothing else — deliberately, so the
   // caller refetches through the scoped read path rather than trusting a
@@ -99,6 +123,9 @@ test('the ticket reaches the plumbing technician at that campus', async ({ page 
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText(DESCRIPTION)).toBeVisible();
   await expect(sheet.getByRole('button', { name: 'Claim' })).toBeVisible();
+  // The photo the requester attached has to reach the person doing the work —
+  // uploading it and never rendering it would be the same bug in a new place.
+  await expect(sheet.getByText(EVIDENCE_NAME)).toBeVisible();
 });
 
 test('claiming drives it from open straight to in progress', async ({ page }) => {

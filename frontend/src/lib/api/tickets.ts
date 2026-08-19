@@ -278,6 +278,27 @@ export async function claimTicket(id: number): Promise<Ticket> {
 
 // ── Attachments ───────────────────────────────────────────────────────────────
 
+export interface TicketAttachmentRow {
+  id: number;
+  original_name: string;
+  mime_type: string;
+  original_size: number;
+  stored_size: number;
+  size_saved_pct: number | null;
+  url: string;
+  uploaded_by: { id: number; full_name: string } | null;
+  created_at: string;
+}
+
+export async function getAttachments(ticketId: number): Promise<TicketAttachmentRow[]> {
+  const { data } = await apiClient.get<TicketAttachmentRow[]>(`/tickets/${ticketId}/attachments/`);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function deleteAttachment(ticketId: number, attachmentId: number): Promise<void> {
+  await apiClient.delete(`/tickets/${ticketId}/attachments/${attachmentId}/`);
+}
+
 export async function uploadAttachments(ticketId: number, files: File[]): Promise<void> {
   const formData = new FormData();
   files.forEach((f) => formData.append('files', f));

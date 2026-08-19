@@ -2,13 +2,13 @@ import { useRef, useState, useCallback, DragEvent } from 'react';
 import { toast } from 'sonner';
 import { X, FileText, AlertCircle, ExternalLink, Upload } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Progress } from '@/components/ui/progress';
 
+/** A file the user has picked but not yet sent. The upload happens once,
+ *  after the ticket exists, in one request the caller makes — so there is no
+ *  per-file progress to report here and this control must not invent one. */
 interface UploadFile {
   id: string;
   file: File;
-  progress: number;
-  status: 'pending' | 'uploading' | 'done' | 'error';
 }
 
 interface ExistingAttachment {
@@ -34,27 +34,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function simulateProgress(
-  id: string,
-  setFiles: React.Dispatch<React.SetStateAction<UploadFile[]>>,
-) {
-  let current = 0;
-  const step = () => {
-    current = Math.min(current + Math.random() * 25 + 10, 100);
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.id === id
-          ? { ...f, progress: Math.round(current), status: current >= 100 ? 'done' : 'uploading' }
-          : f,
-      ),
-    );
-    if (current < 100) {
-      setTimeout(step, 200 + Math.random() * 150);
-    }
-  };
-  setTimeout(step, 100);
 }
 
 interface AttachmentRowProps {
@@ -144,8 +123,6 @@ export function AttachmentUploader({
       const newEntries: UploadFile[] = incomingArr.map((file) => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
-        progress: 0,
-        status: 'pending',
       }));
 
       setUploadFiles((prev) => {
@@ -154,7 +131,6 @@ export function AttachmentUploader({
         return next;
       });
 
-      newEntries.forEach((entry) => simulateProgress(entry.id, setUploadFiles));
     },
     [currentFileCount, maxFiles, maxSizeMb, onChange],
   );
@@ -194,7 +170,7 @@ export function AttachmentUploader({
   const displayFiles = value
     ? value.map<UploadFile>((file, i) => {
         const existing = uploadFiles.find((u) => u.file === file);
-        return existing ?? { id: `value-${i}`, file, progress: 100, status: 'done' };
+        return existing ?? { id: `value-${i}`, file };
       })
     : uploadFiles;
 
@@ -247,14 +223,6 @@ export function AttachmentUploader({
               key={uf.id}
               name={uf.file.name}
               sizeBytes={uf.file.size}
-              isError={uf.status === 'error'}
-              extra={
-                uf.status !== 'done' && uf.status !== 'error' ? (
-                  <Progress value={uf.progress} className="mt-1 h-1" />
-                ) : uf.status === 'error' ? (
-                  <p className="text-[10px] text-destructive">Upload failed</p>
-                ) : null
-              }
               onRemove={() => handleRemoveUpload(uf.id)}
             />
           ))}

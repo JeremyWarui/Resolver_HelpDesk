@@ -635,6 +635,24 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **Attachments were never uploaded.** `AttachmentUploader` made no network
+  call at all: `simulateProgress()` advanced a bar on a `setTimeout` until it
+  read 100% and flipped the row to `done`, and the wizard's payload had no
+  attachment field. A requester photographed a fault, watched the bar fill, saw
+  the file on the review step, submitted — and the bytes never left the browser.
+  The endpoint, the compression service and the model had been built all along;
+  only the call was missing. The wizard now posts to
+  `/tickets/<id>/attachments/` after create (there is no id to post to before
+  it), and reports a ticket-created-but-upload-failed partial rather than a
+  failed submission the user would retry into a duplicate. Per-file progress is
+  gone rather than made real — one request carries the batch, so a per-file bar
+  would be a second invented number. `tests/test_attachments.py` covers the
+  field name, both caps, the type rejection and uploader-or-supervisor delete;
+  `ticket-lifecycle` attaches a real PNG and asserts the technician sees it.
+- **Uploads had nowhere to land in the UI.** Nothing rendered attachments on a
+  ticket, so wiring the upload alone would have moved the bug rather than fixed
+  it. `TicketDetailPage` now has an Attachments card, fed by
+  `useTicketAttachments`, and `useTicketInvalidate` clears that key too.
 - **The Overdue pill listed every ticket.** `overdueFilter` was held in
   `useTicketTable` state, read back only to light the pill, and applied
   nowhere — and the handler set `status` to `all` alongside it, so "Overdue"
@@ -686,7 +704,7 @@ a property its rows did not carry. `tsc` is green for all of them.
 | `admin-navigation` | every sidebar entry changes URL *and* content; the My Requests context switch |
 | `catalogue` | Section Type → Trade → Item CRUD, and cascade delete |
 | `users` | user CRUD |
-| `ticket-lifecycle` | raise → route → claim → resolve, plus a same-campus/different-trade negative |
+| `ticket-lifecycle` | raise → route → claim → resolve, plus a same-campus/different-trade negative; the raise step attaches a real PNG and the technician step asserts it rendered |
 
 Run it with `E2E_PASSWORD=<seed password> npm run test:e2e`. Both servers start
 automatically; the backend command points at **`../backend`**, which is worth

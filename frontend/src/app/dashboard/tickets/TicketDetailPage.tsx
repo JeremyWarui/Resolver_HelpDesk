@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   UserCheck, RefreshCw, AlertCircle,
-  RotateCcw, Star, Hand, CheckCheck, Play,
+  RotateCcw, Star, Hand, CheckCheck, Play, Paperclip, FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,7 +17,7 @@ import { StatusUpdateModal } from '@/features/technician/StatusUpdateModal';
 import { AssignmentModal } from '@/features/hos/AssignmentModal';
 import { RatingModal } from '@/features/user/RatingModal';
 import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
-import { useTicketDetail, useTicketTimeline, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
+import { useTicketDetail, useTicketTimeline, useTicketAttachments, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { usePermissions } from '@/lib/auth/roleContext';
 import { useAuthStore } from '@/stores/authStore';
 import { claimTicket, reopenTicket, updateTicketStatus } from '@/lib/api/tickets';
@@ -28,6 +28,12 @@ import { formatPhoneLocal } from '@/utils/phone';
 import type { Ticket } from '@/types';
 
 type ActiveModal = 'status' | 'assign' | 'rate' | 'reopen' | null;
+
+function attachmentSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -129,6 +135,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
 
   const { ticket, loading, error } = useTicketDetail(ticketId ?? null);
   const { events, loading: timelineLoading } = useTicketTimeline(ticketId ?? null);
+  const { attachments } = useTicketAttachments(ticketId ?? null);
 
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
@@ -355,6 +362,49 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                       )}
                     </CardContent>
                   </Card>
+
+                  {/* Attachments — uploaded by the wizard after the ticket exists.
+                      Absent on most tickets, so the card only appears when there
+                      is something to show. */}
+                  {attachments.length > 0 && (
+                    <Card>
+                      <CardContent className="p-5">
+                        <SectionLabel>Attachments</SectionLabel>
+                        <ul className="grid gap-2 sm:grid-cols-2">
+                          {attachments.map((att) => (
+                            <li key={att.id}>
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 rounded-md border px-3 py-2 hover:bg-accent/50"
+                              >
+                                {att.mime_type.startsWith('image/') ? (
+                                  <img
+                                    src={att.url}
+                                    alt={att.original_name}
+                                    loading="lazy"
+                                    className="size-10 shrink-0 rounded object-cover"
+                                  />
+                                ) : (
+                                  <FileText className="size-5 shrink-0 text-muted-foreground" />
+                                )}
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-medium">
+                                    {att.original_name}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground">
+                                    {attachmentSize(att.stored_size)}
+                                  </span>
+                                </span>
+                                <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
 
                   {/* Activity + Comments merged */}
                   <Card>
