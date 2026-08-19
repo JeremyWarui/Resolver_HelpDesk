@@ -274,7 +274,10 @@ export const facilitiesService = {
   createFacility: async (payload: {
     name: string;
     campus: number;
-    type?: string;
+    /** FK id, and required — the model's facility_type has no default. `type`
+     *  is a read-only SerializerMethodField and sending it does nothing. */
+    facility_type: number;
+    code?: string;
   }): Promise<Facility> => {
     const { data } = await apiClient.post<Facility>('/facilities/', payload);
     return data;

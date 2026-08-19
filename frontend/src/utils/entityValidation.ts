@@ -8,13 +8,14 @@ export const createSectionSchema = z.object({
   section_type: z.coerce.number({ error: 'Section type is required' }),
 });
 
+// Only what FacilitySerializer accepts on write. The form used to collect
+// facility_code / type / status / location: of those, `code` is the real field
+// name, `type` and `status` are read-only, and `location` is not a column.
 export const createFacilitySchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
-  facility_code: z.string().optional(),
+  code: z.string().optional(),
   campus: z.coerce.number({ error: 'Campus is required' }),
-  type: z.string().optional(),
-  status: z.string().optional(),
-  location: z.string().optional(),
+  facility_type: z.coerce.number({ error: 'Type is required' }),
 });
 
 export const createTechnicianSchema = z.object({

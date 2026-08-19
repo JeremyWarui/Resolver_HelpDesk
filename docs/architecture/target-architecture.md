@@ -635,6 +635,23 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **"New Facility" could never create a facility.** The dialog collected
+  `facility_code`, `type`, `status` and `location` and posted them: of those,
+  the real field name is `code`, `type` and `status` are read-only
+  `SerializerMethodField`s, and `location` is not a column. `facility_type` —
+  the one required FK, which has no default — was never sent, so every submit
+  answered `400 {"facility_type": ["This field is required."]}` behind a
+  generic "Failed to create facility". The payload type simply described a
+  different API than the one being called, so `tsc` was green. The form now
+  reads `GET /facility-types/` (registered since the port and never called
+  until now) and sends the FK. `e2e/facilities.spec.ts` drives the dialog and
+  asserts 201 — it fails with the original 400 if the field is dropped again.
+- **`Facility` described fields the API has never sent.** `facility_code` and
+  `floors_count` were declared; `code`, `facility_type`, `facility_type_name`
+  and the three ticket counts, which the serializer always returns, were not.
+  `FacilityRegisterView` had quietly re-declared the missing half locally as
+  `FacilityRow`. The type now mirrors `FacilitySerializer.Meta.fields` and the
+  local copy is gone.
 - **Attachments were never uploaded.** `AttachmentUploader` made no network
   call at all: `simulateProgress()` advanced a bar on a `setTimeout` until it
   read 100% and flipped the row to `done`, and the wizard's payload had no
@@ -704,6 +721,7 @@ a property its rows did not carry. `tsc` is green for all of them.
 | `admin-navigation` | every sidebar entry changes URL *and* content; the My Requests context switch |
 | `catalogue` | Section Type → Trade → Item CRUD, and cascade delete |
 | `users` | user CRUD |
+| `facilities` | the New Facility dialog actually creates one (the required FK reaches the server) |
 | `ticket-lifecycle` | raise → route → claim → resolve, plus a same-campus/different-trade negative; the raise step attaches a real PNG and the technician step asserts it rendered |
 
 Run it with `E2E_PASSWORD=<seed password> npm run test:e2e`. Both servers start

@@ -10,7 +10,7 @@ import { FormDialog } from '@/components/shared/forms/FormDialog';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import useManageFacilities from '@/hooks/facilities/useManageFacilities';
 import { createFacilitySchema, type CreateFacilityFormValues } from '@/utils/entityValidation';
-import { FACILITY_TYPE_OPTIONS } from '@/constants/facilityTypes';
+import { useFacilityTypes } from '@/hooks/facilities/useFacilityTypes';
 
 interface FacilityFormProps {
   isOpen: boolean;
@@ -22,10 +22,11 @@ const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) =>
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createFacility } = useManageFacilities();
   const { campuses } = useCampuses();
+  const { facilityTypes } = useFacilityTypes();
 
   const form = useForm<CreateFacilityFormValues>({
     resolver: zodResolver(createFacilitySchema) as unknown as Resolver<CreateFacilityFormValues>,
-    defaultValues: { name: '', facility_code: '', campus: undefined, type: '', status: 'active', location: '' },
+    defaultValues: { name: '', code: '', campus: undefined, facility_type: undefined },
   });
 
   const onSubmit = async (values: CreateFacilityFormValues) => {
@@ -68,7 +69,7 @@ const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) =>
             </FormItem>
           )} />
         </div>
-        <FormField control={form.control} name="facility_code" render={({ field }) => (
+        <FormField control={form.control} name="code" render={({ field }) => (
           <FormItem>
             <FormLabel>Code</FormLabel>
             <FormControl>
@@ -96,29 +97,24 @@ const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) =>
         </FormItem>
       )} />
 
-      <FormField control={form.control} name="type" render={({ field }) => (
+      <FormField control={form.control} name="facility_type" render={({ field }) => (
         <FormItem>
           <FormLabel>Type</FormLabel>
-          <Select onValueChange={field.onChange} defaultValue={field.value}>
+          <Select
+            onValueChange={(val) => field.onChange(Number(val))}
+            value={String(field.value ?? '')}
+          >
             <FormControl>
               <SelectTrigger>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
             </FormControl>
             <SelectContent>
-              {FACILITY_TYPE_OPTIONS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              {facilityTypes.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <FormMessage />
-        </FormItem>
-      )} />
-
-      <FormField control={form.control} name="location" render={({ field }) => (
-        <FormItem>
-          <FormLabel>Location</FormLabel>
-          <FormControl>
-            <Input {...field} placeholder="Location (optional)" />
-          </FormControl>
           <FormMessage />
         </FormItem>
       )} />

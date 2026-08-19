@@ -26,6 +26,21 @@ export interface CampusFacility {
   facility_type_name: string;
 }
 
+/** A facility type as the admin facility form needs it. The wizard can get away
+ *  with reading `facility_type` off an existing facility on the campus; creating
+ *  the *first* facility of a type has no such row to read, so the admin form
+ *  asks for the list itself. */
+export interface FacilityTypeRow {
+  id: number;
+  name: string;
+  code: string;
+}
+
+export async function getFacilityTypes(): Promise<FacilityTypeRow[]> {
+  const { data } = await apiClient.get('/facility-types/');
+  return Array.isArray(data) ? data : (data.results ?? data);
+}
+
 export async function getCatalog(campusId: number): Promise<CatalogSubSection[]> {
   const { data } = await apiClient.get('/catalog/', { params: { campus: campusId } });
   return Array.isArray(data) ? data : (data.results ?? data);

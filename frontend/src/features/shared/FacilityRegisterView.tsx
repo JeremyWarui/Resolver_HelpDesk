@@ -32,15 +32,6 @@ interface Props {
   role: FacilityRegisterRole;
 }
 
-/** The API returns the counts already annotated — no per-row request. */
-interface FacilityRow extends Facility {
-  openTickets?: number;
-  resolvedTickets?: number;
-  closedTickets?: number;
-  facility_type_name?: string | null;
-  code?: string;
-}
-
 const ALL = 'all';
 
 export default function FacilityRegisterView({ role }: Props) {
@@ -48,7 +39,7 @@ export default function FacilityRegisterView({ role }: Props) {
   const [campus, setCampus] = useState<string>(ALL);
   const [search, setSearch] = useState('');
 
-  const rows = facilities as FacilityRow[];
+  const rows = facilities as Facility[];
 
   const campuses = useMemo(
     () => [...new Set(rows.map((f) => f.campus_name).filter(Boolean))].sort() as string[],
