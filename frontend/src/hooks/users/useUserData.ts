@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { getProfile } from '@/lib/api/auth';
+import { getProfile, decodeJwtPayload } from '@/lib/api/auth';
 import { clearSessionAndRedirect } from '@/lib/api/client';
 import type { User } from '@/types';
 
@@ -37,17 +37,11 @@ export const useUserData = () => {
       // (sessions created before the flattenJWT campus_id fix) and re-persist
       // through the store.
       if (!authUser.primary_campus_id && token) {
-        try {
-          const payload = JSON.parse(
-            atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
-          );
-          if (typeof payload.campus_id === 'number') {
-            const patched = { ...authUser, primary_campus_id: payload.campus_id };
-            setUser(patched, token);
-            return patched;
-          }
-        } catch {
-          /* ignore */
+        const claims = decodeJwtPayload(token);
+        if (typeof claims?.campus_id === 'number') {
+          const patched = { ...authUser, primary_campus_id: claims.campus_id };
+          setUser(patched, token);
+          return patched;
         }
       }
       return authUser;

@@ -635,6 +635,23 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **Manager was the last role on the older ticket-table stack.** Admin, HOD
+  and HOS render `RoleTicketsPage`; manager wired `DataTable` +
+  `createTicketTableColumns` by hand, while `RoleTicketsPage` already held a
+  complete `manager` entry nothing called. The user-visible cost was the
+  `FilterPills` row: managers had no **Overdue** filter, the one every other
+  supervisory role gets. `e2e/manager.spec.ts` now asserts the page renders and
+  the pill narrows.
+- **Four small vocabularies had two definitions each.** `timeAgo` had a fourth
+  copy in `NotificationItem` (that copy contributed the "Just now" branch,
+  which is better than the "0m ago" the shared one rendered — so it was kept
+  and the copy deleted). `BadgeColor` was declared three times and had already
+  drifted: the canonical export carried an `'orange'` nothing produces, the two
+  local copies did not. The JWT base64url decode was written twice with the same
+  swallowed catch, now `decodeJwtPayload`. The role → base-path map lived in
+  `AppSidebar` as `ROLE_BASE` and in `LoginForm` as `roleRedirect`; renaming a
+  prefix would have landed a signed-in user on a 404 while the sidebar kept
+  working. `App.tsx` still spells its routes literally, deliberately.
 - **~1,200 lines of dead frontend code, removed.** The bulk of it was code
   that could not run rather than code nobody called: 30 `export default`s no
   importer used (only `useTickets` was imported both ways, which is the drift

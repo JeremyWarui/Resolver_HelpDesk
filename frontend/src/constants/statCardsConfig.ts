@@ -8,8 +8,8 @@ import {
   Inbox,
   Wrench,
 } from 'lucide-react';
+import type { BadgeColor } from '@/constants/colors';
 
-type BadgeColor = 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';
 
 export interface StatDefinition<DataType = unknown> {
   id: string;

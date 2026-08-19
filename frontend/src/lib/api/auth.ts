@@ -31,6 +31,17 @@ interface JWTLoginResponse {
 // Keeps the same surface as the old DRF token response so all callers
 // (LoginForm, useAuth, useUserData) require no changes.
 
+/** Decode a JWT's payload. base64url is not base64: `-` and `_` must be
+ *  translated before atob. Returns null rather than throwing — a malformed
+ *  token is a logged-out user, not a crash. */
+export function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    return null;
+  }
+}
+
 export interface LoginResponse {
   token: string;
   user_id: number;
@@ -70,11 +81,8 @@ function flattenJWT(data: JWTLoginResponse): LoginResponse {
 
   // campus_id comes from the JWT claim (set from UserProfile) — authoritative
   // for all roles including pure requesters where active_role is null.
-  let tokenCampusId: number | null = null;
-  try {
-    const payload = JSON.parse(atob(data.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    tokenCampusId = typeof payload.campus_id === 'number' ? payload.campus_id : null;
-  } catch { /* ignore decode errors */ }
+  const claims = decodeJwtPayload(data.accessToken);
+  const tokenCampusId = typeof claims?.campus_id === 'number' ? claims.campus_id : null;
 
   return {
     token: data.accessToken,

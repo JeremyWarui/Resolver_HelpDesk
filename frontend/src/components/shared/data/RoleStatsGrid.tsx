@@ -1,7 +1,7 @@
 import MetricCard from './MetricCard';
 import type { ReactNode } from 'react';
+import type { BadgeColor } from '@/constants/colors';
 
-type BadgeColor = 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';
 
 export interface StatConfig {
   id?: string;

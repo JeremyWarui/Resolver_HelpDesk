@@ -32,10 +32,13 @@ export function formatDateTime(dateString: string): string {
  * Compact relative time — "5m ago" / "3h ago" / "2d ago".
  *
  * The terse form the mobile shell and the notification list want, where a row
- * is a few characters wide. Was defined identically in three mobile components.
+ * is a few characters wide. Was defined identically in three mobile components,
+ * and a fourth time in NotificationItem — that copy contributed the "Just now"
+ * branch, which is better than the "0m ago" this used to render.
  */
 export function timeAgo(dateString: string): string {
   const mins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
+  if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;

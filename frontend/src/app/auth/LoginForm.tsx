@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { toast } from 'sonner';
 import { Mail, Lock, Shield, Settings, Users, Zap, Paperclip, BarChart2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { ROLE_BASE } from '@/constants/roleRoutes';
 
 interface LoginFormProps {
   onSuccess?: () => void;
@@ -62,16 +63,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
 
       toast.success('Welcome back!');
 
-      const roleRedirect: Record<string, string> = {
-        admin: '/dashboard',
-        technician: '/technician',
-        user: '/user',
-        hos: '/section-head',
-        hod: '/hod',
-        manager: '/manager',
-      };
-
-      let redirectPath = (result.role && roleRedirect[result.role]) ?? '/user';
+      let redirectPath = (result.role && ROLE_BASE[result.role as keyof typeof ROLE_BASE]) ?? '/user';
       if (result.role === 'technician' && window.innerWidth < 640) {
         redirectPath = '/tech/mobile';
       }

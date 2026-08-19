@@ -26,12 +26,13 @@ const STAT_CARDS: Record<TicketsRole, React.ComponentType> = {
   hos: SectionHeadStatsCards,
 };
 
-// Role-specific header copy. Admin text is preserved exactly as before.
-const HEADER: Record<TicketsRole, { title: string; subtitle: string }> = {
-  admin: { title: "All Tickets", subtitle: "Manage and track all maintenance tickets" },
-  manager: { title: "Department Tickets", subtitle: "Tickets across your department" },
-  hod: { title: "Tickets", subtitle: "Tickets in your campus department" },
-  hos: { title: "Tickets", subtitle: "Tickets in your section(s)" },
+// Subtitle only. The page title is ROLE_NAV[role].headerTitle, rendered by
+// RoleLayout — a `title` here would be a second, unread copy of it.
+const SUBTITLE: Record<TicketsRole, string> = {
+  admin: "Manage and track all maintenance tickets",
+  manager: "Tickets across your department",
+  hod: "Tickets in your campus department",
+  hos: "Tickets in your section(s)",
 };
 
 interface Props {
@@ -41,7 +42,7 @@ interface Props {
 
 const RoleTicketsPage = ({ role, onTicketSelect }: Props) => {
   const StatCards = STAT_CARDS[role];
-  const { subtitle } = HEADER[role];
+  const subtitle = SUBTITLE[role];
 
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-gray-50">

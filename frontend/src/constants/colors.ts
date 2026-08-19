@@ -40,4 +40,6 @@ export const CHART_COLORS = [
  * - Secondary/Pending: purple (pending status)
  */
 
-export type BadgeColor = 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'gray' | 'amber';
+/** Badge palette for stat cards. Two modules had typed their own copy of
+ *  this, both without 'orange' — which nothing produces. */
+export type BadgeColor = 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';

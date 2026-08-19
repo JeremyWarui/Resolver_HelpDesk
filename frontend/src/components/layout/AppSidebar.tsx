@@ -7,16 +7,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useLogout } from '@/hooks/useLogout';
 import { SIDEBAR_CONFIG, type SidebarCount } from '@/constants/sidebarConfig';
 import { useNavCounts } from '@/hooks/tickets/useNavCounts';
-import type { UserRole } from '@/types';
-
-const ROLE_BASE: Record<UserRole, string> = {
-  user: '/user',
-  technician: '/technician',
-  hos: '/section-head',
-  hod: '/hod',
-  manager: '/manager',
-  admin: '/dashboard',
-};
+import { ROLE_BASE } from '@/constants/roleRoutes';
 
 const SECTION_PATH: Record<string, string> = {
   dashboard:      '',

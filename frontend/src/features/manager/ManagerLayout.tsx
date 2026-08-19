@@ -4,7 +4,7 @@ import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
 import { ROLE_NAV } from '@/config/roleNav';
 import ManagerDashboard from './ManagerDashboard';
 
-const ManagerTickets = lazy(() => import('./ManagerTickets'));
+const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
 const ManagerAnalytics = lazy(() => import('./ManagerAnalytics'));
 const PendingWorkView = lazy(() => import('@/features/shared/PendingWorkView'));
 const FacilityRegisterView = lazy(() => import('@/features/shared/FacilityRegisterView'));
@@ -22,9 +22,9 @@ const ManagerLayout = () => (
   <RoleDashboardLayout
     nav={ROLE_NAV.manager}
     renderWrapper={(node: ReactNode) => <Suspense fallback={<PageLoading />}>{node}</Suspense>}
-    sections={({ onTicketSelect, userId }) => ({
+    sections={({ onTicketSelect }) => ({
       dashboard: <ManagerDashboard onTicketSelect={onTicketSelect} />,
-      tickets: <ManagerTickets userId={userId} onTicketSelect={onTicketSelect} />,
+      tickets: <RoleTicketsPage role="manager" onTicketSelect={onTicketSelect} />,
       pending: <PendingWorkView role="manager" onTicketSelect={onTicketSelect} />,
       facilities: <FacilityRegisterView role="manager" />,
       analytics: <ManagerAnalytics />,

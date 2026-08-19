@@ -4,6 +4,7 @@ import {
   Ticket, UserCheck, RefreshCw, MessageSquare, CheckCircle2,
   ArrowUpCircle, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
+import { timeAgo } from '@/utils/date';
 import { cn } from '@/lib/utils';
 import type { AppNotification, NotificationEventType } from '@/types';
 
@@ -28,14 +29,6 @@ const EVENT_COLOR: Record<NotificationEventType, string> = {
   sla_warning:           'bg-amber-50 text-amber-600',
   sla_breach:            'bg-red-50 text-red-600',
 };
-
-function formatRelative(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60)   return 'Just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
 
 interface NotificationItemProps {
   notification: AppNotification;
@@ -63,7 +56,7 @@ export function NotificationItem({ notification, onMarkRead, className }: Notifi
           {notification.title}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.body}</p>
-        <p className="text-[10px] text-muted-foreground mt-1">{formatRelative(notification.createdAt)}</p>
+        <p className="text-[10px] text-muted-foreground mt-1">{timeAgo(notification.createdAt)}</p>
       </div>
       {!notification.read && (
         <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" aria-label="Unread" />
