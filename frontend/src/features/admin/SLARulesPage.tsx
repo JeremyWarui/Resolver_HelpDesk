@@ -692,7 +692,7 @@ export default function SLARulesPage() {
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm text-gray-600 mt-1">
-            Set response and resolution targets per priority level. Click any value to edit inline.
+            Set response and resolution targets per priority level. Click a name or a time to edit it inline.
           </p>
         </div>
         <Button onClick={() => setNewPriorityOpen(true)} className="gap-2">

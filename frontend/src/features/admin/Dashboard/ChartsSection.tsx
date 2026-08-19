@@ -7,6 +7,8 @@ import { ChartPlaceholder } from "@/components/shared/data/ChartPlaceholder";
 import { AppBarChart } from "@/components/shared/data/AppBarChart";
 import { AppPieChart } from "@/components/shared/data/AppPieChart";
 import type { FlowTrendPoint, StatusCount } from "@/types/analytics.types";
+import type { Ticket } from "@/types";
+import { STATUS_LABELS } from "@/constants/tickets";
 
 interface ChartSectionProps {
   // Only ever the two series, never a whole flow response — so a caller
@@ -84,9 +86,12 @@ const ChartSection = ({
       }));
   }, [trend, ticketTimeframe]);
 
-  // Status distribution from the category fetch
+  // Status distribution from the category fetch. Labelled through
+  // STATUS_LABELS, not straight off the wire: the legend used to print the raw
+  // API values — "in_progress" and "pending" — beside a table whose badges read
+  // "In Progress" and "On Hold" for the same tickets.
   const pieData = (statusDistribution ?? []).map(s => ({
-    name: s.status,
+    name: STATUS_LABELS[s.status as Ticket['status']] ?? s.status,
     value: s.count,
   }));
 

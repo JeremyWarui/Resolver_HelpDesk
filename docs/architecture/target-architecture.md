@@ -740,7 +740,10 @@ work remaining.
   a single ticket showed an "On Hold" pill directly above a row badged
   "Pending". The badge and the overview stat card say **On Hold** now. The
   *page* is still called Pending Work; renaming a navigation destination is a
-  separate call.
+  separate call. The dashboard's status doughnut was labelling its slices with
+  the raw wire values — `in_progress`, `pending` — so it went through
+  `STATUS_LABELS` too; that one was only visible by opening the page, since
+  nothing about `name: s.status` looks wrong in the source.
 - **Four cards labelled the Overdue count "Breached".** `aggregate()`'s
   `breached` gates on `_q_running`, so it counts tickets that are live and past
   target — Overdue, in the vocabulary §"SLA: settled ≠ running" defines. A
@@ -754,7 +757,9 @@ work remaining.
   number, on screen, for all of them. SLA Rules invited the reader to "click a
   name, time, or rank to edit it inline" while rank is plain text; rank is
   fixed at creation because `Priority.default()` returns the lowest one, so
-  reordering silently changes what every future ticket opens at.
+  reordering silently changes what every future ticket opens at. The claim was
+  made twice — the page header said "click any value to edit inline" one line
+  above the card that said it more precisely — and both now say the same thing.
 - **Five destructive confirmations, five implementations.** `ConfirmDialog`'s
   own header claimed it was "used by every action that cannot be undone" while
   having exactly one consumer. Users, Departments, SLA priorities and the
