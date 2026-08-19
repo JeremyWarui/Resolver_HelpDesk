@@ -698,13 +698,26 @@ work remaining.
   `onPaginationChange`. A controlled slice with no setter makes TanStack drop
   every internal update, so `table.nextPage()` did nothing while
   `getCanNextPage()` still returned `true` — Next stayed enabled, the counter
-  read "Page 1 of 4", and **27 of the 37 seeded facilities had no route to
-  them**; "Rows per page" was dead the same way. `CampusesPage` had the same
+  read "Page 1 of 2", and most of the register had no route to it; "Rows per
+  page" was dead the same way. `CampusesPage` had the same
   defect through split `pageIndex`/`pageSize` state whose setters were only
   ever called with `0`, masked because five campuses fit on one page. Both hold
   one `pagination` object with `onPaginationChange`, and
   `AdminResourceTable`'s redundant `pageSize`/`onPageSizeChange` props are gone
   — it already receives the `table`, which carries both.
+- **The facility register only ever held 20 of the 37 buildings.** Fixing the
+  controls above exposed the half underneath: `/facilities/` is paginated by
+  `ConfigListPagination` at 20 a page, and `toArray()` — the DRF list
+  normaliser every service in `organizations.ts` uses — keeps `results` and
+  drops `next`. So a working Next button reached "Page 2 of 2" and stopped;
+  seventeen facilities were never on the client. `getFacilities` follows `next`
+  now, and the e2e asserts the exact page count ("Page 1 of 4") rather than
+  merely that paging works, because the two defects hide each other.
+
+  It is the only list where this bites today: `/users/` and `/catalog/` are
+  custom unpaginated views, and every other config list is under 20 rows in the
+  seed. That is a property of the fixture, not a guarantee — any of them
+  crossing 20 will silently truncate the same way.
 - **The ticket search box emptied three tables instead of filtering them.**
   `useTicketTable` built its hidden `searchField` from `ticket_no` and
   `description`; the Title column renders `service_item.name`, because a ticket

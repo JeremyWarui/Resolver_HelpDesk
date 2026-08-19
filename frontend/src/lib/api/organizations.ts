@@ -226,9 +226,31 @@ export const sectionsService = {
 // ── Facilities ────────────────────────────────────────────────────────────────
 
 export const facilitiesService = {
+  // Follows pagination, unlike every other list here. `/facilities/` uses
+  // ConfigListPagination (page_size 20) and the seed creates 37 buildings, so
+  // `toArray` — which keeps `results` and drops `next` — meant the client only
+  // ever held the first 20. Restoring the register's Next button got the user
+  // to page 2 of 2 and no further; the remaining 17 were not on the client at
+  // all. This list backs the ticket location dropdown too, and invariant 7
+  // says every ticket carries a location, so a silent subset is not an option.
   getFacilities: async (params?: { campus?: number }): Promise<Facility[]> => {
-    const { data } = await apiClient.get('/facilities/', { params });
-    return toArray<Facility>(data);
+    const all: Facility[] = [];
+    // `next` is an absolute URL carrying the page and any filters, so the
+    // params go with the first request only.
+    let url: string | null = '/facilities/';
+    let query: { campus?: number } | undefined = params;
+
+    while (url) {
+      // Annotated because `url` is assigned from `data` and read back into the
+      // request: without it TS7022s on the circular inference.
+      const { data }: { data: Facility[] | { results: Facility[]; next?: string | null } } =
+        await apiClient.get(url, { params: query });
+      all.push(...toArray<Facility>(data));
+      url = Array.isArray(data) ? null : data.next ?? null;
+      query = undefined;
+    }
+
+    return all;
   },
   createFacility: async (payload: {
     name: string;

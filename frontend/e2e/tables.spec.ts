@@ -22,27 +22,31 @@ test('facilities pagination actually turns the page', async ({ page }) => {
   const pageCounter = page.getByText(/^Page \d+ of \d+$/);
   await expect(pageCounter).toBeVisible();
 
-  // The seed creates 37 facilities at a default page size of 10. If this ever
-  // fails the fixture shrank, not the feature.
-  const [, totalPages] = (await pageCounter.innerText()).match(/of (\d+)/) ?? [];
-  expect(
-    Number(totalPages),
-    'this spec needs more than one page of facilities to mean anything',
-  ).toBeGreaterThan(1);
+  // The seed creates 37 facilities and the page size is 10, so four pages.
+  // Asserting the exact count catches the second half of this bug: the client
+  // fetched only the server's first page of 20 (ConfigListPagination), so even
+  // with working controls the register stopped at "Page 2 of 2" and 17
+  // buildings were never on the client at all.
+  await expect(pageCounter).toHaveText('Page 1 of 4');
 
-  const firstRowOnPageOne = await page.locator('tbody tr').first().innerText();
+  // Identify rows by the Name cell, not by whole-row text: the ticket-count
+  // columns beside it settle a beat later than the name does, so a row's
+  // innerText is not stable even once the row itself is.
+  const firstName = () => page.locator('tbody tr').first().locator('td').nth(1);
+  await expect(firstName()).not.toBeEmpty();
+  const nameOnPageOne = (await firstName().innerText()).trim();
 
   const next = page.getByRole('button', { name: 'Next' });
   await expect(next).toBeEnabled();
   await next.click();
 
   await expect(pageCounter).toHaveText(/^Page 2 of/);
-  await expect(page.locator('tbody tr').first()).not.toHaveText(firstRowOnPageOne);
+  await expect(firstName()).not.toHaveText(nameOnPageOne);
 
   // And back, so the failure mode "Next works, Previous doesn't" is covered too.
   await page.getByRole('button', { name: 'Previous' }).click();
   await expect(pageCounter).toHaveText(/^Page 1 of/);
-  await expect(page.locator('tbody tr').first()).toHaveText(firstRowOnPageOne);
+  await expect(firstName()).toHaveText(nameOnPageOne);
 });
 
 // `useTicketTable` built its hidden `searchField` from `ticket_no` and
