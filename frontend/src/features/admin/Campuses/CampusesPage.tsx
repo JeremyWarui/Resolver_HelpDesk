@@ -82,8 +82,12 @@ const CampusesPage = () => {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  // One controlled slice with its setter. Split `pageIndex`/`pageSize` state
+  // with no `onPaginationChange` meant AdminResourceTable's Previous/Next —
+  // which call `table.nextPage()` — were swallowed outright, since a
+  // controlled slice overrides every internal update. Only five campuses fit
+  // on one page, so nothing looked broken.
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Campus | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Campus | null>(null);
@@ -137,11 +141,12 @@ const CampusesPage = () => {
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    state: { sorting, columnFilters, columnVisibility: { ...columnVisibility, searchField: false }, pagination: { pageIndex, pageSize } },
+    state: { sorting, columnFilters, columnVisibility: { ...columnVisibility, searchField: false }, pagination },
   });
 
   return (
@@ -157,8 +162,6 @@ const CampusesPage = () => {
         itemCount={campuses.length}
         searchValue={searchValue}
         onSearchChange={(value) => { setSearchValue(value); table.getColumn('searchField')?.setFilterValue(value.toLowerCase()); }}
-        pageSize={pageSize}
-        onPageSizeChange={(size) => { setPageSize(size); setPageIndex(0); }}
       />
 
       <Dialog open={isFormOpen} onOpenChange={open => { setIsFormOpen(open); if (!open) setEditing(null); }}>

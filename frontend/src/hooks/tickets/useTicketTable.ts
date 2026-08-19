@@ -185,7 +185,15 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     () =>
       tickets.map((ticket) => ({
         ...ticket,
-        searchField: `${String(ticket.ticket_no).toLowerCase()} ${(ticket.description ?? '').toLowerCase()}`,
+        // Must match what the columns actually render, or the box empties the
+        // table instead of filtering it. A ticket has no title field, so the
+        // Title column shows `service_item.name` — leaving it out meant typing
+        // a service name matched nothing on all four pages that come through
+        // here. Same expression as `TicketTable`, which got this right.
+        searchField: [ticket.ticket_no, ticket.service_item?.name, ticket.description]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase(),
       })),
     [tickets],
   );

@@ -139,7 +139,7 @@ function statusOverviewStats(
     },
     {
       id: `${idPrefix}-pending`,
-      title: 'Pending',
+      title: 'On Hold',
       icon: PauseCircle,
       iconBgColor: 'bg-status-pending/10',
       iconColor: 'text-status-pending',
@@ -148,7 +148,7 @@ function statusOverviewStats(
         return {
           value: count,
           description: 'Awaiting more information',
-          badge: { value: count > 0 ? `${count} pending` : 'None', color: 'gray' },
+          badge: { value: count > 0 ? `${count} on hold` : 'None', color: 'gray' },
         };
       },
     },
@@ -362,7 +362,12 @@ export const ADMIN_SYSTEM_STATS: StatDefinition<AdminSystemData>[] = [
   },
   {
     id: 'admin-overdue',
-    title: 'SLA Breached',
+    // "Overdue", not "Breached". `aggregate()`'s `breached` gates on
+    // `_q_running`, so it counts tickets that are live and past target — the
+    // queue you can still act on. A ticket finished late is *Missed*, and is
+    // judged against `resolved_at`, never the clock. The card id already said
+    // overdue; only the label had drifted.
+    title: 'Overdue',
     icon: AlertCircle,
     iconBgColor: 'bg-status-escalated/10',
     iconColor: 'text-status-escalated',
@@ -372,7 +377,7 @@ export const ADMIN_SYSTEM_STATS: StatDefinition<AdminSystemData>[] = [
         value: count,
         description: count > 0 ? 'Past resolution deadline' : 'All within SLA',
         badge: {
-          value: count > 0 ? `${count} breached` : 'On track',
+          value: count > 0 ? `${count} overdue` : 'On track',
           color: count > 0 ? 'red' : 'green',
         },
       };

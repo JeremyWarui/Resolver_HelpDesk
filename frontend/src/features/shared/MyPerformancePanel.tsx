@@ -54,7 +54,10 @@ export function MyPerformancePanel({ params }: { params: AnalyticsParams }) {
   // ── Needs attention now ────────────────────────────────────────────────────
   const attention: KPIMetric[] = [
     {
-      label: 'Breached',
+      // Live and past target — `breached` gates on `_q_running`. Work still
+      // to be done, which is what this panel is for; late-but-finished is
+      // "Missed" and belongs to history.
+      label: 'Overdue',
       value: me?.breached ?? 0,
       description: 'Past the resolution deadline',
       icon: <AlertTriangle className="h-5 w-5" />,

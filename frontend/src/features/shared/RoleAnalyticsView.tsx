@@ -580,11 +580,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
               <p className="text-xs text-muted-foreground">Approaching deadline</p>
             </div>
 
-            {/* Breached */}
+            {/* Overdue — `breached` counts running tickets past target */}
             <div className="bg-card rounded-lg border p-4">
               <div className="flex items-start justify-between mb-2">
                 <div className="space-y-1 flex-1">
-                  <p className="text-xs text-muted-foreground font-medium">Breached</p>
+                  <p className="text-xs text-muted-foreground font-medium">Overdue</p>
                   <p className="text-2xl font-bold text-foreground">
                     {slaLoading ? '—' : sla?.breached ?? 0}
                   </p>

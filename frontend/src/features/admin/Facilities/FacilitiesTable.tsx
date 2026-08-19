@@ -71,6 +71,11 @@ function FacilitiesTable() {
     status: true,
   });
   const [rowSelection, setRowSelection] = useState({});
+  // Controlled, with a setter. A `state.pagination` slice and no
+  // `onPaginationChange` makes TanStack drop every internal update on the
+  // floor: Next stayed enabled and did nothing, which hid all but the first
+  // ten of the 37 seeded facilities behind a button that looked like it worked.
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 });
   const [searchValue, setSearchValue] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>("all");
 
@@ -298,6 +303,7 @@ function FacilitiesTable() {
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -310,10 +316,7 @@ function FacilitiesTable() {
         searchField: false, // Always hide the search field column
       },
       rowSelection,
-      pagination: {
-        pageIndex: 0,
-        pageSize: 10, // Show 10 rows per page
-      },
+      pagination,
     },
   });
 

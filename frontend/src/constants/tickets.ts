@@ -4,12 +4,18 @@
 
 import type { Ticket } from '@/types';
 
-// Status display names
+// Status display names.
+//
+// `pending` reads "On Hold" because that is what every other surface already
+// called it — the technician's filter pills, the whole mobile list and detail,
+// My Tickets, and the Resume Work modal. Only this map said "Pending", and it
+// is the map behind `StatusBadge`, so one ticket showed both words at once:
+// an "On Hold" pill directly above a row badged "Pending".
 export const STATUS_LABELS: Record<Ticket['status'], string> = {
   open: 'Open',
   assigned: 'Assigned',
   in_progress: 'In Progress',
-  pending: 'Pending',
+  pending: 'On Hold',
   resolved: 'Resolved',
   closed: 'Closed',
 };

@@ -10,7 +10,7 @@ interface Props {
 }
 
 /**
- * Service-health KPI row — Resolution SLA, Response SLA, CSAT, Breached.
+ * Service-health KPI row — Resolution SLA, Response SLA, CSAT, Overdue.
  * Self-fetching (scoped server-side by JWT). Reused by the Reports landing and
  * the role dashboards.
  *
@@ -55,9 +55,9 @@ export default function ServiceHealthCards({ params, heading = true }: Props) {
           className="bg-card"
         />
         <MetricCard
-          title="Breached"
+          title="Overdue"
           value={headline?.breached ?? 0}
-          description="SLA breached tickets"
+          description="Live and past target"
           icon={<AlertTriangle className="h-6 w-6 text-status-escalated" />}
           iconBgColor="bg-status-escalated/10"
           className="bg-card"

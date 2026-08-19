@@ -693,6 +693,55 @@ work remaining.
   `REPORTS_STYLING_GUIDE.md`, which is current and moved to `docs/` rather
   than deleted — it sat under `features/reports/`, a directory with no code in
   it.
+- **Two tables paginated to nowhere.** `FacilitiesTable` passed a literal
+  `pagination: {pageIndex: 0, pageSize: 10}` into `state` with no
+  `onPaginationChange`. A controlled slice with no setter makes TanStack drop
+  every internal update, so `table.nextPage()` did nothing while
+  `getCanNextPage()` still returned `true` — Next stayed enabled, the counter
+  read "Page 1 of 4", and **27 of the 37 seeded facilities had no route to
+  them**; "Rows per page" was dead the same way. `CampusesPage` had the same
+  defect through split `pageIndex`/`pageSize` state whose setters were only
+  ever called with `0`, masked because five campuses fit on one page. Both hold
+  one `pagination` object with `onPaginationChange`, and
+  `AdminResourceTable`'s redundant `pageSize`/`onPageSizeChange` props are gone
+  — it already receives the `table`, which carries both.
+- **The ticket search box emptied three tables instead of filtering them.**
+  `useTicketTable` built its hidden `searchField` from `ticket_no` and
+  `description`; the Title column renders `service_item.name`, because a ticket
+  has no title field. So typing a service name plainly visible on screen
+  matched nothing on Recent Tickets, Assigned Tickets and Section Tickets.
+  `TicketTable` already built the field correctly — which is why the admin
+  Tickets page searched fine and the technician's did not, and why the fix is
+  the same expression, not a new one.
+- **"This Month" charted the last four days as four weeks.** `ChartsSection`
+  took `trend.slice(-4)` and labelled the bars `Week 1`…`Week 4`. `flow_trend`
+  is one point per *day* and omits days with no activity, so position in the
+  array carries no date information at all — those were the last four days that
+  happened to have tickets. Each point is now bucketed onto the Monday of its
+  own week and the bar is labelled with that date, so a gap moves nothing.
+  (Dates are parsed as local midnight: `new Date('2026-08-19')` is UTC and
+  lands on the previous day for anyone west of Greenwich.)
+- **One status, two words.** `STATUS_LABELS.pending` read "Pending" while the
+  technician's filter pills, all of mobile, My Tickets and the Resume Work
+  modal said "On Hold" — and `STATUS_LABELS` is what `StatusBadge` renders, so
+  a single ticket showed an "On Hold" pill directly above a row badged
+  "Pending". The badge and the overview stat card say **On Hold** now. The
+  *page* is still called Pending Work; renaming a navigation destination is a
+  separate call.
+- **Four cards labelled the Overdue count "Breached".** `aggregate()`'s
+  `breached` gates on `_q_running`, so it counts tickets that are live and past
+  target — Overdue, in the vocabulary §"SLA: settled ≠ running" defines. A
+  ticket finished late is *Missed* and is judged against `resolved_at`.
+  `statCardsConfig` (whose card id already said `admin-overdue`),
+  `MyPerformancePanel`, `RoleAnalyticsView` and `ServiceHealthCards` all say
+  Overdue now, agreeing with SLA Tracking.
+- **Two sentences that described something the code does not do.**
+  `ComingSoonSection` printed "Development in progress: 75% complete" over a
+  three-quarters-full progress bar for every unbuilt section — a fabricated
+  number, on screen, for all of them. SLA Rules invited the reader to "click a
+  name, time, or rank to edit it inline" while rank is plain text; rank is
+  fixed at creation because `Priority.default()` returns the lowest one, so
+  reordering silently changes what every future ticket opens at.
 - **Five destructive confirmations, five implementations.** `ConfirmDialog`'s
   own header claimed it was "used by every action that cannot be undone" while
   having exactly one consumer. Users, Departments, SLA priorities and the

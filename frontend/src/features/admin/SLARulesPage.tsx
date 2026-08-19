@@ -705,7 +705,8 @@ export default function SLARulesPage() {
         <CardHeader className="pb-3 pt-6 px-6">
           <CardTitle className="text-base">Priority Levels</CardTitle>
           <p className="text-xs text-gray-500 mt-1">
-            Click a name, time, or rank to edit it inline. Expand a row to manage escalation rules.
+            Click a name or a time to edit it inline. Expand a row to manage escalation rules.
+            Rank is fixed at creation — it decides which priority new tickets open at.
           </p>
         </CardHeader>
         <CardContent className="px-0 pb-0">

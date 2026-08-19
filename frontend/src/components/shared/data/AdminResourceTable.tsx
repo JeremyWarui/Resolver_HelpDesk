@@ -24,8 +24,6 @@ interface AdminResourceTableProps<T> {
   itemCount: number;
   searchValue: string;
   onSearchChange: (value: string) => void;
-  pageSize: number;
-  onPageSizeChange: (size: number) => void;
 }
 
 export function AdminResourceTable<T>({
@@ -39,8 +37,6 @@ export function AdminResourceTable<T>({
   itemCount,
   searchValue,
   onSearchChange,
-  pageSize,
-  onPageSizeChange,
 }: AdminResourceTableProps<T>) {
   const columns = table.getAllColumns();
 
@@ -143,8 +139,8 @@ export function AdminResourceTable<T>({
               <div className="flex items-center space-x-2">
                 <p className="text-sm font-medium">Rows per page</p>
                 <select
-                  value={pageSize}
-                  onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                  value={table.getState().pagination.pageSize}
+                  onChange={(e) => table.setPageSize(Number(e.target.value))}
                   className="h-8 w-[70px] rounded border px-2"
                 >
                   {[5, 10, 15, 20].map((s) => (

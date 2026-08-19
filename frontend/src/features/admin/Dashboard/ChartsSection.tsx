@@ -32,10 +32,19 @@ const ChartSection = ({
   setCategoryTimeframe,
 }: ChartSectionProps) => {
 
-  // Today → 1 bar; This Week → 7 day-name bars; This Month → 4 week-number bars
+  // Today → 1 bar; This Week → day-name bars; This Month → one bar per calendar week.
+  //
+  // `flow_trend` is one point per day and it omits days with no activity, so a
+  // point's position in the array says nothing about which day or week it falls
+  // in. "This Month" used to take `slice(-4)` and label the results `Week 1`
+  // … `Week 4` — four *days* under four week labels, and the last four days
+  // that happened to have tickets rather than the last four on the calendar.
   const ticketsRaisedData = useMemo(() => {
     if (!trend?.length) return [];
 
+    // Parsed as local midnight: `new Date('2026-08-19')` is UTC, which lands on
+    // the previous day for anyone west of Greenwich and shifts every bucket.
+    const asLocalDate = (iso: string) => new Date(`${iso}T00:00:00`);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     if (ticketTimeframe === 'day') {
@@ -43,17 +52,36 @@ const ChartSection = ({
         name: 'Today',
         tickets: item.created,
       }));
-    } else if (ticketTimeframe === 'week') {
-      return trend.slice(-7).map(item => {
-        const date = new Date(item.date);
-        return { name: dayNames[date.getDay()], tickets: item.created };
-      });
-    } else {
-      return trend.slice(-4).map((item, index) => ({
-        name: `Week ${index + 1}`,
+    }
+
+    if (ticketTimeframe === 'week') {
+      return trend.slice(-7).map(item => ({
+        name: dayNames[asLocalDate(item.date).getDay()],
         tickets: item.created,
       }));
     }
+
+    // Bucket each day onto the Monday of its own week, so a gap in the data
+    // moves nothing, and label the bar with that Monday's date — "Week 3" of
+    // an unstated month told the reader less than "17 Aug" does.
+    const weeks = new Map<number, number>();
+    for (const item of trend) {
+      const day = asLocalDate(item.date);
+      const monday = new Date(day);
+      monday.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+      const key = monday.getTime();
+      weeks.set(key, (weeks.get(key) ?? 0) + item.created);
+    }
+
+    return [...weeks.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([key, tickets]) => ({
+        name: new Date(key).toLocaleDateString(undefined, {
+          day: 'numeric',
+          month: 'short',
+        }),
+        tickets,
+      }));
   }, [trend, ticketTimeframe]);
 
   // Status distribution from the category fetch
