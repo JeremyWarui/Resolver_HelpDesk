@@ -6,6 +6,17 @@ request), with a DB fallback to the user's RoleAssignment for tests that use
 must resolve role through here so behaviour does not diverge between code paths.
 """
 
+# Roles that oversee other people's work: they see a section, a campus or the
+# whole estate rather than their own queue. Three modules independently typed
+# this tuple out — tickets twice, analytics once — which is one edit away from
+# a role that can act on a ticket in one view and not in another.
+SUPERVISOR_ROLES = ("admin", "manager", "hod", "hos")
+
+# Everyone who works tickets, as opposed to raising them. Staff actions
+# (assign, claim, change status) are gated on this; "user" is deliberately
+# absent even though a requester can see their own ticket.
+STAFF_ROLES = SUPERVISOR_ROLES + ("technician",)
+
 
 def resolve_role(request):
     """Return the caller's active role string, or None.

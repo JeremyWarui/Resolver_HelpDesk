@@ -15,7 +15,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.common.roles import resolve_role
+# SUPERVISOR_ROLES: a technician is deliberately absent — role_config also
+# refuses them `technician` as a group_by, so they are never ranked against
+# peers by either route.
+from apps.common.roles import SUPERVISOR_ROLES, resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.services.scope import scoped_ticket_qs
 
@@ -51,11 +54,6 @@ class BaseAnalyticsView(APIView):
             resolve_date_range(request.query_params),
         )
 
-
-# Roles that see aggregate performance across other people's work. A technician
-# is deliberately absent: role_config refuses them `technician` as a group_by so
-# they are never ranked against peers.
-SUPERVISING_ROLES = ("admin", "manager", "hod", "hos")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -201,7 +199,7 @@ class PerformanceFacilitiesView(BaseAnalyticsView):
     """
 
     def get(self, request):
-        if self.get_role(request) not in SUPERVISING_ROLES:
+        if self.get_role(request) not in SUPERVISOR_ROLES:
             return Response({"detail": "Not available for this role."}, status=403)
         scoped_qs, date_range = self.scope_and_range(request)
         return Response(
@@ -225,7 +223,7 @@ class PerformanceTradeMixView(BaseAnalyticsView):
     """
 
     def get(self, request):
-        if self.get_role(request) not in SUPERVISING_ROLES:
+        if self.get_role(request) not in SUPERVISOR_ROLES:
             return Response({"detail": "Not available for this role."}, status=403)
         scoped_qs, date_range = self.scope_and_range(request)
         return Response(

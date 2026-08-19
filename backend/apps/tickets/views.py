@@ -29,7 +29,11 @@ from apps.tickets.serializers import (
     _UserMinSerializer,
 )
 from apps.tickets.pending_reasons import PENDING_REASONS
-from apps.tickets.statuses import ACTIVE_STATUSES
+from apps.tickets.statuses import (
+    ACTIVE_STATUSES,
+    ESCALATED_LEVELS,
+    TERMINAL_STATUSES,
+)
 from apps.tickets.services.attachments import (
     process_upload,
     MAX_ATTACHMENTS_PER_TICKET,
@@ -43,16 +47,12 @@ from apps.tickets.services.lifecycle import (
 )
 from apps.tickets.services.scope import scoped_ticket_qs, ticket_base_qs
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
-from apps.common.roles import resolve_role
+from apps.common.roles import STAFF_ROLES, SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import (
     emit_ticket_created,
     emit_comment_added,
 )
 from apps.accounts.identity import display_name, display_name_parts
-
-# Roles that may perform staff actions (assign, etc.) on in-scope tickets.
-STAFF_ROLES = ("admin", "manager", "hod", "hos", "technician")
-
 
 def get_ticket_for_request_or_403(
     request, pk, *, allow_requester=True, staff_only=False, qs=None
@@ -122,7 +122,7 @@ class TicketStatusView(APIView):
         is_assigned_tech = (
             role == "technician" and ticket.assigned_to_id == request.user.pk
         )
-        is_supervisor = role in ("admin", "manager", "hod", "hos")
+        is_supervisor = role in SUPERVISOR_ROLES
         is_requester = ticket.raised_by_id == request.user.pk
         if not (is_supervisor or is_assigned_tech):
             if not (
@@ -285,7 +285,7 @@ class TicketFeedbackView(APIView):
         if ticket.raised_by != request.user:
             raise PermissionDenied("Only the requester can submit feedback.")
 
-        if ticket.status not in ("resolved", "closed"):
+        if ticket.status not in TERMINAL_STATUSES:
             return Response(
                 {
                     "detail": "Feedback can only be submitted once the ticket is resolved."
@@ -396,7 +396,7 @@ class TicketListCreateView(generics.ListCreateAPIView):
             # today; it stops the page rotting the first time one is resolved
             # after escalating.
             qs = qs.filter(
-                current_level__in=("hos", "hod"), status__in=ACTIVE_STATUSES
+                current_level__in=ESCALATED_LEVELS, status__in=ACTIVE_STATUSES
             )
 
         return qs
@@ -671,12 +671,7 @@ class TicketAttachmentView(APIView):
         attachment = get_object_or_404(TicketAttachment, pk=att_id, ticket=ticket)
 
         is_uploader = attachment.uploaded_by_id == request.user.pk
-        is_privileged = request.user.is_staff or resolve_role(request) in (
-            "admin",
-            "manager",
-            "hod",
-            "hos",
-        )
+        is_privileged = request.user.is_staff or resolve_role(request) in SUPERVISOR_ROLES
         if not (is_uploader or is_privileged):
             raise PermissionDenied("You can only delete your own attachments.")
 

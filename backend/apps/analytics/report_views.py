@@ -23,7 +23,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.analytics.services import aggregate, created_window, resolve_date_range
-from apps.tickets.statuses import ACTIVE_STATUSES, TERMINAL_STATUSES
+from apps.tickets.statuses import (
+    ACTIVE_STATUSES,
+    ESCALATED_LEVELS,
+    TERMINAL_STATUSES,
+)
 from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.services.scope import scoped_ticket_qs
@@ -356,7 +360,7 @@ def _sheet_technician_performance(ws, qs) -> None:
             resolved_count=Count("id", filter=Q(status="resolved")),
             closed_count=Count("id", filter=Q(status="closed")),
             pending_count=Count("id", filter=Q(status="pending")),
-            escalated_count=Count("id", filter=~Q(current_level="technician")),
+            escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
         )
         .order_by("-total")
     )
@@ -366,7 +370,7 @@ def _sheet_technician_performance(ws, qs) -> None:
     res_hours_by_tech = defaultdict(list)
     for tech_id, resolved_at, created_at, pause in qs.filter(
         assigned_to__isnull=False,
-        status__in=["resolved", "closed"],
+        status__in=TERMINAL_STATUSES,
         resolved_at__isnull=False,
     ).values_list("assigned_to_id", "resolved_at", "created_at", "accumulated_pause"):
         if resolved_at and created_at:

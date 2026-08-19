@@ -307,6 +307,16 @@ def test_the_status_sets_cover_the_model_choices_exactly():
     assert not set(statuses.ACTIVE_STATUSES) & set(statuses.TERMINAL_STATUSES)
 
 
+def test_the_escalated_levels_are_every_level_above_technician():
+    """`escalated` was encoded four times as this pair and once as
+    `NOT current_level='technician'`. Those agree only while LEVEL has exactly
+    three values, so pin the relationship rather than the pair."""
+    from apps.tickets.models import Ticket
+    from apps.tickets.statuses import ESCALATED_LEVELS
+
+    assert set(ESCALATED_LEVELS) == {v for v, _ in Ticket.LEVEL} - {"technician"}
+
+
 def test_no_module_writes_the_status_list_out_by_hand():
     """The guard that keeps this from creeping back. If you are adding a status
     set, import it — do not paste the tuple."""

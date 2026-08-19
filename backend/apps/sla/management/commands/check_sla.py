@@ -48,7 +48,6 @@ class Command(BaseCommand):
                 status__in=RUNNING_STATUSES,
                 resolution_due_at__isnull=False,
                 resolution_due_at__lt=now,
-                paused_at__isnull=True,
             )
             .select_related(
                 "section__campus_department__campus",

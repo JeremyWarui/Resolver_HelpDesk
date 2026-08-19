@@ -21,7 +21,7 @@ from apps.tickets.models import (
     TicketLog,
 )
 from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
-from apps.tickets.statuses import ALL_STATUSES
+from apps.tickets.statuses import ALL_STATUSES, RUNNING_STATUSES
 from apps.tickets.pending_reasons import PENDING_REASON_CODES
 from apps.accounts.identity import display_name
 
@@ -158,7 +158,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
         deadline drifts into the past while it waits and would otherwise show
         red for a delay the section was told to take.
         """
-        if ticket.status in ("resolved", "closed", "pending"):
+        if ticket.status not in RUNNING_STATUSES:
             return False
         if ticket.resolution_due_at is None:
             return False

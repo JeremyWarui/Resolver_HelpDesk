@@ -36,6 +36,7 @@ from apps.tickets.pending_reasons import PENDING_REASON_LABELS
 # which is where the vocabulary belongs — see the note there on why one home.
 from apps.tickets.statuses import (  # noqa: E402,F401
     ACTIVE_STATUSES,
+    ESCALATED_LEVELS,
     RUNNING_STATUSES,
     TERMINAL_STATUSES,
 )
@@ -129,7 +130,7 @@ def _standard_breakdown_metrics():
         total=Count("id"),
         open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
         resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-        escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
+        escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
         resolution_sla_met=Count(
             "id",
             filter=Q(
@@ -233,7 +234,7 @@ def _group_by_technician(window_qs):
             total_assigned=Count("id"),
             open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
             resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
-            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
+            escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
         )
         .order_by("-open_count")
     )
@@ -363,7 +364,7 @@ def facility_trade_mix(scoped_qs, date_range):
         .annotate(
             total=Count("id"),
             open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
-            escalated_count=Count("id", filter=Q(current_level__in=["hos", "hod"])),
+            escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
             resolution_sla_met=Count(
                 "id",
                 filter=Q(
@@ -636,7 +637,7 @@ def aggregate(
     _q_resolved_due = _q_resolved & Q(resolution_due_at__isnull=False)
     _q_prior_resolved_due = _q_prior_resolved & Q(resolution_due_at__isnull=False)
     _q_met = Q(resolved_at__lte=F("resolution_due_at"))
-    _q_escalated = Q(current_level__in=["hos", "hod"])
+    _q_escalated = Q(current_level__in=ESCALATED_LEVELS)
     counts = scoped_qs.aggregate(
         open_backlog=Count("id", filter=_q_active),
         created=Count("id", filter=_q_window),

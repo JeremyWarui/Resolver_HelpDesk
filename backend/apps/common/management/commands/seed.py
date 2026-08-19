@@ -26,6 +26,7 @@ from apps.accounts.identity import local_part
 from apps.accounts.models import RoleAssignment, UserProfile
 from apps.facilities.models import Facility, FacilityType
 from apps.tickets.pending_reasons import PENDING_REASON_LABELS
+from apps.tickets.statuses import TERMINAL_STATUSES
 
 # What a technician would actually have typed, per reason — so the demo shows
 # the note carrying information the code cannot ("which part", "whose
@@ -898,7 +899,7 @@ class Command(BaseCommand):
             to_value=technician.get_full_name() if technician else "",
         )
         started_at = assigned_at + timedelta(minutes=rng.randint(5, 240))
-        if ticket.status in ("in_progress", "pending", "resolved", "closed"):
+        if ticket.status in ("in_progress", "pending") + TERMINAL_STATUSES:
             self._log(
                 ticket, started_at, event_type="status_changed", actor=technician,
                 from_value="assigned", to_value="in_progress",
@@ -921,7 +922,7 @@ class Command(BaseCommand):
                 from_value="in_progress", to_value="pending",
                 reason=f"{PENDING_REASON_LABELS[reason]} — {PENDING_NOTES[reason]}",
             )
-        if ticket.status in ("resolved", "closed"):
+        if ticket.status in TERMINAL_STATUSES:
             # Resolution time is drawn relative to the ticket's own SLA window,
             # not from a flat 2–72 hours. The flat draw ignored priority, so a
             # Critical ticket (2h to resolve) almost always missed — across the

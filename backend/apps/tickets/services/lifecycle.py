@@ -4,6 +4,7 @@ from django.utils import timezone
 
 from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.models import TicketLog
+from apps.tickets.statuses import TERMINAL_STATUSES
 from apps.tickets.pending_reasons import (
     PENDING_REASON_CODES,
     PENDING_REASON_LABELS,
@@ -72,7 +73,7 @@ def transition_status(
 
     old_status = ticket.status
     now = timezone.now()
-    is_reopen = old_status in ("resolved", "closed") and new_status == "open"
+    is_reopen = old_status in TERMINAL_STATUSES and new_status == "open"
 
     # SLA pause/resume — the hold reason moves with the pause, so that
     # `status == 'pending'` and `pending_reason != ''` can never disagree.

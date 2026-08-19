@@ -32,3 +32,9 @@ TERMINAL_STATUSES = ("resolved", "closed")
 
 # Every status, in lifecycle order — the choices on `Ticket.status`.
 ALL_STATUSES = ACTIVE_STATUSES + TERMINAL_STATUSES
+
+# Escalation levels above the technician. A ticket is "escalated" iff its
+# current_level is one of these — the same idea was written five different
+# ways across analytics, four as this list and one as `~Q(level="technician")`,
+# which are only equivalent while LEVEL has exactly three values.
+ESCALATED_LEVELS = ("hos", "hod")
