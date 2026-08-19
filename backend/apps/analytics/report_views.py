@@ -22,7 +22,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.analytics.services import aggregate, created_window, resolve_date_range
+from apps.analytics.services import (
+    aggregate,
+    created_window,
+    resolution_seconds,
+    resolve_date_range,
+)
 from apps.tickets.statuses import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
@@ -59,6 +64,23 @@ def _auto_width(ws) -> None:
 
 def _fmt(dt) -> str:
     return dt.strftime("%Y-%m-%d %H:%M") if dt else ""
+
+
+# Cell values two sheets each rendered for themselves. The lifecycle and
+# pending sheets show the same ticket in different columns, so the same three
+# facts were formatted twice and could disagree in one sheet only.
+
+
+def _pause_minutes(t) -> int:
+    return int(t.accumulated_pause.total_seconds() / 60) if t.accumulated_pause else 0
+
+
+def _assigned(t) -> str:
+    return display_name(t.assigned_to) if t.assigned_to_id else "Unassigned"
+
+
+def _trade(t) -> str:
+    return t.section.section_type.name if t.section_id and t.section.section_type_id else ""
 
 
 # ── Date-range and queryset helpers ───────────────────────────────────────────
@@ -288,9 +310,6 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
     )
 
     for t in tickets:
-        pause_mins = (
-            int(t.accumulated_pause.total_seconds() / 60) if t.accumulated_pause else 0
-        )
         ws.append(
             [
                 t.ticket_no,
@@ -305,16 +324,8 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
                 t.requester_campus.name if t.requester_campus_id else "",
                 t.sub_section.name if t.sub_section_id else "",
                 t.service_item.name if t.service_item_id else "",
-                (
-                    t.section.section_type.name
-                    if t.section_id and t.section.section_type_id
-                    else ""
-                ),
-                (
-                    display_name(t.assigned_to)
-                    if t.assigned_to_id
-                    else "Unassigned"
-                ),
+                _trade(t),
+                _assigned(t),
                 (t.description or "")[:200],
                 _fmt(t.response_due_at),
                 _fmt(t.resolution_due_at),
@@ -323,7 +334,7 @@ def _sheet_ticket_lifecycle(ws, qs) -> None:
                 _fmt(t.created_at),
                 _fmt(t.updated_at),
                 _fmt(t.paused_at),
-                pause_mins,
+                _pause_minutes(t),
             ]
         )
 
@@ -373,9 +384,9 @@ def _sheet_technician_performance(ws, qs) -> None:
         status__in=TERMINAL_STATUSES,
         resolved_at__isnull=False,
     ).values_list("assigned_to_id", "resolved_at", "created_at", "accumulated_pause"):
-        if resolved_at and created_at:
-            delta = (resolved_at - created_at) - (pause or timedelta())
-            res_hours_by_tech[tech_id].append(max(delta.total_seconds(), 0) / 3600)
+        secs = resolution_seconds(resolved_at, created_at, pause)
+        if secs is not None:
+            res_hours_by_tech[tech_id].append(secs / 3600)
 
     for row in by_tech:
         first = row["assigned_to__first_name"] or ""
@@ -470,28 +481,17 @@ def _sheet_pending_analysis(ws, qs) -> None:
     )
 
     for t in pending:
-        pause_mins = (
-            int(t.accumulated_pause.total_seconds() / 60) if t.accumulated_pause else 0
-        )
         ws.append(
             [
                 t.ticket_no,
                 t.priority.name if t.priority_id else "",
                 t.get_current_level_display(),
-                (
-                    t.section.section_type.name
-                    if t.section_id and t.section.section_type_id
-                    else ""
-                ),
+                _trade(t),
                 t.section.campus_department.campus.name if t.section_id else "",
-                (
-                    display_name(t.assigned_to)
-                    if t.assigned_to_id
-                    else "Unassigned"
-                ),
+                _assigned(t),
                 _fmt(t.created_at),
                 _fmt(t.paused_at),
-                pause_mins,
+                _pause_minutes(t),
                 (t.description or "")[:100],
             ]
         )

@@ -160,6 +160,21 @@ def created_window(qs, date_range):
     )
 
 
+def resolution_seconds(resolved_at, created_at, accumulated_pause):
+    """Working seconds between raising a ticket and resolving it.
+
+    Holds come out: a ticket waiting three days on a part nobody could supply
+    did not take three days of anybody's work, and leaving that time in makes
+    the section's own numbers argue against it. Returns None when either
+    timestamp is missing, and never a negative — the three call sites that
+    computed this by hand had already diverged on that last point.
+    """
+    if not (resolved_at and created_at):
+        return None
+    elapsed = (resolved_at - created_at) - (accumulated_pause or timedelta())
+    return max(elapsed.total_seconds(), 0.0)
+
+
 def resolved_window(qs, start, end):
     """Narrow to tickets *resolved* between `start` and `end` (settled only).
 
@@ -823,15 +838,16 @@ def aggregate(
             "resolved_at", "created_at", "accumulated_pause"
         )
     )
-    resolution_seconds = [
-        (
-            (resolved_at - created_at) - (accumulated_pause or timedelta())
-        ).total_seconds()
-        for resolved_at, created_at, accumulated_pause in resolution_time_rows
-        if resolved_at and created_at
+    resolution_times = [
+        secs
+        for secs in (
+            resolution_seconds(resolved_at, created_at, accumulated_pause)
+            for resolved_at, created_at, accumulated_pause in resolution_time_rows
+        )
+        if secs is not None
     ]
-    resolution_p50 = _percentile(resolution_seconds, 50)
-    resolution_p90 = _percentile(resolution_seconds, 90)
+    resolution_p50 = _percentile(resolution_times, 50)
+    resolution_p90 = _percentile(resolution_times, 90)
 
     # p50/p90 first-response time
     first_response_pairs = list(

@@ -19,6 +19,7 @@ from apps.analytics.services import (
     RUNNING_STATUSES,
     _percentile,
     created_window,
+    resolution_seconds,
     resolved_window,
 )
 from apps.tickets.models import TicketFeedback
@@ -231,9 +232,9 @@ def _csat_driver(scoped_qs, date_range):
     )
     enriched = []
     for rating, res, cre, pause in rows:
-        if res and cre:
-            secs = (res - cre - (pause or timedelta())).total_seconds()
-            enriched.append((rating, max(secs, 0.0)))
+        secs = resolution_seconds(res, cre, pause)
+        if secs is not None:
+            enriched.append((rating, secs))
     if len(enriched) < CSAT_DRIVER_MIN_SAMPLE:
         return []
 
