@@ -705,6 +705,34 @@ work remaining.
   one `pagination` object with `onPaginationChange`, and
   `AdminResourceTable`'s redundant `pageSize`/`onPageSizeChange` props are gone
   — it already receives the `table`, which carries both.
+- **Assigned Tickets sat at a different inset from every other ticket table.**
+  `DataTable`'s `variant` prop does two unrelated jobs: it names a layout *and*
+  it sets the card padding (`isAdminVariant ? "pt-7" : "p-6"`). `TicketTable`
+  pins `variant="admin"` for all five of its variants, and the other two direct
+  callers pass `"admin"` as well — `TechTickets` was the only place in the app
+  passing anything else, so its card carried 20px more top inset than the list
+  beside it in the same sidebar. It passes `"admin"` too now.
+
+  That leaves `"user"` and `"tech"` as members of the union nothing selects.
+  The prop is one value away from being removable, and the padding branch with
+  it; left in place deliberately rather than widening a spacing fix.
+
+  The bigger version of this — moving `RecentTickets`, `TechTickets` and
+  `TechSectionTickets` off `createTicketTableColumns` onto `TicketTable` — was
+  scoped and declined. The three pages differ from the `admin` variant by
+  exactly one column (`updated_at`), so the migration is small, but it is a
+  column-visibility change on three live pages and not a spacing fix.
+- **Facilities told a HOD and HOS it was showing "your campus"** while showing
+  all five, directly above a pill row offering every campus. The register is
+  deliberately not role-scoped — `FacilityRegisterView`'s own header says so,
+  and `FacilityViewSet.get_queryset()` filters only on `?campus=` — so the
+  sentence was the bug, not the scope. It now reads "Every building the
+  institution maintains. Filter by campus to see only yours."
+
+  Unresolved: the OPEN/RESOLVED/CLOSED columns on that register *are* ticket
+  data, and they are unscoped too, so a Nairobi HOS can read Mombasa's open
+  counts. Aggregate counts rather than ticket content, but it sits against the
+  rule that every ticket read goes through `scoped_ticket_qs`.
 - **`DataTable` printed the words "Data Table" on screen.** Its `title` prop
   defaulted to that placeholder, and `DefaultTableHeader` already renders no
   header at all when the title is absent — so the default did nothing except

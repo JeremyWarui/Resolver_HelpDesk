@@ -90,7 +90,7 @@ export default function FacilityRegisterView({ role }: Props) {
         <p className="text-sm text-muted-foreground">
           {role === 'manager'
             ? 'Every building the institution maintains, across all campuses.'
-            : 'The buildings on your campus and what has been reported in each.'}
+            : 'Every building the institution maintains. Filter by campus to see only yours.'}
         </p>
       </div>
 

@@ -84,7 +84,13 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
       />
 
       <DataTable
-        variant="tech"
+        // "admin" is the spacing every other ticket table uses, not a claim
+        // about the role. DataTable's `variant` sets the card padding
+        // (`isAdminVariant ? "pt-7" : "p-6"`) as well as naming a layout, and
+        // this page was the only caller passing anything else — which is the
+        // whole reason Assigned Tickets sat at a different inset from Section
+        // Tickets and the HOS list.
+        variant="admin"
         columns={columns}
         data={table.tableData}
         title="Assigned Tickets"
