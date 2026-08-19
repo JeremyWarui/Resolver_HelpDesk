@@ -4,7 +4,6 @@ import { createTicketTableFilters } from '@/components/shared/data/DataTable/uti
 import { createTicketTableColumns } from '@/components/shared/data/DataTable/utils/TicketTableColumns';
 import { createTicketColumnVisibility } from '@/components/shared/data/DataTable/utils/TicketColumnVisibility';
 import DataTable from '@/components/shared/data/DataTable/DataTable';
-import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import type { FilterPill } from '@/types';
 import TechnicianStatsCards from '@/components/shared/data/StatCards/TechnicianStatsCards';
@@ -98,7 +97,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
         loading={table.loading}
         onPageChange={table.handlePageChange}
         onPageSizeChange={table.handlePageSizeChange}
-        rowClassName={escalatedRowClass}
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}
         selectedRowId={table.selectedTicket?.id || null}
         manualPagination={true}

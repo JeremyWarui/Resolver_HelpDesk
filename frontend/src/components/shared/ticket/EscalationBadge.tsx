@@ -26,7 +26,12 @@ import type { Ticket } from '@/types';
  *  Abbreviated on purpose: the badge sits inside a status cell beside a status
  *  pill, and "Head of department" spelled out was wider than the status it was
  *  annotating — it read as the row's headline rather than a marker on it. The
- *  red row tint carries "this escalated"; the badge only has to say how far. */
+ *  badge's presence carries "this escalated"; its text only says how far.
+ *
+ *  There was a red row tint too, and it is gone from the Tickets lists: on a
+ *  busy page it repainted every escalated row and drowned out the SLA
+ *  colours those lists are actually read for. The Escalated page keeps its
+ *  own tint, keyed on `is_breaching`. */
 const LEVEL_LABEL: Record<string, string> = {
   hos: 'HOS',
   hod: 'HOD',
@@ -37,21 +42,6 @@ const LEVEL_TITLE: Record<string, string> = {
   hos: 'the head of section',
   hod: 'the head of department',
 };
-
-/**
- * Row tint for an escalated ticket — the primary signal, with the badge as the
- * detail. Escalation was previously legible only on the Escalated page, and
- * only there because *every* row on it happened to be tinted (that page keys
- * its tint on `is_breaching`, which is a different fact that mostly coincides).
- *
- * Returns '' for un-escalated rows so it composes with a caller's own
- * `rowClassName` without needing a null check.
- */
-export function escalatedRowClass(ticket: Pick<Ticket, 'current_level'>): string {
-  const level = ticket.current_level;
-  if (!level || level === 'technician') return '';
-  return 'border-l-2 border-status-escalated bg-status-escalated/5';
-}
 
 interface EscalationBadgeProps {
   level: Ticket['current_level'];

@@ -16,6 +16,7 @@ import { AdminResourceTable } from '@/components/shared/data/AdminResourceTable'
 import { sortableHeader } from '@/components/shared/data/DataTable/utils/sortableHeader';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { Campus } from '@/types/organisationStructure';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 
 function CampusForm({ campus, onSuccess, onClose }: {
   campus: Campus | null;
@@ -85,6 +86,8 @@ const CampusesPage = () => {
   const [pageSize, setPageSize] = useState(10);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Campus | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Campus | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const nameHeader = sortableHeader('Name');
 
@@ -117,16 +120,7 @@ const CampusesPage = () => {
               variant="ghost"
               size="sm"
               className="text-red-500 hover:text-red-700"
-              onClick={async () => {
-                if (!window.confirm(`Delete campus "${campus.name}"?`)) return;
-                try {
-                  await campusesService.deleteCampus(campus.id);
-                  toast.success('Campus deleted');
-                  refetchCampuses();
-                } catch (error) {
-                  handleDRFError(error, { fallbackMessage: 'Failed to delete campus' });
-                }
-              }}
+              onClick={() => setDeleteTarget(campus)}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -182,6 +176,34 @@ const CampusesPage = () => {
           />
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        title="Delete Campus?"
+        description={
+          <>
+            <strong>"{deleteTarget?.name}"</strong> will be permanently deleted.
+            This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          setDeleting(true);
+          try {
+            await campusesService.deleteCampus(deleteTarget.id);
+            toast.success('Campus deleted');
+            refetchCampuses();
+            setDeleteTarget(null);
+          } catch (error) {
+            handleDRFError(error, { fallbackMessage: 'Failed to delete campus' });
+          } finally {
+            setDeleting(false);
+          }
+        }}
+      />
     </>
   );
 };

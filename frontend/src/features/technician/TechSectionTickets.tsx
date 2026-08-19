@@ -8,7 +8,6 @@ import { createTicketColumnVisibility } from '@/components/shared/data/DataTable
 import DataTable from '@/components/shared/data/DataTable/DataTable';
 import { StatCardsRenderer } from '@/components/shared/data/StatCards';
 import { STAT_VIEWS } from '@/constants/statCardsConfig';
-import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 
 const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTechnicianId?: number; onTicketSelect?: (ticketId: number) => void }) => {
   const userData = useAuthStore((s) => s.user);
@@ -70,7 +69,6 @@ const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTe
         loading={table.loading}
         onPageChange={table.handlePageChange}
         onPageSizeChange={table.handlePageSizeChange}
-        rowClassName={escalatedRowClass}
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}
         selectedRowId={table.selectedTicket?.id || null}
         manualPagination={true}

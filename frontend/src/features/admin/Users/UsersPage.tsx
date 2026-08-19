@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -377,29 +377,21 @@ const UsersPage = () => {
         />
       )}
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete User?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>"{deleteTarget?.first_name} {deleteTarget?.last_name}"</strong> ({deleteTarget?.email}) will be permanently deleted.
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 gap-2"
-            >
-              {deleting && <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {deleting ? 'Deleting…' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        title="Delete User?"
+        description={
+          <>
+            <strong>"{deleteTarget?.first_name} {deleteTarget?.last_name}"</strong>{' '}
+            ({deleteTarget?.email}) will be permanently deleted. This action cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDeleteConfirm}
+      />
     </>
   );
 };

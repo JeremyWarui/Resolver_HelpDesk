@@ -14,7 +14,7 @@ import { useCatalogueData } from './useCatalogueData';
 import { SectionTypeForm } from './SectionTypeForm';
 import { SubSectionForm } from './SubSectionForm';
 import { ItemForm } from './ItemForm';
-import { DeleteConfirmDialog } from './DeleteConfirmDialog';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 
 type DeleteTarget = { type: 'trade' | 'item'; id: number; name: string };
 
@@ -389,7 +389,7 @@ export default function CataloguePage() {
         />
       )}
 
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={!!deletingST}
         title={`Delete "${deletingST?.name}"?`}
         description={
@@ -398,8 +398,10 @@ export default function CataloguePage() {
             Physical sections that reference it will also be affected.
           </>
         }
-        onCancel={() => setDeletingST(null)}
+        onOpenChange={(o) => { if (!o) setDeletingST(null); }}
         onConfirm={handleDeleteST}
+        confirmLabel="Delete"
+        variant="destructive"
       />
 
       {selectedType && subForm && (
@@ -423,7 +425,7 @@ export default function CataloguePage() {
         />
       )}
 
-      <DeleteConfirmDialog
+      <ConfirmDialog
         open={!!deleteTarget}
         title={`Delete ${deleteTarget?.type === 'trade' ? 'Trade' : 'Item'}?`}
         description={
@@ -433,8 +435,10 @@ export default function CataloguePage() {
             This cannot be undone.
           </>
         }
-        onCancel={() => setDeleteTarget(null)}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={handleDeleteTradeOrItem}
+        confirmLabel="Delete"
+        variant="destructive"
       />
     </div>
   );

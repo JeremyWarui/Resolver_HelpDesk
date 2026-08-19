@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import apiClient from '@/lib/api/client';
 import {
   getPriorities,
@@ -500,30 +500,21 @@ function PriorityRow({
         </tr>
       )}
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-              Delete priority "{priority.name}"?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this priority level and all its escalation rules.
-              Any service categories using this priority will lose their default priority assignment.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {deleting ? 'Deleting…' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+            Delete priority "{priority.name}"?
+          </span>
+        }
+        description="This will permanently delete this priority level and all its escalation rules. Any service categories using this priority will lose their default priority assignment."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { useDepartments } from '@/hooks/departments/useDepartments';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import { departmentsService, campusDepartmentsService } from '@/lib/api/organizations';
@@ -595,23 +595,16 @@ const DepartmentsPage = () => {
         />
       )}
 
-      {/* Delete confirmation */}
-      <AlertDialog open={!!deletingDept} onOpenChange={() => setDeletingDept(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete "{deletingDept?.name}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This department and all campus branches, sections, and service categories under it will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
-              {deleting ? 'Deleting…' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deletingDept}
+        onOpenChange={(o) => { if (!o) setDeletingDept(null); }}
+        title={`Delete "${deletingDept?.name}"?`}
+        description="This department and all campus branches, sections, and service categories under it will be permanently deleted."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 };

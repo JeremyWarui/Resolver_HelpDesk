@@ -522,23 +522,25 @@ the assignee *is* the holder they are told once, not twice.
 
 Two further changes close the visibility gap:
 
-- **The row tints red, and `EscalationBadge` rides in the status cell.** The
-  tint (`escalatedRowClass`) is the signal you read without looking; the badge
-  says only how far it climbed — `HOS` or `HOD`, abbreviated because spelled out
-  it was wider than the status pill it annotates and read as the row's headline
-  rather than a marker on it. The badge sits in the status cell rather than a
-  column of its own: `status` is the only column no variant in
+- **`EscalationBadge` rides in the status cell**, and that is the whole signal.
+  It says only how far the ticket climbed — `HOS` or `HOD`, abbreviated because
+  spelled out it was wider than the status pill it annotates and read as the
+  row's headline rather than a marker on it. It sits in the status cell rather
+  than a column of its own: `status` is the only column no variant in
   `VARIANT_COLUMN_VISIBILITY` hides, so one edit to `TableUtils.statusColumn`
   covers every table for every role, where a dedicated column would have meant
   an entry in six visibility maps and an em dash in every cell of the tickets
   that never escalate.
 
-  `TicketTable` applies the tint by default; a caller passing its own
-  `rowClassName` wins outright rather than composing. That is deliberate —
-  EscalatedWorkView tints on `is_breaching`, and on a page where every row is
-  escalated by definition the escalation tint says nothing while the breach tint
-  does. (The two are easy to confuse: that page looked like it marked escalation
-  only because its rows are mostly breaching too.)
+  There was a red row tint beside it (`escalatedRowClass`), applied by
+  `TechTickets` and `TechSectionTickets`. It is gone, and the helper with it.
+  On a busy Tickets list it repainted every escalated row and competed with the
+  SLA colours those lists are actually read for; the badge already carries the
+  fact, in the one cell every variant shows. Row tinting now belongs to the two
+  pages that tint on something the list is *about*: EscalatedWorkView on
+  `is_breaching` and SLATrackingView on breach state. (The two facts are easy to
+  confuse — the Escalated page looked like it marked escalation only because its
+  rows are mostly breaching too.)
 - **The technician gets the Escalated page**, `EscalatedWorkView role="technician"`.
   Its scope is the technician's (campus, trade) pairs — the same pool as Section
   Tickets, not only what they are assigned — so the copy says the section's
@@ -691,6 +693,19 @@ work remaining.
   `REPORTS_STYLING_GUIDE.md`, which is current and moved to `docs/` rather
   than deleted — it sat under `features/reports/`, a directory with no code in
   it.
+- **Five destructive confirmations, five implementations.** `ConfirmDialog`'s
+  own header claimed it was "used by every action that cannot be undone" while
+  having exactly one consumer. Users, Departments, SLA priorities and the
+  service Catalogue had each rebuilt the same title/description/cancel/confirm
+  AlertDialog by hand (the Catalogue's in a file of its own,
+  `DeleteConfirmDialog.tsx`), and Campuses used a raw `window.confirm` — a
+  native modal in an app that renders its own, with no loading state, so a slow
+  DELETE looked like nothing had happened. All five now call `ConfirmDialog`;
+  `title` and `description` take a `ReactNode` because some of them format the
+  entity name into the sentence or put an icon in the title. `alert-dialog` has
+  one importer again, and `grep window.confirm src/` returns only a comment.
+  Departments and SLA priorities have no E2E coverage — those two were verified
+  by types and build only.
 - **The my-tickets Actions cell read a detail-only field.** `rateAndCloseColumn`
   tested `ticket.feedback`, which only `TicketDetailReadSerializer` nests; the
   list sends `has_feedback`. The test was therefore always `undefined`. It is

@@ -1,5 +1,10 @@
-// ConfirmDialog — shadcn AlertDialog wrapper for all destructive confirmations.
-// Used by every action that cannot be undone: delete, reassign, close, reopen.
+// ConfirmDialog — shadcn AlertDialog wrapper for destructive confirmations.
+//
+// It claimed to be "used by every action that cannot be undone" while having a
+// single consumer; four other delete flows had each rebuilt the same
+// title/description/cancel/confirm structure by hand, and a fifth used a raw
+// window.confirm. `description` takes a ReactNode because two of them format
+// the entity name inside the sentence.
 
 import {
   AlertDialog,
@@ -11,13 +16,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'default' | 'destructive';
