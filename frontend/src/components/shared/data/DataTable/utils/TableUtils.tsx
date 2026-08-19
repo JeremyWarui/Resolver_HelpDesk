@@ -465,7 +465,11 @@ export function rateAndCloseColumn(options: {
     header: "Actions",
     cell: ({ row }) => {
       const ticket = row.original;
-      if (ticket.status === "resolved" && !ticket.feedback) {
+      // `has_feedback`, not `feedback`: the list serializer sends the flag and
+      // only the detail one nests the object, so `ticket.feedback` is always
+      // undefined here — "Rate & close" never went away and "Rated" was
+      // unreachable. AwaitingRatingBanner reads the flag on these same rows.
+      if (ticket.status === "resolved" && !ticket.has_feedback) {
         return (
           <Button
             size="sm"
@@ -479,7 +483,7 @@ export function rateAndCloseColumn(options: {
           </Button>
         );
       }
-      if (ticket.status === "resolved" && ticket.feedback) {
+      if (ticket.status === "resolved" && ticket.has_feedback) {
         return (
           <Badge variant="outline" className="text-xs">
             Rated

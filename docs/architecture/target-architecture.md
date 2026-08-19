@@ -635,6 +635,17 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **The my-tickets Actions cell read a detail-only field.** `rateAndCloseColumn`
+  tested `ticket.feedback`, which only `TicketDetailReadSerializer` nests; the
+  list sends `has_feedback`. The test was therefore always `undefined`. It is
+  *not* the "rated tickets keep offering Rate & close" bug it looks like —
+  `RatingModal` posts feedback and then closes the ticket, so a rated row is
+  `closed` and fails the `resolved` test either way. It bites when the close
+  after the feedback fails (the modal's `catch` swallows it): the ticket stays
+  resolved and rated, the button is offered again, and the endpoint answers
+  409 "Feedback has already been submitted." Both branches key on
+  `has_feedback` now, and `Ticket` says which of the two fields a list row
+  carries.
 - **Two details-sheet saves reported success and wrote nothing.** The facility
   branch of `handleSaveChanges` was an empty `// TODO` and fell through to
   `toast.success('Facility updated successfully')`, so the admin saw a save

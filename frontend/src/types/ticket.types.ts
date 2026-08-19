@@ -110,6 +110,7 @@ export interface Ticket {
 
   /** Whether the requester has rated it. A flag, present on list rows; the
    *  rating object itself stays on the detail view. */
+  /** Sent by the list serializer. Use this on table rows. */
   has_feedback?: boolean;
 
   /** Past its resolution deadline right now, decided server-side. A paused
@@ -120,6 +121,8 @@ export interface Ticket {
 
   // Nested data (detail view only)
   comments?: Comment[];
+  /** Detail endpoint only (`TicketDetailReadSerializer`). Reading this on a
+   *  list row typechecks and is always undefined — use `has_feedback` there. */
   feedback?: Feedback | null;
   /** Detail only. Deliberately absent from the list serializer — a phone
    *  number is for the technician who opened the ticket, not for anyone

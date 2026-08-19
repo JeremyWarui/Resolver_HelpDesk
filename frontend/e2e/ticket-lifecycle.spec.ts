@@ -169,6 +169,25 @@ test('the assignee resolves it, and the requester sees it resolved', async ({ pa
   const row = page.getByRole('row').filter({ hasText: ticketNo });
   await expect(row).toBeVisible();
   await expect(row.getByText('Resolved')).toBeVisible();
+
+  // Rating is the requester's half of the lifecycle: feedback, then close.
+  // The Actions cell keys on `has_feedback` now — it read `ticket.feedback`,
+  // which only the detail serializer sends, so the test was always undefined.
+  // That is invisible in this path (rating closes the ticket, so the row stops
+  // being `resolved` either way) and bites only when the close after the
+  // feedback fails: the ticket stays resolved *and* rated, and the old code
+  // offered "Rate & close" a second time, which answers 409.
+  await expect(row.getByRole('button', { name: 'Rate & close' })).toBeVisible();
+  await row.getByRole('button', { name: 'Rate & close' }).click();
+
+  const rating = page.getByRole('dialog').filter({ hasText: 'Rate resolution' });
+  await rating.getByLabel('4 stars').click();
+  await rating.getByRole('button', { name: 'Submit & close ticket' }).click();
+  await expect(rating).toBeHidden({ timeout: 20_000 });
+
+  const ratedRow = page.getByRole('row').filter({ hasText: ticketNo });
+  await expect(ratedRow.getByText('Closed')).toBeVisible({ timeout: 20_000 });
+  await expect(ratedRow.getByRole('button', { name: 'Rate & close' })).toHaveCount(0);
 });
 
 test('a technician in the same section but a different trade cannot see it', async ({ page }) => {
