@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.tickets.models import TicketLog
+from tests import factories
 from apps.tickets.services.lifecycle import (
     ALLOWED,
     TransitionError,
@@ -549,3 +550,70 @@ def test_an_unresolved_ticket_cannot_be_rated(api, requester, nrb_electrical_tic
     """Rating open work would measure an outcome that has not happened."""
     api.force_authenticate(requester)
     assert _rate(api, nrb_electrical_ticket, rating=5).status_code == 400
+
+
+# ── The Overdue pill ──────────────────────────────────────────────────────────
+
+
+def _overdue_ids(api):
+    response = api.get(reverse("ticket-list"), {"overdue": "1"})
+    assert response.status_code == 200
+    return {row["ticket_no"] for row in response.json()["results"]}
+
+
+def test_overdue_returns_only_live_work_past_its_target(
+    api, nrb_hos, nrb_electrician, requester, nrb_section, electrical, plumbing,
+    priorities,
+):
+    """The pill used to be dead state: it lit up, set status to `all`, and was
+    never read, so "Overdue" listed every ticket in scope — resolved ones
+    included. Same predicate as analytics' `breached`, so the pill and the KPI
+    cannot mean different things.
+    """
+    past = timezone.now() - timedelta(hours=2)
+    future = timezone.now() + timedelta(hours=2)
+
+    late = factories.make_ticket(
+        requester, nrb_section, electrical, resolution_due_at=past
+    )
+    on_time = factories.make_ticket(
+        requester, nrb_section, electrical, resolution_due_at=future
+    )
+
+    # Settled, and its deadline is long past: judged against resolved_at, not
+    # the clock. This is the row the broken filter used to show.
+    settled = factories.make_ticket(
+        requester, nrb_section, plumbing, resolution_due_at=past
+    )
+    settled.assigned_to = nrb_electrician
+    settled.save(update_fields=["assigned_to"])
+    transition_status(settled, "assigned", nrb_hos)
+    transition_status(settled, "in_progress", nrb_electrician)
+    transition_status(settled, "resolved", nrb_electrician)
+
+    api.force_authenticate(nrb_hos)
+    ids = _overdue_ids(api)
+
+    assert late.ticket_no in ids
+    assert on_time.ticket_no not in ids
+    assert settled.ticket_no not in ids
+
+
+def test_a_paused_ticket_is_never_overdue(
+    api, nrb_hos, nrb_electrician, requester, nrb_section, electrical, priorities
+):
+    """A ticket held for parts nobody can supply is not late (R9). Its stored
+    deadline drifts into the past while it waits, which is exactly why this
+    filter reads RUNNING_STATUSES and not ACTIVE_STATUSES."""
+    t = factories.make_ticket(
+        requester, nrb_section, electrical,
+        resolution_due_at=timezone.now() - timedelta(hours=2),
+    )
+    t.assigned_to = nrb_electrician
+    t.save(update_fields=["assigned_to"])
+    transition_status(t, "assigned", nrb_hos)
+    transition_status(t, "in_progress", nrb_electrician)
+    transition_status(t, "pending", nrb_electrician, pending_reason="awaiting_materials")
+
+    api.force_authenticate(nrb_hos)
+    assert t.ticket_no not in _overdue_ids(api)

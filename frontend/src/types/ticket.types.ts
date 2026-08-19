@@ -180,6 +180,9 @@ export interface TicketsParams {
   current_level?: 'technician' | 'hos' | 'hod';
   /** '1' returns everything above the technician, in one request. */
   escalated?: '1';
+  /** '1' returns live work past its resolution target — the same predicate as
+   *  analytics' `breached`. Settled and paused tickets are never overdue. */
+  overdue?: '1';
   assigned_to?: number;  // technician (assignee) user id
   raised_by?: number;    // requester user id
 }

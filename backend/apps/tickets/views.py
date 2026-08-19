@@ -9,6 +9,7 @@ import os
 
 from django.core.files.base import ContentFile
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.tickets.models import (
     Ticket,
@@ -32,6 +33,7 @@ from apps.tickets.pending_reasons import PENDING_REASONS
 from apps.tickets.statuses import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
+    RUNNING_STATUSES,
     TERMINAL_STATUSES,
 )
 from apps.tickets.services.attachments import (
@@ -397,6 +399,21 @@ class TicketListCreateView(generics.ListCreateAPIView):
             # after escalating.
             qs = qs.filter(
                 current_level__in=ESCALATED_LEVELS, status__in=ACTIVE_STATUSES
+            )
+        # Live work that has passed its resolution target. RUNNING_STATUSES,
+        # not ACTIVE_STATUSES: a paused ticket's stored deadline drifts into
+        # the past while it waits, and it is not late for a hold the section
+        # was told to take. Settled tickets are judged against resolved_at, not
+        # the clock, so they are never "overdue" — a resolved ticket answering
+        # this filter is the R9 bug wearing a different name.
+        #
+        # Same predicate as analytics' `breached` KPI, so the pill and the card
+        # cannot disagree about what the word means.
+        if params.get("overdue") == "1":
+            qs = qs.filter(
+                status__in=RUNNING_STATUSES,
+                resolution_due_at__isnull=False,
+                resolution_due_at__lt=timezone.now(),
             )
 
         return qs

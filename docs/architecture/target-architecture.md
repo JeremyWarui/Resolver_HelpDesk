@@ -635,6 +635,14 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **The Overdue pill listed every ticket.** `overdueFilter` was held in
+  `useTicketTable` state, read back only to light the pill, and applied
+  nowhere — and the handler set `status` to `all` alongside it, so "Overdue"
+  widened the table instead of narrowing it, resolved rows included. It is now
+  `?overdue=1` on the list endpoint, server-side like every other filter
+  (client-side would filter the 20 rows the page happens to hold), using the
+  same predicate as analytics' `breached`: RUNNING_STATUSES past
+  `resolution_due_at`. The pill and the SLA Tracking card now both say 25.
 
 ## 7a. Keeping the two halves in step
 

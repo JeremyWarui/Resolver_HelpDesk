@@ -123,14 +123,15 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   // -updated_at, a mutable sort key, which rules out cursor pagination by design.
   const [pageIndex, setPageIndexRaw] = useState(0);
 
-  // Filter state (trade/technician/user/overdue filters are kept as UI state;
-  // the backend scopes results by JWT role, not by these query params)
+  // Filter state. These are server params — they narrow an already
+  // role-scoped queryset, they do not widen it, so an id outside the caller's
+  // scope simply matches nothing.
   const [statusFilter, setStatusFilterRaw] = useState<string>(defaultStatusFilter);
   const [tradeFilter, setTradeFilterRaw] = useState<number | null>(null);
   const [technicianFilter, setTechnicianFilterRaw] = useState<number | null>(null);
   const [userFilter, setUserFilterRaw] = useState<number | null>(null);
   const [unassignedFilter, setUnassignedFilter] = useState<boolean>(false);
-  const [overdueFilter, setOverdueFilter] = useState<boolean>(false);
+  const [overdueFilter, setOverdueFilterRaw] = useState<boolean>(false);
 
   // Any server-side filter change must restart pagination at page 1.
   const resetToFirstPage = useCallback(() => {
@@ -157,6 +158,11 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     resetToFirstPage();
   }, [resetToFirstPage]);
 
+  const setOverdueFilter = useCallback((overdue: boolean) => {
+    setOverdueFilterRaw(overdue);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
   // Dialog state
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
@@ -169,8 +175,13 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     ...(tradeFilter ? { sub_section: tradeFilter } : {}),
     ...(technicianFilter ? { assigned_to: technicianFilter } : {}),
     ...(userFilter ? { raised_by: userFilter } : {}),
+    // Server-side, like every other filter here: the table is paginated, so
+    // narrowing the page the client happens to hold would filter 20 rows and
+    // call it the answer. The flag used to be held in state and read by
+    // nothing, which is why the Overdue pill listed everything.
+    ...(overdueFilter ? { overdue: '1' as const } : {}),
     ...(fixedParams ?? {}),
-  }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, fixedParams]);
+  }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, fixedParams]);
 
   const skipInitialFetch = initialData != null && pageIndex === 0;
 
