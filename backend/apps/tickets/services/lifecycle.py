@@ -194,3 +194,56 @@ def claim_ticket(ticket, technician):
     transition_status(ticket, "assigned", technician)
     transition_status(ticket, "in_progress", technician)
     return ticket
+
+
+def assign_ticket(ticket, assignee, actor, priority=None, note=""):
+    """Hand a ticket to `assignee`, optionally setting its real priority.
+
+    The HOS does both in one action: a ticket opens at Low and gets its true
+    priority when someone decides who works it (invariant 6). Reassignment is
+    the same call — `previous_assignee` is what tells the two apart in the log,
+    so the caller must pass a ticket whose `assigned_to` is still the old one.
+    """
+    previous_assignee = ticket.assigned_to
+    old_status = ticket.status
+    old_priority = ticket.priority
+
+    ticket.assigned_to = assignee
+    if old_status == "open":
+        ticket.status = "assigned"
+
+    updated_fields = ["assigned_to", "status", "updated_at"]
+    priority_changed = priority is not None and priority.pk != old_priority.pk
+    if priority_changed:
+        ticket.priority = priority
+        # Recompute the SLA window from created_at, not from now: the clock
+        # has been running since the requester raised it, and re-basing here
+        # would hand back time the ticket has already spent waiting.
+        ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
+            priority, ticket.created_at
+        )
+        updated_fields += ["priority", "response_due_at", "resolution_due_at"]
+
+    ticket.save(update_fields=updated_fields)
+
+    if priority_changed:
+        TicketLog.objects.create(
+            ticket=ticket,
+            actor=actor,
+            event_type="priority_changed",
+            from_value=old_priority.name,
+            to_value=priority.name,
+        )
+
+    TicketLog.objects.create(
+        ticket=ticket,
+        actor=actor,
+        event_type="reassigned" if previous_assignee is not None else "assigned",
+        from_value=(
+            display_name(previous_assignee) if previous_assignee is not None else ""
+        ),
+        to_value=display_name(assignee),
+        reason=note,
+    )
+    emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
+    return ticket

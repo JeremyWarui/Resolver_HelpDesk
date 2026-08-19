@@ -71,6 +71,7 @@ def _act(api, name, ticket, method, **kwargs):
         ("ticket-status", "post", {"status": "in_progress"}),
         ("ticket-claim", "post", {}),
         ("ticket-comments", "post", {"body": "leak"}),
+        ("ticket-feedback", "post", {"rating": 5}),
     ],
 )
 def test_out_of_scope_actions_are_forbidden(

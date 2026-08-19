@@ -36,17 +36,16 @@ from apps.tickets.services.attachments import (
     MIME_TO_EXT,
 )
 from apps.tickets.services.lifecycle import (
+    assign_ticket,
     claim_ticket,
     transition_status,
     TransitionError,
 )
-from apps.sla.services.due_dates import compute_due_dates
-from apps.tickets.services.scope import scoped_ticket_qs
+from apps.tickets.services.scope import scoped_ticket_qs, ticket_base_qs
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
 from apps.common.roles import resolve_role
 from apps.notifications.notify import (
     emit_ticket_created,
-    emit_ticket_assigned,
     emit_comment_added,
 )
 from apps.accounts.identity import display_name, display_name_parts
@@ -173,55 +172,11 @@ class TicketAssignView(APIView):
         new_priority = serializer.validated_data.get("priority")
         note = serializer.validated_data.get("note", "")
 
-        previous_assignee = (
-            ticket.assigned_to
-        )  # loaded via select_related before overwrite
-        old_status = ticket.status
-        old_priority = ticket.priority
-
-        ticket.assigned_to = assignee
-        if old_status == "open":
-            ticket.status = "assigned"
-
-        updated_fields = ["assigned_to", "status", "updated_at"]
-        priority_changed = (
-            new_priority is not None and new_priority.pk != old_priority.pk
+        # `ticket.assigned_to` is still the previous holder here (loaded via
+        # select_related); the service reads it to tell assign from reassign.
+        assign_ticket(
+            ticket, assignee, request.user, priority=new_priority, note=note
         )
-        if priority_changed:
-            ticket.priority = new_priority
-            # Recompute the SLA window from created_at, not from now: the clock
-            # has been running since the requester raised it, and re-basing here
-            # would hand back time the ticket has already spent waiting.
-            ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
-                new_priority, ticket.created_at
-            )
-            updated_fields += ["priority", "response_due_at", "resolution_due_at"]
-
-        ticket.save(update_fields=updated_fields)
-
-        if priority_changed:
-            TicketLog.objects.create(
-                ticket=ticket,
-                actor=request.user,
-                event_type="priority_changed",
-                from_value=old_priority.name,
-                to_value=new_priority.name,
-            )
-
-        event_type = "reassigned" if previous_assignee is not None else "assigned"
-        TicketLog.objects.create(
-            ticket=ticket,
-            actor=request.user,
-            event_type=event_type,
-            from_value=(
-                display_name(previous_assignee)
-                if previous_assignee is not None
-                else ""
-            ),
-            to_value=display_name(assignee),
-            reason=note,
-        )
-        emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
 
         return Response(
             {
@@ -325,7 +280,7 @@ class TicketFeedbackView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        ticket = get_object_or_404(Ticket, pk=pk)
+        ticket = get_ticket_for_request_or_403(request, pk)
 
         if ticket.raised_by != request.user:
             raise PermissionDenied("Only the requester can submit feedback.")
@@ -569,19 +524,7 @@ class TicketDetailView(generics.RetrieveAPIView):
         return get_ticket_for_request_or_403(
             self.request,
             self.kwargs["pk"],
-            qs=Ticket.objects.select_related(
-                "section__campus_department__department",
-                "section__campus_department__campus",
-                "section__section_type",
-                "priority",
-                "service_item__sub_section",
-                "assigned_to",
-                "raised_by",
-                "requester_campus",
-                "location__facility_type",
-                "location__facility",
-                "feedback",
-            ),
+            qs=ticket_base_qs().select_related("feedback"),
         )
 
 

@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 
 from apps.common.pagination import ConfigListPagination
 from apps.common.permissions import IsAdminGroup, IsAdminOrReadOnly
@@ -64,9 +64,26 @@ class SectionTypeViewSet(viewsets.ModelViewSet):
     requester QuickActions widget can render the service catalogue without a
     second round-trip."""
 
+    # Prefetch() rather than a plain string, because the serializer renders
+    # only the active rows in name order: express that here, once, and the
+    # nested read costs two extra queries total instead of two per row.
     queryset = (
         SectionType.objects.select_related("department")
-        .prefetch_related("sub_sections__service_items")
+        .prefetch_related(
+            Prefetch(
+                "sub_sections",
+                queryset=SubSection.objects.filter(is_active=True)
+                .order_by("name")
+                .prefetch_related(
+                    Prefetch(
+                        "service_items",
+                        queryset=ServiceItem.objects.filter(is_active=True).order_by(
+                            "name"
+                        ),
+                    )
+                ),
+            )
+        )
         .order_by("department", "name")
     )
     permission_classes = [IsAdminOrReadOnly]

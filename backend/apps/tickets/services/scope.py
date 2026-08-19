@@ -1,17 +1,18 @@
 from django.db.models import Exists, OuterRef
 
 
-def scoped_ticket_qs(user, role):
-    """Return a Ticket queryset scoped to what `user` can see for the given `role`.
+def ticket_base_qs():
+    """The one Ticket queryset every read starts from.
 
-    Returns an empty queryset for users with no role or an unknown role.
-    ?mine=1 is the `role="user"` branch — the view passes that literal rather
-    than rebuilding the queryset, so there is only ever one base to maintain.
+    Carries the relations `TicketReadSerializer` touches and the `has_feedback`
+    annotation it prefers. Both the scoped list and the detail view build on
+    this, so a relation added to the serializer is added here once — a second
+    hand-written copy is how `sub_section` went missing from detail reads and
+    cost a query per request.
     """
     from apps.tickets.models import Ticket, TicketFeedback
-    from apps.org.models import SectionTechnician
 
-    base = Ticket.objects.annotate(
+    return Ticket.objects.annotate(
         # A flag, not a join: the rating itself is detail-only, but a list has
         # to be able to say which resolved tickets are still waiting on their
         # requester. Exists() keeps this a subquery, so it cannot fan the rows
@@ -29,7 +30,19 @@ def scoped_ticket_qs(user, role):
         "requester_campus",
         "location__facility_type",
         "location__facility",
-    ).order_by("-updated_at")
+    )
+
+
+def scoped_ticket_qs(user, role):
+    """Return a Ticket queryset scoped to what `user` can see for the given `role`.
+
+    Returns an empty queryset for users with no role or an unknown role.
+    ?mine=1 is the `role="user"` branch — the view passes that literal rather
+    than rebuilding the queryset, so there is only ever one base to maintain.
+    """
+    from apps.org.models import SectionTechnician
+
+    base = ticket_base_qs().order_by("-updated_at")
 
     if role == "admin":
         return base
@@ -68,7 +81,7 @@ def scoped_ticket_qs(user, role):
         # Requester (universal): own tickets only.
         return base.filter(raised_by=user)
 
-    return Ticket.objects.none()
+    return base.none()
 
 
 def scoped_section_qs(user, role):

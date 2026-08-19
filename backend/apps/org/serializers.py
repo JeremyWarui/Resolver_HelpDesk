@@ -34,12 +34,14 @@ class DepartmentSerializer(serializers.ModelSerializer):
                 "name": cd.campus.name,
                 "code": cd.campus.code,
             }
-            for cd in obj.campus_departments.select_related("campus").all()
+            # `.all()`, not a fresh `.select_related()`: the viewset already
+            # prefetched these, and re-querying here would throw that away.
+            for cd in obj.campus_departments.all()
         ]
 
     def get_heads_of_department(self, obj):
         result = []
-        for cd in obj.campus_departments.select_related("campus", "head_of_department").all():
+        for cd in obj.campus_departments.all():
             if cd.head_of_department:
                 hod = cd.head_of_department
                 result.append({
@@ -124,12 +126,13 @@ class SectionTypeWithSubSectionsSerializer(serializers.ModelSerializer):
                         "description": item.description,
                         "is_active": item.is_active,
                     }
-                    for item in sub.service_items.filter(is_active=True).order_by(
-                        "name"
-                    )
+                    for item in sub.service_items.all()
                 ],
             }
-            for sub in obj.sub_sections.filter(is_active=True).order_by("name")
+            # Both loops read the prefetch cache. The active-only filtering and
+            # the ordering live on the viewset's Prefetch() objects, because a
+            # `.filter()` here would issue a fresh query per row instead.
+            for sub in obj.sub_sections.all()
         ]
 
 
