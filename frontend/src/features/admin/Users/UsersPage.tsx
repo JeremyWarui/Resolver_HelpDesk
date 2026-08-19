@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { deleteUser } from '@/lib/api/users';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import { useDepartments } from '@/hooks/departments/useDepartments';
-import { useSortableColumn } from '@/hooks/useSortableColumn';
+import { sortableHeader } from '@/components/shared/data/DataTable/utils/sortableHeader';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { User, UserRole } from '@/types';
 import { ROLE_LABELS, ROLE_BADGE_STYLES, ROLE_ORDER } from './constants';
@@ -50,9 +50,9 @@ const UsersPage = () => {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const nameHeader = useSortableColumn('Name');
-  const emailHeader = useSortableColumn('Email');
-  const joinedHeader = useSortableColumn('Joined');
+  const nameHeader = sortableHeader('Name');
+  const emailHeader = sortableHeader('Email');
+  const joinedHeader = sortableHeader('Joined');
 
   const { campuses } = useCampuses();
   const { departments } = useDepartments();

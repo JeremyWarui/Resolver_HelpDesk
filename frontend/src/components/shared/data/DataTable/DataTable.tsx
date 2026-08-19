@@ -30,7 +30,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 
 // Import components
-import { DefaultTableHeader, type TableHeaderProps } from "./utils/TableHeaders";
+import { DefaultTableHeader } from "./utils/TableHeaders";
 import { RenderTableContent } from "./utils/TableContent";
 
 // TABLE TYPES
@@ -63,7 +63,6 @@ export interface DataTableProps<TData, TValue> {
   onPageChange?: (pageIndex: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onColumnVisibilityChange?: (visibility: VisibilityState) => void;
-  renderHeader?: (props: TableHeaderProps) => React.ReactElement;
   rowClassName?: (row: TData) => string;
 }
 
@@ -88,7 +87,6 @@ const DataTable = <TData, TValue>({
   onPageChange,
   onPageSizeChange,
   onColumnVisibilityChange,
-  renderHeader,
   rowClassName,
 }: DataTableProps<TData, TValue>) => {
   // TanStack Table's useReactTable() returns an interior-mutable table instance whose
@@ -261,8 +259,6 @@ const DataTable = <TData, TValue>({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-
-  // Build headerProps object that can be passed to custom renderHeader function
   const headerProps = {
     title,
     subtitle,
@@ -295,11 +291,7 @@ const DataTable = <TData, TValue>({
     <Card className={`w-full`}>
       <CardContent className={isAdminVariant ? "pt-7" : "p-6"}>
         {/* Use custom header or default header component */}
-        {renderHeader ? (
-          renderHeader(headerProps)
-        ) : (
-          <DefaultTableHeader {...headerProps} />
-        )}
+        <DefaultTableHeader {...headerProps} />
 
         {/* Table content with conditional rendering for loading and empty states */}
         <RenderTableContent {...tableContentProps} />

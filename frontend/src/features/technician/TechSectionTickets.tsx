@@ -9,22 +9,12 @@ import DataTable from '@/components/shared/data/DataTable/DataTable';
 import { StatCardsRenderer } from '@/components/shared/data/StatCards';
 import { STAT_VIEWS } from '@/constants/statCardsConfig';
 import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
-import type { Section } from '@/types';
 
 const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTechnicianId?: number; onTicketSelect?: (ticketId: number) => void }) => {
   const userData = useAuthStore((s) => s.user);
   const { data: dashboardData, loading } = useTechnicianDashboard();
 
   const sectional = dashboardData?.sectional;
-
-  const externalSections: Section[] | undefined = dashboardData?.sections?.map(s => ({
-    id: s.id,
-    name: s.name,
-    code: s.code,
-    campus: { code: s.campus, name: s.campus },
-    department: { code: s.department, name: s.department },
-    section_type_name: s.section_type_name,
-  } as unknown as Section));
 
   // No assigned_to and no trade pin: the server's `scoped_ticket_qs` already
   // returns exactly this technician's (campus, trade) pairs, so the claimable
@@ -36,7 +26,6 @@ const TechSectionTickets = ({ currentTechnicianId, onTicketSelect }: { currentTe
     currentUserId: currentTechnicianId,
     defaultStatusFilter: 'all',
     defaultPageSize: 20,
-    externalSections,
   });
 
   const columns = useMemo(() => createTicketTableColumns({

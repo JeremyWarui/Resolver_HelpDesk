@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getAuditLog, type AuditLogEntry } from '@/lib/api/admin';
-import { useSortableColumn } from '@/hooks/useSortableColumn';
+import { sortableHeader } from '@/components/shared/data/DataTable/utils/sortableHeader';
 import { formatDateTimeLocal } from '@/utils/date';
 
 const ACTION_BADGE: Record<string, { bg: string; text: string }> = {
@@ -57,8 +57,8 @@ export default function AuditLogPage() {
   const [dateTo, setDateTo] = useState('');
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const actorHeader = useSortableColumn('Actor');
-  const actionHeader = useSortableColumn('Action');
+  const actorHeader = sortableHeader('Actor');
+  const actionHeader = sortableHeader('Action');
 
   const fetch = useCallback(async () => {
     setLoading(true);

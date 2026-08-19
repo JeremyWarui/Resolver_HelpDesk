@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { type ColumnDef } from "@tanstack/react-table";
-import { ChevronDown, Eye, Play, RefreshCw } from "lucide-react";
+import { Eye, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/ticket/StatusBadge";
@@ -8,6 +8,7 @@ import { EscalationBadge } from "@/components/shared/ticket/EscalationBadge";
 import { PriorityBadge } from "@/components/shared/ticket/PriorityBadge";
 import { SLACountdown } from "@/components/shared/ticket/SLACountdown";
 import type { Ticket } from "@/types";
+import { sortableHeader } from './sortableHeader';
 
 // Utility function to truncate text — guards against undefined/null values
 const truncateText = (text: string | undefined | null, maxLength: number) => {
@@ -39,18 +40,7 @@ const formatRelativeTime = (dateString: string) => {
 // Column definitions
 export const ticketNoColumn = <T,>(header: string = "Ticket ID"): ColumnDef<T> => ({
   accessorKey: "ticket_no",
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
+  header: sortableHeader(header),
   cell: ({ row }) => <div>{row.getValue("ticket_no")}</div>,
 });
 
@@ -152,18 +142,7 @@ export const tradeColumn = <T,>(header: string = "Trade"): ColumnDef<T> => ({
     const s = r.sub_section as { name?: string } | undefined;
     return s?.name ?? '';
   },
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
+  header: sortableHeader(header),
   cell: ({ row }) => <div>{(row.getValue("tradeName") as string) || "N/A"}</div>,
 });
 
@@ -186,18 +165,7 @@ export const raisedByColumn = <T,>(header: string = "Raised By"): ColumnDef<T> =
 
 export const statusColumn = <T,>(header: string = "Status"): ColumnDef<T> => ({
   accessorKey: "status",
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
+  header: sortableHeader(header),
   // The escalation marker rides along with the status rather than taking a
   // column: `status` is the one column no variant hides, so this is what makes
   // an escalated job legible to the technician holding it and to the HOS on
@@ -262,18 +230,7 @@ export const slaCountdownColumn = (header: string = "SLA"): ColumnDef<Ticket> =>
 
 export const createdAtColumn = <T,>(header: string = "Created"): ColumnDef<T> => ({
   accessorKey: "created_at",
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
+  header: sortableHeader(header),
   cell: ({ row }) => {
     const createdAt = row.getValue("created_at") as string;
     const date = new Date(createdAt);
@@ -283,18 +240,7 @@ export const createdAtColumn = <T,>(header: string = "Created"): ColumnDef<T> =>
 
 export const updatedAtColumn = <T,>(header: string = "Updated"): ColumnDef<T> => ({
   accessorKey: "updated_at",
-  header: ({ column }) => (
-    <div className="flex items-center space-x-1">
-      <span>{header}</span>
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting()}
-        className="p-0 h-4 w-4"
-      >
-        <ChevronDown className="h-3 w-3" />
-      </Button>
-    </div>
-  ),
+  header: sortableHeader(header),
   cell: ({ row }) => {
     const updatedAt = row.getValue("updated_at") as string;
     if (!updatedAt) return <div>N/A</div>;

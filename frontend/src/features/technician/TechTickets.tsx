@@ -1,16 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useTicketTable } from '@/hooks/tickets';
-import { useTechnicianDashboard } from '@/hooks/dashboard';
 import { createTicketTableFilters } from '@/components/shared/data/DataTable/utils/TicketTableFilters';
 import { createTicketTableColumns } from '@/components/shared/data/DataTable/utils/TicketTableColumns';
 import { createTicketColumnVisibility } from '@/components/shared/data/DataTable/utils/TicketColumnVisibility';
 import DataTable from '@/components/shared/data/DataTable/DataTable';
-import { TechTableHeader } from '@/components/shared/data/DataTable/utils/TableHeaders';
 import { escalatedRowClass } from '@/components/shared/ticket/EscalationBadge';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import type { FilterPill } from '@/types';
 import TechnicianStatsCards from '@/components/shared/data/StatCards/TechnicianStatsCards';
-import type { Section } from '@/types';
 
 type TechTicketsProps = {
   currentTechnicianId?: number;
@@ -18,18 +15,7 @@ type TechTicketsProps = {
 };
 
 function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) {
-  const { data: dashboardData } = useTechnicianDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  // Convert dashboard sections to Section type for table filters
-  const externalSections: Section[] | undefined = dashboardData?.sections?.map(s => ({
-    id: s.id,
-    name: s.name,
-    code: s.code,
-    campus: { code: s.campus, name: s.campus },
-    department: { code: s.department, name: s.department },
-    section_type_name: s.section_type_name,
-  } as unknown as Section));
 
   // Pin the page to the technician's OWN tickets (B2): without assigned_to the
   // fetch returns their full section scope, which belongs to Section Tickets.
@@ -44,7 +30,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
     currentUserId: currentTechnicianId,
     defaultStatusFilter: statusFilter,
     defaultPageSize: 20,
-    externalSections,
     skipUntilUserId: true,
     fixedParams,
   });
@@ -71,8 +56,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
   const filters = createTicketTableFilters(table, {
     includeStatus: true,
     includeTrade: false,
-    includeTechnician: false,
-    includeUser: false,
   });
 
   const columnVisibility = createTicketColumnVisibility({ role: 'technician' });
@@ -118,7 +101,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
         rowClassName={escalatedRowClass}
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}
         selectedRowId={table.selectedTicket?.id || null}
-        renderHeader={TechTableHeader}
         manualPagination={true}
       />
 

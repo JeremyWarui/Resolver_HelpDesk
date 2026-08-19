@@ -5,7 +5,6 @@ import { createTicketTableColumns } from "@/components/shared/data/DataTable/uti
 import { createTicketColumnVisibility } from "@/components/shared/data/DataTable/utils/TicketColumnVisibility";
 import type { FilterOption } from "@/components/shared/data/DataTable/DataTable";
 import DataTable from "@/components/shared/data/DataTable/DataTable";
-import { AdminTableHeader } from '@/components/shared/data/DataTable/utils/TableHeaders';
 
 type RecentTicketsRole = 'admin' | 'manager' | 'hod' | 'hos';
 
@@ -62,7 +61,6 @@ export default function RecentTicketsTable({ role = 'admin', onTicketSelect }: R
       loading={table.loading}
       onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : undefined}
       selectedRowId={table.selectedTicket?.id || null}
-      renderHeader={AdminTableHeader}
     />
   );
 }

@@ -642,6 +642,23 @@ work remaining.
   `FilterPills` row: managers had no **Overdue** filter, the one every other
   supervisory role gets. `e2e/manager.spec.ts` now asserts the page renders and
   the pill narrows.
+- **`useTicketTable` carried a third of itself for nobody.** Six config options
+  (`externalSections/Users/Technicians/Facilities`, `initialData`,
+  `onDataFetched`) had no call site, which made `technicians` and `users`
+  permanently `[]` — so `createTicketTableFilters`' technician and requester
+  dropdowns could only ever offer "All", and the `raisedByName` lookup searched
+  an empty array for a value nothing read. `unassignedFilter` was state that
+  never reached `ticketParams`, the same defect as the Overdue pill. Worst of
+  it: the hook called `useSections()` and an unfiltered `useFacilities()` —
+  the whole estate — on every mount of every ticket table, and no caller read
+  either. 345 lines to 277, and two requests per table gone.
+- **Three table headers were one table header.** `AdminTableHeader` and
+  `TechTableHeader` differed from the default by one CSS class each and neither
+  rendered `subtitle`; that retires `DataTable`'s `renderHeader` escape hatch
+  with its last two consumers. The sortable-header block was hand-inlined in
+  five `TableUtils` columns beside `useSortableColumn`, which already existed
+  and which three admin pages already used — now `sortableHeader`, named for
+  what it is, since it returns a component and is called from plain factories.
 - **Four small vocabularies had two definitions each.** `timeAgo` had a fourth
   copy in `NotificationItem` (that copy contributed the "Just now" branch,
   which is better than the "0m ago" the shared one rendered — so it was kept

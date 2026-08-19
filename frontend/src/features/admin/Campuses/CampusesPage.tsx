@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { campusesService } from '@/lib/api/organizations';
 import { useCampuses } from '@/hooks/campuses/useCampuses';
 import { AdminResourceTable } from '@/components/shared/data/AdminResourceTable';
-import { useSortableColumn } from '@/hooks/useSortableColumn';
+import { sortableHeader } from '@/components/shared/data/DataTable/utils/sortableHeader';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { Campus } from '@/types/organisationStructure';
 
@@ -86,7 +86,7 @@ const CampusesPage = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Campus | null>(null);
 
-  const nameHeader = useSortableColumn('Name');
+  const nameHeader = sortableHeader('Name');
 
   const data = useMemo(() => campuses.map(c => ({
     ...c,

@@ -7,8 +7,6 @@ import * as FilterUtils from './FilterUtils';
 export interface FilterOptionsConfig {
   includeStatus?: boolean;
   includeTrade?: boolean;
-  includeTechnician?: boolean;
-  includeUser?: boolean;
 }
 
 /**
@@ -19,14 +17,10 @@ export interface FilterOptionsConfig {
  * @param config - Configuration for which filters to include
  * @returns Array of FilterOption objects for DataTable component
  * 
- * @example
- * const table = useTicketTable({ role: 'admin', fetchTechnicians: true, fetchUsers: true });
- * const filters = createTicketTableFilters(table, {
- *   includeStatus: true,
- *   includeTrade: true,
- *   includeTechnician: true,
- *   includeUser: true
- * });
+ * Status and trade only. The technician and requester dropdowns used to live
+ * here too, sourced from `table.technicians` / `table.users` — which came from
+ * props no call site ever passed, so both were permanently empty. The pages
+ * that need them (TicketsTable) build them inline from useTicketFilterOptions.
  */
 export function createTicketTableFilters(
   table: UseTicketTableResult,
@@ -35,8 +29,6 @@ export function createTicketTableFilters(
   const {
     includeStatus = true,
     includeTrade = true,
-    includeTechnician = false,
-    includeUser = false,
   } = config;
 
   const {
@@ -44,14 +36,8 @@ export function createTicketTableFilters(
     setStatusFilter,
     tradeFilter,
     setTradeFilter,
-    technicianFilter,
-    setTechnicianFilter,
-    userFilter,
-    setUserFilter,
     setPageIndex,
     trades,
-    technicians,
-    users,
     allStatuses,
   } = table;
 
@@ -82,36 +68,7 @@ export function createTicketTableFilters(
     );
   }
 
-  // Technician filter
-  if (includeTechnician) {
-    filters.push(
-      FilterUtils.createTechnicianFilter(
-        String(technicianFilter || 'all'),
-        (value) => setTechnicianFilter(value === 'all' ? null : Number(value)),
-        technicians.map((t) => ({
-          id: t.id,
-          name: `${t.first_name} ${t.last_name}`,
-        })),
-        undefined,
-        setPageIndex
-      )
-    );
-  }
 
-  // User filter (Raised By)
-  if (includeUser) {
-    filters.push(
-      FilterUtils.createUserFilter(
-        String(userFilter || 'all'),
-        (value) => setUserFilter(value === 'all' ? null : Number(value)),
-        users.map((u) => ({
-          id: u.id,
-          name: `${u.first_name} ${u.last_name}`,
-        })),
-        setPageIndex
-      )
-    );
-  }
 
   return filters;
 }

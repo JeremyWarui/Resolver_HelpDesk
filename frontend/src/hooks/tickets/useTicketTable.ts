@@ -1,12 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useTickets } from './useTickets';
 import useUpdateTicket from './useUpdateTicket';
-import { useSections } from '@/hooks/sections/useSections';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
-import { useFacilities } from '@/hooks/facilities/useFacilities';
 import { extractWritableFields } from '@/utils/ticketHelpers';
-import { formatSectionDisplay } from '@/utils/formatSection';
-import type { Ticket, Section, Facility, Technician, User, TicketsParams } from '@/types';
+import type { Ticket, TicketsParams } from '@/types';
 import { ALL_TICKET_STATUSES } from '@/constants/tickets';
 
 export interface UseTicketTableConfig {
@@ -18,12 +15,6 @@ export interface UseTicketTableConfig {
   /** Server params pinned for the page's purpose (e.g. assigned_to on the
    *  Assigned Tickets page) — applied last, not clearable via filter UI. */
   fixedParams?: Partial<TicketsParams>;
-  externalSections?: Section[];
-  externalUsers?: User[];
-  externalTechnicians?: Technician[];
-  externalFacilities?: Facility[];
-  initialData?: Ticket[];
-  onDataFetched?: (tickets: Ticket[], total: number) => void;
 }
 
 export interface UseTicketTableResult {
@@ -40,13 +31,11 @@ export interface UseTicketTableResult {
   tradeFilter: number | null;
   technicianFilter: number | null;
   userFilter: number | null;
-  unassignedFilter: boolean;
   overdueFilter: boolean;
   setStatusFilter: (status: string) => void;
   setTradeFilter: (subSection: number | null) => void;
   setTechnicianFilter: (technician: number | null) => void;
   setUserFilter: (user: number | null) => void;
-  setUnassignedFilter: (unassigned: boolean) => void;
   setOverdueFilter: (overdue: boolean) => void;
 
   // Dialog State
@@ -58,20 +47,13 @@ export interface UseTicketTableResult {
   // Data
   tickets: Ticket[];
   totalTickets: number;
-  sections: Section[];
   /** Trades in the caller's scope — the ticket-table filter's options. */
   trades: Array<{ id: number; name: string }>;
-  facilities: Facility[];
-  technicians: Technician[];
-  users: User[];
   tableData: Ticket[];
 
   // Loading States
   loading: boolean;
   ticketsLoading: boolean;
-  techniciansLoading: boolean;
-  usersLoading: boolean;
-  facilitiesLoading: boolean;
 
   // Actions
   handleViewTicket: (ticket: Ticket) => void;
@@ -106,12 +88,6 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     defaultStatusFilter = 'all',
     defaultPageSize = 10,
     skipUntilUserId = false,
-    externalSections,
-    externalUsers,
-    externalTechnicians,
-    externalFacilities,
-    initialData,
-    onDataFetched,
     fixedParams,
   } = config;
 
@@ -130,7 +106,6 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   const [tradeFilter, setTradeFilterRaw] = useState<number | null>(null);
   const [technicianFilter, setTechnicianFilterRaw] = useState<number | null>(null);
   const [userFilter, setUserFilterRaw] = useState<number | null>(null);
-  const [unassignedFilter, setUnassignedFilter] = useState<boolean>(false);
   const [overdueFilter, setOverdueFilterRaw] = useState<boolean>(false);
 
   // Any server-side filter change must restart pagination at page 1.
@@ -183,8 +158,6 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     ...(fixedParams ?? {}),
   }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, fixedParams]);
 
-  const skipInitialFetch = initialData != null && pageIndex === 0;
-
   const {
     tickets: fetchedTickets,
     totalTickets: fetchedTotalTickets,
@@ -200,52 +173,22 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   const hasNextPage = !!nextPage;
   const hasPrevPage = !!prevPage;
 
-  const tickets = useMemo(
-    () => (skipInitialFetch ? (initialData ?? []) : fetchedTickets),
-    [skipInitialFetch, initialData, fetchedTickets],
-  );
-  const totalTickets = skipInitialFetch ? (initialData?.length ?? 0) : fetchedTotalTickets;
+  const tickets = fetchedTickets;
+  const totalTickets = fetchedTotalTickets;
 
-  useEffect(() => {
-    if (!skipInitialFetch && !ticketsLoading && onDataFetched) {
-      onDataFetched(fetchedTickets, fetchedTotalTickets);
-    }
-  }, [skipInitialFetch, ticketsLoading, fetchedTickets, fetchedTotalTickets, onDataFetched]);
-
-  const { sections: fetchedSections } = useSections();
   const { subSections: trades } = useTicketFilterOptions();
-  const { facilities: fetchedFacilities, loading: facilitiesLoadingRaw } = useFacilities();
-
-  const sections = externalSections ?? fetchedSections;
-  const allTechniciansData = externalTechnicians ?? [];
-  const allFacilitiesData = externalFacilities ?? fetchedFacilities;
-  const allUsersData = useMemo(() => externalUsers ?? [], [externalUsers]);
-
-  const techniciansLoading = false; // Technicians must be provided externally now (deprecated endpoint)
-  const facilitiesLoading = externalFacilities ? false : facilitiesLoadingRaw;
-  const usersLoading = false; // Users must be provided externally now (deprecated endpoint)
 
   const { updateTicket } = useUpdateTicket();
 
   // ==================== DATA TRANSFORMATION ====================
-  const tableData = useMemo(() => {
-    return tickets.map((ticket) => {
-      const raisedByStr = typeof ticket.raised_by === 'string'
-        ? ticket.raised_by
-        : ticket.raised_by.full_name || ticket.raised_by.username;
-      const raisedByUser = allUsersData.find((user) => user.username === raisedByStr);
-      const raisedByName = raisedByUser
-        ? `${raisedByUser.first_name} ${raisedByUser.last_name}`
-        : raisedByStr;
-
-      return {
+  const tableData = useMemo(
+    () =>
+      tickets.map((ticket) => ({
         ...ticket,
         searchField: `${String(ticket.ticket_no).toLowerCase()} ${(ticket.description ?? '').toLowerCase()}`,
-        sectionName: formatSectionDisplay(ticket.section),
-        raisedByName,
-      };
-    });
-  }, [tickets, allUsersData]);
+      })),
+    [tickets],
+  );
 
   // ==================== HANDLERS ====================
   const handleViewTicket = useCallback((ticket: Ticket) => {
@@ -296,13 +239,11 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     tradeFilter,
     technicianFilter,
     userFilter,
-    unassignedFilter,
     overdueFilter,
     setStatusFilter,
     setTradeFilter,
     setTechnicianFilter,
     setUserFilter,
-    setUnassignedFilter,
     setOverdueFilter,
 
     // Dialog
@@ -314,19 +255,12 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     // Data
     tickets,
     totalTickets,
-    sections,
     trades,
-    facilities: allFacilitiesData,
-    technicians: allTechniciansData,
-    users: allUsersData,
     tableData,
 
     // Loading
     loading: ticketsLoading,
     ticketsLoading,
-    techniciansLoading,
-    usersLoading,
-    facilitiesLoading,
 
     // Actions
     handleViewTicket,
