@@ -635,6 +635,23 @@ work remaining.
 - **`report_views.py` had no test at all** — 653 lines of workbook building.
   `tests/test_reports.py` covers every report type, the Summary agreeing with
   the analytics endpoint, and a cross-campus negative.
+- **Two details-sheet saves reported success and wrote nothing.** The facility
+  branch of `handleSaveChanges` was an empty `// TODO` and fell through to
+  `toast.success('Facility updated successfully')`, so the admin saw a save
+  that never happened and the list refetched the old values. It now calls
+  `facilitiesService.updateFacility`, over the writable half only — the config
+  had been offering `type` and `status` (read-only) and `location` (not a
+  column). The technician sheet had a full add/remove section picker whose
+  save sent `{email}` alone; the comment beside it already said the server has
+  never read `sections` off that endpoint. Section membership is a role
+  assignment and belongs to `TechnicianForm`, so the picker and its three
+  handlers are gone rather than given a new backend surface.
+- **Technician sections rendered as a run of digits.** The same config listed
+  `sections` as a `readonly` view field, so it fell past the branch that maps
+  ids to names and React concatenated the array — a technician in sections 3
+  and 7 read "37", and an unassigned one showed blank rather than an em dash,
+  since `[] || '—'` is truthy. Typed `sections` now, which is what the
+  already-written `technicianSectionNames` was waiting for.
 - **"New Facility" could never create a facility.** The dialog collected
   `facility_code`, `type`, `status` and `location` and posted them: of those,
   the real field name is `code`, `type` and `status` are read-only

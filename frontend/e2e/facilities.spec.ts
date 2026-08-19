@@ -50,10 +50,32 @@ test('a facility can actually be created', async ({ page }) => {
 
   await expect(form).toBeHidden({ timeout: 20_000 });
   await page.getByPlaceholder('Search by ID or name...').fill(name);
-  await expect(page.getByRole('row', { name: new RegExp(name) })).toBeVisible();
+  const row = page.getByRole('row', { name: new RegExp(name) });
+  await expect(row).toBeVisible();
+
+  // ── Edit ───────────────────────────────────────────────────────────────────
+  // The facility branch of handleSaveChanges was an empty TODO that fell
+  // through to `toast.success('Facility updated successfully')`, so the sheet
+  // reported a save it had not made and the list refetched the old values.
+  const renamed = `${name} Renamed`;
+  await row.getByRole('button', { name: 'View' }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('button', { name: 'Edit Details' }).click();
+
+  const nameInput = sheet.locator('input').first();
+  await nameInput.fill(renamed);
+
+  const saved = page.waitForResponse(
+    (r) => r.url().includes('/facilities/') && r.request().method() === 'PATCH',
+  );
+  await sheet.getByRole('button', { name: 'Save Changes' }).click();
+  const patch = await saved;
+  expect(patch.status(), `update must persist; got ${await patch.text()}`).toBe(200);
+  expect((await patch.json()).name).toBe(renamed);
 
   // There is no delete affordance on this page, so clean up through the API
   // rather than leaving a row behind on every run.
+  await page.keyboard.press('Escape');
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const cleanup = await page.request.delete(
     `http://localhost:8000/api/v1/facilities/${body.id}/`,

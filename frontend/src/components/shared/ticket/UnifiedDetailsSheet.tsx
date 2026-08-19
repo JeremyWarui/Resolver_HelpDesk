@@ -18,12 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { DETAILS_SHEET_CONFIG, type DetailSheetField, type DetailSheetFieldType } from '@/constants/detailsSheetConfig';
 import { useSections } from '@/hooks/sections/useSections';
 import useUpdateUser from '@/hooks/users/useUpdateUser';
 import useSectionTechnicians from '@/hooks/technicians/useSectionTechnicians';
-import { sectionsService } from '@/lib/api/organizations';
+import { sectionsService, facilitiesService } from '@/lib/api/organizations';
+import { useFacilityTypes } from '@/hooks/facilities/useFacilityTypes';
 import type { Technician, Section, Facility } from '@/types';
 
 type Entity = Technician | Section | Facility;
@@ -32,10 +33,10 @@ type EntityFieldValue = string | number | number[] | null | undefined;
 
 // editFields/viewFields name fields dynamically per DETAILS_SHEET_CONFIG entry, so the
 // edit-form state is keyed by config field name rather than a fixed Entity shape.
-// `sections` is always a number[] (technician section assignments); other fields are text inputs.
+// Every editable field is a text or select value; technician sections are shown
+// but not edited here.
 interface EditedValues {
-  sections?: number[];
-  [key: string]: string | number[] | undefined;
+  [key: string]: string | undefined;
 }
 
 // Entity is a union of unrelated shapes (Technician | Section | Facility); the details
@@ -44,8 +45,8 @@ function getEntityField(entity: Entity, fieldName: string): EntityFieldValue {
   return (entity as unknown as Record<string, EntityFieldValue>)[fieldName];
 }
 
-function asString(value: string | number[] | undefined): string {
-  return typeof value === 'string' ? value : '';
+function asString(value: string | undefined): string {
+  return value ?? '';
 }
 
 interface UnifiedDetailsSheetProps {
@@ -66,9 +67,9 @@ export function UnifiedDetailsSheet({
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [isUpdating, setIsUpdating] = useState(false);
   const [editedValues, setEditedValues] = useState<EditedValues>({});
-  const [sectionInputs, setSectionInputs] = useState<number[]>([0]);
 
   const { sections } = useSections();
+  const { facilityTypes } = useFacilityTypes();
   const { updateUser } = useUpdateUser();
   const config = DETAILS_SHEET_CONFIG[entityType];
 
@@ -95,14 +96,8 @@ export function UnifiedDetailsSheet({
     if (entity) {
       const initialValues: EditedValues = {};
       config.editFields.forEach(field => {
-        if (field.type === 'sections') {
-          const techSections = (entity as Technician).sections || [];
-          initialValues[field.name] = techSections;
-          setSectionInputs(techSections.length ? techSections : [0]);
-        } else {
-          const raw = getEntityField(entity, field.name);
-          initialValues[field.name] = raw != null ? String(raw) : '';
-        }
+        const raw = getEntityField(entity, field.name);
+        initialValues[field.name] = raw != null ? String(raw) : '';
       });
       setEditedValues(initialValues);
     }
@@ -114,29 +109,6 @@ export function UnifiedDetailsSheet({
     setMode('view');
     onOpenChange(false);
     setEditedValues({});
-  };
-
-  const handleAddSection = () => {
-    setSectionInputs(prev => [...prev, 0]);
-  };
-
-  const handleRemoveSection = (index: number) => {
-    if (sectionInputs.length > 1) {
-      setSectionInputs(prev => prev.filter((_, i) => i !== index));
-      const currentSections = editedValues.sections || [];
-      setEditedValues({
-        ...editedValues,
-        sections: currentSections.filter((_, i) => i !== index),
-      });
-    }
-  };
-
-  const handleSectionChange = (index: number, sectionId: string) => {
-    const id = parseInt(sectionId);
-    const currentSections = editedValues.sections || [];
-    const newSections = [...currentSections];
-    newSections[index] = id;
-    setEditedValues({ ...editedValues, sections: newSections });
   };
 
   const handleSaveChanges = async () => {
@@ -155,7 +127,11 @@ export function UnifiedDetailsSheet({
           description: asString(editedValues.description),
         });
       } else if (entityType === 'facility') {
-        // TODO: implement facility update service
+        await facilitiesService.updateFacility(entity.id, {
+          name: asString(editedValues.name),
+          code: asString(editedValues.code),
+          facility_type: Number(editedValues.facility_type),
+        });
       }
 
       toast.success(`${entityType.charAt(0).toUpperCase() + entityType.slice(1)} updated successfully`);
@@ -240,50 +216,23 @@ export function UnifiedDetailsSheet({
         </Select>
       );
     }
-    if (field.type === 'sections') {
+    if (field.type === 'facility-type') {
       return (
-        <div className="space-y-2">
-          {sectionInputs.map((_, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <Select
-                value={(editedValues.sections?.[idx] || '').toString()}
-                onValueChange={(value) => handleSectionChange(idx, value)}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select a section" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sections.map((s) => (
-                    <SelectItem key={s.id} value={s.id.toString()}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {sectionInputs.length > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRemoveSection(idx)}
-                  className="px-2"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleAddSection}
-            className="w-full"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Section
-          </Button>
-        </div>
+        <Select
+          value={asString(editedValues[field.name])}
+          onValueChange={(value) => setEditedValues({ ...editedValues, [field.name]: value })}
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder="Select type" />
+          </SelectTrigger>
+          <SelectContent>
+            {facilityTypes.map((t) => (
+              <SelectItem key={t.id} value={String(t.id)}>
+                {t.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       );
     }
   };
@@ -406,12 +355,8 @@ export function UnifiedDetailsSheet({
                       if (entity) {
                         const resetValues: EditedValues = {};
                         config.editFields.forEach(field => {
-                          if (field.type === 'sections') {
-                            resetValues[field.name] = (entity as Technician).sections || [];
-                          } else {
-                            const raw = getEntityField(entity, field.name);
-                            resetValues[field.name] = raw != null ? String(raw) : '';
-                          }
+                          const raw = getEntityField(entity, field.name);
+                          resetValues[field.name] = raw != null ? String(raw) : '';
                         });
                         setEditedValues(resetValues);
                       }
