@@ -10,7 +10,6 @@ The seed builds 39 users and 45 tickets, so this module is deliberately one
 test with several assertions rather than several tests each re-seeding.
 """
 
-import os
 
 import pytest
 from django.core.management import call_command

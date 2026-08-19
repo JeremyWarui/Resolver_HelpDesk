@@ -216,3 +216,26 @@ def nrb_plumbing_ticket(requester, nrb_section, plumbing, priorities):
 @pytest.fixture
 def msa_electrical_ticket(msa_requester, msa_section, electrical, priorities):
     return factories.make_ticket(msa_requester, msa_section, electrical)
+
+
+# ── Escalation ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def escalation_rules(low_priority):
+    """HOS at 1 day, HOD at 2 days, for the priority tickets open at.
+
+    Shared because test_escalation (does the level move?) and test_notifications
+    (does anyone hear about it?) drive the same engine from opposite sides and
+    had a copy each.
+    """
+    from apps.sla.models import EscalationRule
+
+    return [
+        EscalationRule.objects.create(
+            priority=low_priority, to_level="hos", threshold_minutes=1440, order=1
+        ),
+        EscalationRule.objects.create(
+            priority=low_priority, to_level="hod", threshold_minutes=2880, order=2
+        ),
+    ]

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.common.pagination import ConfigListPagination
-from apps.common.permissions import IsAdminGroup
+from apps.common.permissions import IsAdminOrReadOnly
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
 
@@ -49,12 +49,8 @@ class FacilityViewSet(viewsets.ModelViewSet):
     for the ticket creation location dropdown (§5.3)."""
 
     serializer_class = FacilitySerializer
+    permission_classes = [IsAdminOrReadOnly]
     pagination_class = ConfigListPagination
-
-    def get_permissions(self):
-        if self.action in ("list", "retrieve"):
-            return [IsAuthenticated()]
-        return [IsAdminGroup()]
 
     def get_queryset(self):
         qs = (

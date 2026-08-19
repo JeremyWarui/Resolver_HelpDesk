@@ -10,7 +10,6 @@ rewrite the history of a job that closed months ago.
 import pytest
 from django.urls import reverse
 
-from apps.org.models import ServiceItem
 from apps.tickets.models import Ticket
 from tests import factories
 
@@ -19,7 +18,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def item(electrical):
-    return ServiceItem.objects.create(sub_section=electrical, name="Dead socket")
+    return factories.make_service_item(electrical, "Dead socket")
 
 
 @pytest.fixture

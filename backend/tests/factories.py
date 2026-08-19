@@ -9,6 +9,8 @@ Every builder is safe to call repeatedly — the org-level ones are get_or_creat
 so two tests asking for `campus("NRB")` get the same row.
 """
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -177,3 +179,16 @@ def make_ticket(raised_by, section, sub_section, service_item=None, **kwargs):
         service_item=service_item or make_service_item(sub_section),
         **kwargs,
     )
+
+
+def age_ticket(ticket, **delta):
+    """Backdate a ticket so it has genuinely been waiting.
+
+    `created_at` is auto_now_add and cannot be assigned, so this is an UPDATE
+    followed by a refresh. Two test modules had a copy each.
+    """
+    Ticket.objects.filter(pk=ticket.pk).update(
+        created_at=timezone.now() - timedelta(**delta)
+    )
+    ticket.refresh_from_db()
+    return ticket

@@ -15,7 +15,6 @@ import pytest
 from django.urls import reverse
 
 from apps.tickets.services.lifecycle import transition_status
-from tests import factories
 
 pytestmark = pytest.mark.django_db
 

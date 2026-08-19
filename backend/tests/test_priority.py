@@ -12,6 +12,7 @@ import pytest
 from django.urls import reverse
 
 from apps.org.models import ServiceItem, SubSection
+from tests import factories
 from apps.tickets.models import Ticket, TicketLog
 
 pytestmark = pytest.mark.django_db
@@ -29,7 +30,7 @@ def test_catalogue_carries_no_priority():
 def test_new_ticket_opens_at_the_lowest_priority(
     api, requester, nrb_section, electrical, priorities, low_priority, somewhere
 ):
-    item = ServiceItem.objects.create(sub_section=electrical, name="Dead socket")
+    item = factories.make_service_item(electrical, "Dead socket")
     api.force_authenticate(requester)
     response = api.post(
         reverse("ticket-list"),

@@ -52,6 +52,7 @@ from apps.org.models import (
     SubSection,
 )
 from apps.sla.models import EscalationRule, Priority
+from apps.sla.services.due_dates import compute_due_dates
 from apps.tickets.models import Ticket, TicketComment, TicketFeedback, TicketLocation, TicketLog
 
 User = get_user_model()
@@ -722,23 +723,12 @@ class Command(BaseCommand):
                  priorities["High"], priorities["Critical"]]
             )
 
-            ticket = Ticket.objects.create(
-                raised_by=requester,
-                requester_campus=section.campus_department.campus,
-                service_item=item,
-                section=section,
-                sub_section=sub_section,
-                priority=priority,
-                assigned_to=None if status == "open" else technician,
+            ticket = self._create_ticket(
+                requester=requester, section=section, sub_section=sub_section,
+                item=item, priority=priority, status=status,
+                technician=technician, created_at=created_at,
                 description=f"{item.name} reported by {requester.get_full_name()}.",
-                contact_phone=requester.phone_number,
-                status=status,
-                response_due_at=created_at + timedelta(minutes=priority.response_minutes),
-                resolution_due_at=created_at + timedelta(minutes=priority.resolution_minutes),
             )
-            # created_at is auto_now_add; rewrite it so the demo spans two weeks.
-            Ticket.objects.filter(pk=ticket.pk).update(created_at=created_at)
-            ticket.refresh_from_db()
 
             self._attach_location(ticket, facilities_by_campus[campus_code], rng)
             self._write_history(ticket, technician, created_at, rng)
@@ -802,32 +792,46 @@ class Command(BaseCommand):
                     [priorities["Low"], priorities["Medium"], priorities["High"]]
                 )
                 created_at = now - timedelta(minutes=demo_age_minutes(rng))
-                ticket = Ticket.objects.create(
-                    raised_by=requester,
-                    requester_campus=section.campus_department.campus,
-                    service_item=item,
-                    section=section,
-                    sub_section=sub_section,
-                    priority=priority,
-                    assigned_to=None if status == "open" else technician,
+                ticket = self._create_ticket(
+                    requester=requester, section=section, sub_section=sub_section,
+                    item=item, priority=priority, status=status,
+                    technician=technician, created_at=created_at,
                     description=f"{item.name} reported at {facility.name}.",
-                    contact_phone=requester.phone_number,
-                    status=status,
-                    response_due_at=created_at + timedelta(minutes=priority.response_minutes),
-                    resolution_due_at=created_at + timedelta(minutes=priority.resolution_minutes),
                 )
-                Ticket.objects.filter(pk=ticket.pk).update(created_at=created_at)
-                ticket.refresh_from_db()
-                builder = LOCATION_VALUES.get(facility.facility_type.code)
-                TicketLocation.objects.create(
-                    ticket=ticket,
-                    facility_type=facility.facility_type,
-                    facility=facility,
-                    values=builder(rng) if builder else {},
-                )
+                # Pinned to this facility, not drawn at random: the whole point
+                # of a chronic fault is that it recurs in one place.
+                self._write_location(ticket, facility.facility_type, facility, rng)
                 self._write_history(ticket, technician, created_at, rng)
                 created += 1
         return created
+
+    def _create_ticket(self, *, requester, section, sub_section, item, priority,
+                       status, technician, created_at, description):
+        """Create one demo ticket and back-date it.
+
+        Both generators below need exactly this, and they had a copy each —
+        including their own hand-rolled SLA arithmetic, which is what
+        compute_due_dates() exists to prevent a second definition of.
+        """
+        response_due_at, resolution_due_at = compute_due_dates(priority, created_at)
+        ticket = Ticket.objects.create(
+            raised_by=requester,
+            requester_campus=section.campus_department.campus,
+            service_item=item,
+            section=section,
+            sub_section=sub_section,
+            priority=priority,
+            assigned_to=None if status == "open" else technician,
+            description=description,
+            contact_phone=requester.phone_number,
+            status=status,
+            response_due_at=response_due_at,
+            resolution_due_at=resolution_due_at,
+        )
+        # created_at is auto_now_add; rewrite it so the demo spans two weeks.
+        Ticket.objects.filter(pk=ticket.pk).update(created_at=created_at)
+        ticket.refresh_from_db()
+        return ticket
 
     def _attach_location(self, ticket, facilities, rng):
         """Every ticket says where it is — there is no branch that leaves one
@@ -856,7 +860,13 @@ class Command(BaseCommand):
             type_code = rng.choice(unnamed)
             facility_type = FacilityType.objects.get(code=type_code)
 
-        builder = LOCATION_VALUES.get(type_code)
+        self._write_location(ticket, facility_type, facility, rng)
+
+    @staticmethod
+    def _write_location(ticket, facility_type, facility, rng):
+        """The type's own extra fields come from LOCATION_VALUES — mirroring
+        TYPE_SPECS, which is what the API validates a real submission against."""
+        builder = LOCATION_VALUES.get(facility_type.code)
         TicketLocation.objects.create(
             ticket=ticket,
             facility_type=facility_type,

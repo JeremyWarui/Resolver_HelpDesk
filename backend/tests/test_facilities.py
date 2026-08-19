@@ -9,7 +9,7 @@ import pytest
 from django.urls import reverse
 from rest_framework.serializers import ValidationError
 
-from apps.facilities.models import Facility, FacilityType
+from apps.facilities.models import Facility
 from apps.facilities.validators import TYPE_SPECS, validate_location
 from apps.tickets.models import Ticket
 from tests import factories
@@ -205,3 +205,30 @@ def test_one_campus_may_not_have_two_facilities_of_the_same_name(nrb, facility_t
         Facility.objects.create(
             campus=nrb, facility_type=facility_types["building"], name="Administration Block"
         )
+
+
+# ── Who may change the registry ───────────────────────────────────────────────
+
+
+def test_the_facility_registry_is_readable_by_everyone_and_writable_by_admins(
+    api, requester, admin_user, nrb, facility_types
+):
+    """Read-open, write-admin, in one place. The viewset used to spell this out
+    by hand with a get_permissions() override that reimplemented the shared
+    IsAdminOrReadOnly, and nothing anywhere proved the write half worked."""
+    from django.urls import reverse
+
+    url = reverse("facility-list")
+    payload = {
+        "campus": nrb.pk,
+        "facility_type": facility_types["office_block"].pk,
+        "name": "Registry Block",
+    }
+
+    api.force_authenticate(requester)
+    assert api.get(url).status_code == 200
+    assert api.post(url, payload, format="json").status_code == 403
+
+    api.force_authenticate(admin_user)
+    assert api.post(url, payload, format="json").status_code == 201
+    assert Facility.objects.filter(name="Registry Block").exists()

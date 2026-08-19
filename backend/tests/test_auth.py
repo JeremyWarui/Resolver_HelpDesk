@@ -7,7 +7,6 @@ nothing fails.
 """
 
 import pytest
-from django.urls import reverse
 
 from apps.accounts.models import RoleAssignment
 from apps.common.roles import resolve_role

@@ -8,6 +8,7 @@ Options:
 """
 
 from django.core.management.base import BaseCommand
+from django.db import transaction
 
 from apps.sla.services.escalation import run_escalations
 
@@ -23,10 +24,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        dry_run = options["dry_run"]
-        if dry_run:
+        if options["dry_run"]:
+            # Run the real thing and roll it back, rather than reimplementing
+            # the threshold logic to preview it. A second copy of that rule is
+            # how a dry run starts disagreeing with the run it predicts — and
+            # the previous version dodged that by reporting nothing at all.
+            with transaction.atomic():
+                count = run_escalations()
+                transaction.set_rollback(True)
             self.stdout.write(
-                self.style.WARNING("DRY RUN MODE — no changes will be made.")
+                self.style.WARNING(
+                    f"DRY RUN — {count} ticket(s) would escalate. Nothing written."
+                )
             )
             return
 
