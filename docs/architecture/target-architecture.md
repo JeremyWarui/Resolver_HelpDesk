@@ -705,6 +705,17 @@ work remaining.
   one `pagination` object with `onPaginationChange`, and
   `AdminResourceTable`'s redundant `pageSize`/`onPageSizeChange` props are gone
   — it already receives the `table`, which carries both.
+- **`DataTable` printed the words "Data Table" on screen.** Its `title` prop
+  defaulted to that placeholder, and `DefaultTableHeader` already renders no
+  header at all when the title is absent — so the default did nothing except
+  caption the two tables whose callers deliberately omit a title, the
+  requester's Recent activity and SLA Tracking, each already sitting under its
+  own real heading. Default removed.
+- **`formatRelativeTime` had no singular.** Ticket lists read "1 hours ago",
+  and a ticket seconds old read "0 minutes ago" — the same defect `timeAgo`
+  had, fixed there earlier and never here. This is the fourth relative-time
+  formatter in the codebase and the other three are genuinely different
+  questions (compact, duration, countdown), so it stays where it is.
 - **The facility register only ever held 20 of the 37 buildings.** Fixing the
   controls above exposed the half underneath: `/facilities/` is paginated by
   `ConfigListPagination` at 20 a page, and `toArray()` — the DRF list
@@ -742,8 +753,11 @@ work remaining.
   *page* is still called Pending Work; renaming a navigation destination is a
   separate call. The dashboard's status doughnut was labelling its slices with
   the raw wire values — `in_progress`, `pending` — so it went through
-  `STATUS_LABELS` too; that one was only visible by opening the page, since
-  nothing about `name: s.status` looks wrong in the source.
+  `STATUS_LABELS` too, as did the Analytics doughnut in `RoleAnalyticsView`,
+  which stripped the underscore and stopped ("in progress", "pending",
+  lowercase). Neither looks wrong in the source — `name: s.status` reads fine —
+  and the requester's **On Hold** stat card still carried a badge saying
+  "Pending". A role-by-role walk of all 21 pages is what found them.
 - **Four cards labelled the Overdue count "Breached".** `aggregate()`'s
   `breached` gates on `_q_running`, so it counts tickets that are live and past
   target — Overdue, in the vocabulary §"SLA: settled ≠ running" defines. A

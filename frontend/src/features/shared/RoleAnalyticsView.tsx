@@ -16,6 +16,8 @@ import FacilityTradeChart from '@/components/shared/data/FacilityTradeChart';
 import { KPICardGrid, type KPIMetric } from '@/components/shared/data/KPICardGrid';
 import { AppPieChart } from '@/components/shared/data/AppPieChart';
 import ChartCard from '@/components/shared/data/ChartCard';
+import { STATUS_LABELS } from '@/constants/tickets';
+import type { Ticket } from '@/types';
 import InsightsPanel from '@/components/shared/data/InsightsPanel';
 import LazyMount from '@/components/shared/LazyMount';
 import {
@@ -146,8 +148,11 @@ export function RoleAnalyticsView({ role }: RoleAnalyticsViewProps) {
     },
   ];
 
+  // Through STATUS_LABELS, like every other status on screen. Replacing the
+  // underscore got "in progress" and left "pending" — lowercase wire values in
+  // a legend beside badges reading "In Progress" and "On Hold".
   const statusData = (series?.status_distribution ?? []).map(s => ({
-    name: s.status.replace(/_/g, ' '),
+    name: STATUS_LABELS[s.status as Ticket['status']] ?? s.status.replace(/_/g, ' '),
     value: s.count,
   }));
 

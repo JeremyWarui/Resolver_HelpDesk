@@ -69,7 +69,11 @@ export interface DataTableProps<TData, TValue> {
 const DataTable = <TData, TValue>({
   columns,
   data,
-  title = "Data Table",
+  // No default. `DefaultTableHeader` already renders no header when the title
+  // is absent, so a placeholder here only meant the two callers that omit it —
+  // the requester's Recent activity and SLA Tracking — printed the literal
+  // words "Data Table" on screen under their real heading.
+  title,
   subtitle,
   searchPlaceholder = "Search...",
   emptyStateMessage = "No data found",

@@ -25,10 +25,15 @@ const formatRelativeTime = (dateString: string) => {
   const diffInHours = diffInMs / (1000 * 60 * 60);
 
   if (diffInHours < 24) {
+    // Singular at 1, and "Just now" under a minute — this rendered "1 hours
+    // ago" and, for a ticket seconds old, "0 minutes ago".
     if (diffInHours < 1) {
-      return `${Math.floor(diffInMs / (1000 * 60))} minutes ago`;
+      const mins = Math.floor(diffInMs / (1000 * 60));
+      if (mins < 1) return 'Just now';
+      return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
     }
-    return `${Math.floor(diffInHours)} hours ago`;
+    const hrs = Math.floor(diffInHours);
+    return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} ago`;
   }
   return date.toLocaleDateString(undefined, {
     year: "numeric",

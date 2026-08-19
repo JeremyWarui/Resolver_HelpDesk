@@ -480,7 +480,7 @@ export const USER_PERSONAL_STATS: StatDefinition<UserPersonalData>[] = [
         description: 'Awaiting more information',
         badge:
           count > 0
-            ? { value: 'Pending', color: 'amber' }
+            ? { value: 'On hold', color: 'amber' }
             : { value: 'None', color: 'gray' },
       };
     },
