@@ -202,9 +202,7 @@ def test_a_role_cannot_widen_its_own_view_with_a_query_param():
 
 
 def test_technicians_are_never_ranked_against_peers():
-    cfg = ROLE_VIEWS["technician"]
-    assert cfg["comparison"] is False
-    assert "technician" not in cfg["allowed_group_by"]
+    assert "technician" not in ROLE_VIEWS["technician"]["allowed_group_by"]
 
 
 def test_an_unknown_role_gets_the_requester_view():
@@ -379,11 +377,9 @@ def test_a_paused_ticket_shows_as_blocked_not_breached(
 
 def test_a_technician_is_never_served_a_peer_ranking(api, nrb_electrician):
     """The report must not imply a league table, because the backend refuses to
-    build one: `comparison` is False and `technician` is not an allowed
-    group_by for them."""
-    from apps.analytics.role_config import ROLE_VIEWS, resolve_group_by
+    build one: asking for it by hand does not get it."""
+    from apps.analytics.role_config import resolve_group_by
 
-    assert ROLE_VIEWS["technician"]["comparison"] is False
     assert resolve_group_by("technician", "technician") != "technician"
 
 

@@ -19,9 +19,7 @@ export interface User {
   sections: number[];
   section_names?: string[];
   primary_campus_id: number | null;
-  primary_campus_display: string | null;
   primary_department_id: number | null;
-  primary_department_display: string | null;
   primary_department_name?: string | null;
   /** The active role assignment's single section (technician/hos only). */
   section_name?: string | null;

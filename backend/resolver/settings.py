@@ -77,7 +77,6 @@ INSTALLED_APPS = [
     "apps.notifications",
     # third-party
     "rest_framework",
-    "rest_framework.authtoken",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",

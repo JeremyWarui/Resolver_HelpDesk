@@ -6,11 +6,15 @@ only three things vary by role and they all live here:
 
   * scope          — applied server-side via scoped_ticket_qs(user, role)
   * default_group_by + allowed_group_by — the comparison dimension(s)
-  * headline / insights / comparison    — what the role is allowed to see
+  * insights       — which prescriptive computations the role is served
 
-The frontend mirrors this shape so one generic view can render every role.
-`comparison=False` plus the absence of "technician" from allowed_group_by is what
-prevents a technician from seeing peer rankings.
+Those three are what the code reads, so those three are what is here. Keys
+describing what a role "may see" used to sit alongside them, unread by anything
+— the frontend keeps its own copy of that shape — and config that documents an
+intention nobody enforces is worse than no config at all.
+
+The absence of "technician" from a technician's allowed_group_by is what
+prevents them from seeing peer rankings; `resolve_group_by` enforces it.
 """
 
 # Dimensions the analytics engine can group by. Backend validates a requested
@@ -50,13 +54,6 @@ ROLE_VIEWS = {
             "facility",
             "pending_reason",
         ],
-        "headline": [
-            "sla_resolution_pct",
-            "csat",
-            "net_flow",
-            "open_backlog",
-            "escalation_rate",
-        ],
         "insights": [
             "bottleneck",
             "sla_leak",
@@ -64,9 +61,6 @@ ROLE_VIEWS = {
             "capacity",
             "csat_driver",
         ],
-        "facilities": True,
-        "ticket_flow": True,
-        "comparison": True,
     },
     "manager": {
         "default_group_by": "campus",
@@ -78,13 +72,6 @@ ROLE_VIEWS = {
             "facility",
             "pending_reason",
         ],
-        "headline": [
-            "sla_resolution_pct",
-            "resolution_p50",
-            "open_backlog",
-            "csat",
-            "escalation_rate",
-        ],
         # `recurring_fault` belongs here most of all: "this item at this
         # building was raised five times — fix it properly rather than patching
         # it again" is a capital-works decision, and the manager is the only
@@ -92,9 +79,6 @@ ROLE_VIEWS = {
         # did not, so the insight reached everyone except the person who could
         # act on it.
         "insights": ["bottleneck", "sla_leak", "capacity", "recurring_fault"],
-        "facilities": True,
-        "ticket_flow": True,
-        "comparison": True,
     },
     "hod": {
         # An HOD has exactly one Maintenance section, so the useful split
@@ -108,17 +92,7 @@ ROLE_VIEWS = {
             "technician",
             "pending_reason",
         ],
-        "headline": [
-            "sla_resolution_pct",
-            "open_backlog",
-            "net_flow",
-            "unassigned",
-            "escalation_rate",
-        ],
         "insights": ["bottleneck", "recurring_fault", "sla_leak"],
-        "facilities": True,
-        "ticket_flow": True,
-        "comparison": True,
     },
     "hos": {
         "default_group_by": "technician",
@@ -130,30 +104,18 @@ ROLE_VIEWS = {
             "facility",
             "pending_reason",
         ],
-        "headline": ["sla_resolution_pct", "unassigned", "open_backlog", "csat"],
         "insights": ["bottleneck", "recurring_fault", "sla_leak"],
-        "facilities": True,
-        "ticket_flow": True,
-        "comparison": True,
     },
     "technician": {
         # Trend-only: compares the technician to their own past, never to peers.
         "default_group_by": "time",
         "allowed_group_by": ["time", "status"],
-        "headline": ["my_open", "my_resolved", "my_csat", "my_resolution_p50"],
         "insights": [],
-        "facilities": False,
-        "ticket_flow": False,
-        "comparison": False,
     },
     "user": {
         "default_group_by": "status",
         "allowed_group_by": ["status", "time"],
-        "headline": ["my_open", "my_resolved", "my_avg_resolution"],
         "insights": [],
-        "facilities": False,
-        "ticket_flow": False,
-        "comparison": False,
     },
 }
 

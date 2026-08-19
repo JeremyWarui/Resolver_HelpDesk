@@ -313,9 +313,7 @@ class ScopedTechnicianRosterView(APIView):
                     "sub_section_names": [],
                     "campus_name": None,
                     "primary_campus_id": None,
-                    "primary_campus_display": None,
                     "primary_department_id": None,
-                    "primary_department_display": None,
                     "primary_department_name": None,
                 }
             sec = link.section
@@ -336,9 +334,7 @@ class ScopedTechnicianRosterView(APIView):
                 dept = cd.department
                 entry["campus_name"] = campus.name
                 entry["primary_campus_id"] = campus.id
-                entry["primary_campus_display"] = str(campus)
                 entry["primary_department_id"] = dept.id
-                entry["primary_department_display"] = str(dept)
                 entry["primary_department_name"] = dept.name
 
         return Response(sorted(techs.values(), key=lambda t: t["name"].lower()))

@@ -16,9 +16,7 @@ export interface Technician {
   sub_section_names?: string[];
   campus_name: string | null;          // primary_campus.name — plain name e.g. "Nairobi"
   primary_campus_id: number | null;
-  primary_campus_display: string | null; // Campus.__str__() e.g. "KSG-NRB: Nairobi"
   primary_department_id: number | null;
-  primary_department_display: string | null;
   primary_department_name?: string | null;
 }
 

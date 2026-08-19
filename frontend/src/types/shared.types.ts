@@ -131,9 +131,7 @@ export interface AuthUser {
   role: UserRole;
   campus_name: string | null;
   primary_campus_id: number | null;
-  primary_campus_display: string | null;
   primary_department_id: number | null;
-  primary_department_display: string | null;
   sections: number[];
 }
 

@@ -207,9 +207,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
     sections = serializers.SerializerMethodField()
     section_names = serializers.SerializerMethodField()
     primary_campus_id = serializers.SerializerMethodField()
-    primary_campus_display = serializers.SerializerMethodField()
     primary_department_id = serializers.SerializerMethodField()
-    primary_department_display = serializers.SerializerMethodField()
     primary_department_name = serializers.SerializerMethodField()
     home_campus_id = serializers.SerializerMethodField()
     home_campus_name = serializers.SerializerMethodField()
@@ -228,9 +226,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "sections",
             "section_names",
             "primary_campus_id",
-            "primary_campus_display",
             "primary_department_id",
-            "primary_department_display",
             "primary_department_name",
             "home_campus_id",
             "home_campus_name",
@@ -270,23 +266,15 @@ class UserAdminSerializer(serializers.ModelSerializer):
         c = campus_from_role_assignment(ra)
         return c.pk if c else None
 
-    def get_primary_campus_display(self, obj):
-        ra = _primary_ra(obj)
-        c = campus_from_role_assignment(ra)
-        return c.name if c else None
-
     def get_primary_department_id(self, obj):
         ra = _primary_ra(obj)
         d = department_from_role_assignment(ra)
         return d.pk if d else None
 
-    def get_primary_department_display(self, obj):
+    def get_primary_department_name(self, obj):
         ra = _primary_ra(obj)
         d = department_from_role_assignment(ra)
         return d.name if d else None
-
-    def get_primary_department_name(self, obj):
-        return self.get_primary_department_display(obj)
 
 
 class UserCreateSerializer(serializers.Serializer):

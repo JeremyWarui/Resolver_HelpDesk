@@ -66,9 +66,6 @@ class _SectionMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     section_type_id = serializers.IntegerField()
     # section_type / campus_department are in select_related on ticket queryset (no N+1)
-    section_type_name = serializers.CharField(
-        source="section_type.name", read_only=True
-    )
     name = serializers.CharField(source="section_type.name", read_only=True)
     campus_code = serializers.CharField(
         source="campus_department.campus.code", read_only=True

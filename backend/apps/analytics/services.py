@@ -159,11 +159,18 @@ def created_window(qs, date_range):
     )
 
 
-def resolved_window(qs, date_range):
-    """Narrow to tickets *resolved* inside the window (settled outcomes only)."""
+def resolved_window(qs, start, end):
+    """Narrow to tickets *resolved* between `start` and `end` (settled only).
+
+    Takes bare bounds rather than a `date_range` dict like `created_window`,
+    because aggregate() needs this same predicate for the comparison window
+    too. Settledness is half the meaning: `resolved_at` is set on the way into
+    `resolved`, and a ticket reopened afterwards clears it, so the status check
+    is what keeps a live ticket out of a resolved-in-window count.
+    """
     return qs.filter(
-        resolved_at__gte=date_range["date_from"],
-        resolved_at__lte=date_range["date_to"],
+        resolved_at__gte=start,
+        resolved_at__lte=end,
         status__in=TERMINAL_STATUSES,
     )
 
@@ -604,16 +611,8 @@ def aggregate(
     window_qs = scoped_qs.filter(created_at__gte=date_from, created_at__lte=date_to)
 
     # Resolved: resolved_at in window (independent of created_at window)
-    resolved_qs = scoped_qs.filter(
-        resolved_at__gte=date_from,
-        resolved_at__lte=date_to,
-        status__in=TERMINAL_STATUSES,
-    )
-    prior_resolved_qs = scoped_qs.filter(
-        resolved_at__gte=prior_from,
-        resolved_at__lte=prior_to,
-        status__in=TERMINAL_STATUSES,
-    )
+    resolved_qs = resolved_window(scoped_qs, date_from, date_to)
+    prior_resolved_qs = resolved_window(scoped_qs, prior_from, prior_to)
 
     # ── Combined scalar counts ────────────────────────────────────────────────
     # One pass over scoped_qs with conditional FILTER aggregates replaces ~19
@@ -721,11 +720,7 @@ def aggregate(
     }
     resolved_by_period = {
         row["period"].date().isoformat(): row["count"]
-        for row in scoped_qs.filter(
-            resolved_at__gte=date_from,
-            resolved_at__lte=date_to,
-            status__in=TERMINAL_STATUSES,
-        )
+        for row in resolved_window(scoped_qs, date_from, date_to)
         .annotate(period=trunc_fn("resolved_at"))
         .values("period")
         .annotate(count=Count("id"))

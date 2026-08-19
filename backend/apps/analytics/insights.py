@@ -17,9 +17,9 @@ from django.utils import timezone
 
 from apps.analytics.services import (
     RUNNING_STATUSES,
-    TERMINAL_STATUSES,
     _percentile,
     created_window,
+    resolved_window,
 )
 from apps.tickets.models import TicketFeedback
 
@@ -197,10 +197,8 @@ def _capacity(scoped_qs, date_range):
     """Persistent positive net flow — backlog compounding, a staffing signal."""
     window = created_window(scoped_qs, date_range)
     created = window.count()
-    resolved = scoped_qs.filter(
-        resolved_at__gte=date_range["date_from"],
-        resolved_at__lte=date_range["date_to"],
-        status__in=TERMINAL_STATUSES,
+    resolved = resolved_window(
+        scoped_qs, date_range["date_from"], date_range["date_to"]
     ).count()
     net = created - resolved
     if created < 5 or net < max(5, 0.2 * created):
@@ -222,10 +220,8 @@ def _capacity(scoped_qs, date_range):
 
 def _csat_driver(scoped_qs, date_range):
     """Does slowness drive dissatisfaction? Compare CSAT for slowest 10% vs rest."""
-    resolved_qs = scoped_qs.filter(
-        resolved_at__gte=date_range["date_from"],
-        resolved_at__lte=date_range["date_to"],
-        status__in=TERMINAL_STATUSES,
+    resolved_qs = resolved_window(
+        scoped_qs, date_range["date_from"], date_range["date_to"]
     )
     rows = TicketFeedback.objects.filter(ticket__in=resolved_qs).values_list(
         "rating",
