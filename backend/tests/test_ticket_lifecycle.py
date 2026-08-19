@@ -512,3 +512,40 @@ def test_reassignment_keeps_the_earlier_note(
         ).reason
         == "second note"
     )
+
+
+# ── Rating a finished job ─────────────────────────────────────────────────────
+
+
+def _rate(api, ticket, **payload):
+    return api.post(
+        reverse("ticket-feedback", args=[ticket.pk]), payload, format="json"
+    )
+
+
+def test_the_requester_rates_their_resolved_ticket(
+    api, requester, nrb_electrician, nrb_electrical_ticket
+):
+    """The happy path had no test — only the outsider 403s and the list
+    endpoint did — which left the view's own fetch unexercised while it was
+    the one action view still using a bare get_object_or_404."""
+    t = nrb_electrical_ticket
+    t.assigned_to = nrb_electrician
+    t.save(update_fields=["assigned_to"])
+    transition_status(t, "assigned", nrb_electrician)
+    transition_status(t, "in_progress", nrb_electrician)
+    transition_status(t, "resolved", nrb_electrician)
+
+    api.force_authenticate(requester)
+    response = _rate(api, t, rating=5, comment="Same morning, sorted.")
+    assert response.status_code == 201, response.content
+
+    assert TicketLog.objects.filter(ticket=t, event_type="rated").get().to_value == "5"
+    # Second attempt is refused: a rating is the requester's one verdict.
+    assert _rate(api, t, rating=1).status_code == 409
+
+
+def test_an_unresolved_ticket_cannot_be_rated(api, requester, nrb_electrical_ticket):
+    """Rating open work would measure an outcome that has not happened."""
+    api.force_authenticate(requester)
+    assert _rate(api, nrb_electrical_ticket, rating=5).status_code == 400

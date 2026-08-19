@@ -590,8 +590,6 @@ work remaining.
    `fade-in-0` / `zoom-in-95` class is a no-op and overlays snap open. Reproduced
    verbatim to preserve the current look; wiring it up would double-wrap the
    already-`oklch()` tokens and break every colour. Tech debt, recorded not fixed.
-3. `process_auto_escalations --dry-run` prints a warning and returns without
-   reporting what it would have changed.
 
 ### Fixed since
 
@@ -609,6 +607,34 @@ work remaining.
   nondeterministic had a campus ever had two matching active sections. It now
   orders by `pk`, with a comment saying why. (Fixed in `6bdf179`; this list had
   not caught up.)
+- **`process_auto_escalations --dry-run` reported nothing.** It printed a
+  warning and returned. It now runs the real path inside a rolled-back
+  transaction and reports the count, so the preview cannot drift from the run
+  it predicts. Both halves of the command have tests; the sibling `check_sla`
+  had one and this did not.
+- **Four read paths were duplicated and had already drifted.**
+  `TicketDetailView` kept a hand-written `select_related` that had lost
+  `sub_section` and never applied the `has_feedback` annotation, so every
+  detail read paid for both; `DepartmentViewSet` and `SectionTypeViewSet`
+  declared `prefetch_related` and then had it thrown away by serializers that
+  built fresh querysets. All now go through `ticket_base_qs()` / `Prefetch()`,
+  with query-count tests (`test_ticket_read_queries.py`,
+  `test_org_catalogue_queries.py`) — a count is the only thing that sees this.
+- **`TicketFeedbackView` skipped the IDOR guard**, fetching with a bare
+  `get_object_or_404`. Safe only because the next line rejected non-requesters.
+  It uses `get_ticket_for_request_or_403` and is in the OUTSIDERS matrix now.
+- **`TicketAssignView` mutated the Ticket directly**, the only action view that
+  did. Moved to `lifecycle.assign_ticket()`.
+- **Dead config and fields, removed.** `role_config`'s `headline`,
+  `facilities`, `ticket_flow` and `comparison` keys were read by nothing — the
+  frontend keeps its own copy of that shape. `get_primary_campus_display` was
+  character-for-character `get_campus_name`, and neither `*_display` field was
+  read anywhere in the client. `_SectionMinSerializer` emitted
+  `section_type_name` and `name` from one source. `rest_framework.authtoken`
+  was installed under JWT-only auth.
+- **`report_views.py` had no test at all** — 653 lines of workbook building.
+  `tests/test_reports.py` covers every report type, the Summary agreeing with
+  the analytics endpoint, and a cross-campus negative.
 
 ## 7a. Keeping the two halves in step
 
@@ -678,3 +704,22 @@ apps/
 ```
 
 9 apps → 8. 24 models → 23.
+
+### Where the shared vocabularies live
+
+A value repeated across modules gets exactly one definition, because every one
+of them has drifted here at least once:
+
+| Definition | Home | Read by |
+|---|---|---|
+| `ACTIVE/RUNNING/TERMINAL_STATUSES`, `ESCALATED_LEVELS` | `apps/tickets/statuses.py` | tickets, sla, analytics, facilities, common |
+| `SUPERVISOR_ROLES`, `STAFF_ROLES` | `apps/common/roles.py` | tickets, analytics |
+| `PENDING_REASONS` | `apps/tickets/pending_reasons.py` | model choices, lifecycle, analytics, the API |
+| `ticket_base_qs()` — relations + `has_feedback` | `apps/tickets/services/scope.py` | the scoped list and the detail view |
+| `compute_due_dates()` | `apps/sla/services/due_dates.py` | creation, reopen, assignment, the seed |
+| `created_window()` / `resolved_window()` / `resolution_seconds()` | `apps/analytics/services.py` | `aggregate()`, `insights`, `report_views` |
+
+`test_no_module_writes_the_status_list_out_by_hand` is the enforcement for the
+first row; it greps `apps/` for the literal and fails on a copy. The others
+rely on review — a second definition of any of them is a bug, not a style
+preference.
