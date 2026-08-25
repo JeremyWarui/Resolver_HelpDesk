@@ -29,6 +29,8 @@ from django.db.models.functions import (
 )
 from django.utils import timezone
 
+from apps.accounts.identity import display_name_parts
+
 from apps.tickets.models import TicketLog, TicketFeedback, TicketLocation
 from apps.tickets.pending_reasons import PENDING_REASON_LABELS
 
@@ -308,8 +310,9 @@ def technician_trade_mix(scoped_qs, date_range):
             r["technician_id"],
             {
                 "technician_id": r["technician_id"],
-                "name": f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
-                or r["username"],
+                "name": display_name_parts(
+                    r["first_name"], r["last_name"], r["username"]
+                ),
                 "username": r["username"],
                 "total": 0,
                 "open_count": 0,

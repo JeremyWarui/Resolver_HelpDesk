@@ -49,7 +49,7 @@ from apps.tickets.services.lifecycle import (
 )
 from apps.tickets.services.scope import scoped_ticket_qs, ticket_base_qs
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
-from apps.common.roles import STAFF_ROLES, SUPERVISOR_ROLES, resolve_role
+from apps.common.roles import STAFF_ROLES, TICKET_SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import (
     emit_ticket_created,
     emit_comment_added,
@@ -124,7 +124,7 @@ class TicketStatusView(APIView):
         is_assigned_tech = (
             role == "technician" and ticket.assigned_to_id == request.user.pk
         )
-        is_supervisor = role in SUPERVISOR_ROLES
+        is_supervisor = role in TICKET_SUPERVISOR_ROLES
         is_requester = ticket.raised_by_id == request.user.pk
         if not (is_supervisor or is_assigned_tech):
             if not (
@@ -688,7 +688,7 @@ class TicketAttachmentView(APIView):
         attachment = get_object_or_404(TicketAttachment, pk=att_id, ticket=ticket)
 
         is_uploader = attachment.uploaded_by_id == request.user.pk
-        is_privileged = request.user.is_staff or resolve_role(request) in SUPERVISOR_ROLES
+        is_privileged = request.user.is_staff or resolve_role(request) in TICKET_SUPERVISOR_ROLES
         if not (is_uploader or is_privileged):
             raise PermissionDenied("You can only delete your own attachments.")
 

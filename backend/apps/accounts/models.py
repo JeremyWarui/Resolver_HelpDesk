@@ -17,18 +17,9 @@ class CustomUser(AbstractUser):
 
     @property
     def role(self):
-        """Derived accessor — reads the user's single RoleAssignment."""
         try:
-            return self.role_assignment.role
+            return self.role_assignment.role  # type: ignore[attr-defined]
         except RoleAssignment.DoesNotExist:
-            return None
-
-    @property
-    def campus(self):
-        """Convenience: the user's home campus from their UserProfile."""
-        try:
-            return self.profile.campus
-        except UserProfile.DoesNotExist:
             return None
 
 
@@ -56,6 +47,29 @@ class UserProfile(models.Model):
         return f"{self.user.username} @ {campus_code}"
 
 
+# The per-role scope invariant, declared once as data so `clean()` reads it
+# rather than restating it. Each role carries exactly the one scope FK named
+# here, or none at all where the value is None.
+#
+# `RoleAssignmentCreateSerializer.validate()` still writes this rule out a
+# second time in an if/elif ladder. It should be driven from here instead —
+# until it is, a role added below needs editing in two places.
+SCOPE_FIELD_BY_ROLE = {
+    "technician": "section",
+    "hos": "section",
+    "hod": "campus_department",
+    "manager": "department",
+    "admin": None,
+    "user": None,
+}
+
+SCOPE_FIELDS = (
+    "section",
+    "campus_department",
+    "department",
+)
+
+
 class RoleAssignment(models.Model):
     """Maps a user to their one role, with an explicit organisational scope.
 
@@ -64,11 +78,12 @@ class RoleAssignment(models.Model):
     primary/secondary distinction and no role switching. Only an admin creates
     or changes these rows.
 
-    Scope constraints per role (enforced in clean(), not DB CheckConstraints):
-      technician / hos → section required
-      hod            → campus_department required
-      manager        → department required
-      admin / user   → no scope (all three must be null)
+    Scope constraints per role are declared once in SCOPE_FIELD_BY_ROLE and
+    enforced by clean(), which save() runs on every write:
+        technician / hos → section required
+        hod            → campus_department required
+        manager        → department required
+        admin / user   → no scope (all three must be null)
     """
 
     ROLE_CHOICES = [
@@ -123,31 +138,41 @@ class RoleAssignment(models.Model):
         app_label = "accounts"
 
     def clean(self):
-        """Per-role scope rules — one readable, testable place."""
-        if self.role in ("technician", "hos"):
-            if not self.section_id:
-                raise ValidationError(
-                    {"section": f"A {self.role} assignment requires a section."}
-                )
-        elif self.role == "hod":
-            if not self.campus_department_id:
-                raise ValidationError(
-                    {
-                        "campus_department": "An HOD assignment requires a campus_department."
-                    }
-                )
-        elif self.role == "manager":
-            if not self.department_id:
-                raise ValidationError(
-                    {"department": "A manager assignment requires a department."}
-                )
-        elif self.role in ("admin", "user"):
-            # No organisational scope — all three must be null.
-            if self.section_id or self.campus_department_id or self.department_id:
-                raise ValidationError(
-                    f"A {self.role} assignment must have no scope "
-                    "(section, campus_department, department all null)."
-                )
+        """Per-role scope rules — one readable, testable place.
+
+        A role carries exactly the scope its rule names and nothing else. Both
+        halves matter and they fail differently. The missing half leaves a
+        technician with a role and no reach: `scoped_ticket_qs` matches on the
+        pair, finds none, and shows them an empty queue with no error anywhere.
+        The extra half leaves a row claiming two remits, where
+        `campus_from_role_assignment` and `_department_id_for_assignment` answer
+        "what does this person cover" from different columns and the JWT carries
+        both — an HOD who is also scoped department-wide reads every campus, and
+        nothing in the request looks wrong.
+        """
+        if self.role not in SCOPE_FIELD_BY_ROLE:
+            # `clean_fields()` has already recorded the choices error for an
+            # unknown role. Looking it up here would raise KeyError — a 500 —
+            # on top of the validation message the caller should be getting.
+            return
+
+        required = SCOPE_FIELD_BY_ROLE[self.role]
+        errors = {}
+        for field in SCOPE_FIELDS:
+            present = bool(getattr(self, f"{field}_id"))
+            if field == required and not present:
+                errors[field] = f"A {self.role} assignment requires a {field}."
+            elif field != required and present:
+                errors[field] = f"A {self.role} assignment must not carry a {field}."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        #  Validate_unique=False: the OneToOne on `user` already enforces
+        # one-role-per-user at the DB. We want clean() + field/choices checks
+        # not redundant uniqueness query that would turn DB's integrityError into ValidationError
+        self.full_clean(validate_unique=False)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         parts = [self.role]

@@ -6,16 +6,32 @@ request), with a DB fallback to the user's RoleAssignment for tests that use
 must resolve role through here so behaviour does not diverge between code paths.
 """
 
-# Roles that oversee other people's work: they see a section, a campus or the
-# whole estate rather than their own queue. Three modules independently typed
+# Roles that may act on someone else's ticket: assign it, change its status,
+# delete an attachment they did not upload. Three modules independently typed
 # this tuple out — tickets twice, analytics once — which is one edit away from
 # a role that can act on a ticket in one view and not in another.
-SUPERVISOR_ROLES = ("admin", "manager", "hod", "hos")
+#
+# `manager` is deliberately absent. A manager oversees all five campuses and
+# has estate-wide read scope, but never touches ticket lifecycle: the work is
+# held and moved by the HOS who staffs it. Adding them back here would make
+# every campus's queue editable by one person with no trade knowledge of it.
+TICKET_SUPERVISOR_ROLES = ("admin", "hod", "hos")
+
+# Oversight without ticket authority — the manager's whole remit. Read scope
+# and analytics across the estate, no lifecycle actions.
+OVERSIGHT_ROLES = ("manager",)
+
+# Who may read the supervising analytics endpoints: anyone who oversees other
+# people's work, at any level. A technician is deliberately absent — they see
+# their own queue, and `role_config` also refuses them `technician` as a
+# group_by, so they are never ranked against peers by either route.
+ANALYTICS_ROLES = TICKET_SUPERVISOR_ROLES + OVERSIGHT_ROLES
 
 # Everyone who works tickets, as opposed to raising them. Staff actions
 # (assign, claim, change status) are gated on this; "user" is deliberately
-# absent even though a requester can see their own ticket.
-STAFF_ROLES = SUPERVISOR_ROLES + ("technician",)
+# absent even though a requester can see their own ticket, and so is "manager"
+# for the reason given on TICKET_SUPERVISOR_ROLES.
+STAFF_ROLES = TICKET_SUPERVISOR_ROLES + ("technician",)
 
 
 def resolve_role(request):

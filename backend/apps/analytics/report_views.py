@@ -36,7 +36,7 @@ from apps.tickets.statuses import (
 from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.services.scope import scoped_ticket_qs
-from apps.accounts.identity import display_name
+from apps.accounts.identity import display_name, display_name_parts
 
 # ── Excel styling ──────────────────────────────────────────────────────────────
 
@@ -389,9 +389,11 @@ def _sheet_technician_performance(ws, qs) -> None:
             res_hours_by_tech[tech_id].append(secs / 3600)
 
     for row in by_tech:
-        first = row["assigned_to__first_name"] or ""
-        last = row["assigned_to__last_name"] or ""
-        full_name = f"{first} {last}".strip() or row["assigned_to__username"]
+        full_name = display_name_parts(
+            row["assigned_to__first_name"],
+            row["assigned_to__last_name"],
+            row["assigned_to__username"],
+        )
 
         res_times = res_hours_by_tech.get(row["assigned_to"], [])
         avg_hrs = round(sum(res_times) / len(res_times), 2) if res_times else ""

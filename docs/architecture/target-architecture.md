@@ -94,6 +94,29 @@ deleted.
 | `technician` | own section **and own sub-sections only** | `SectionTechnician` |
 | `user` | own tickets | `Ticket.raised_by` |
 
+**Scope is what you see; it is not what you may do.** The two come apart at
+exactly one role. A `manager` reads every campus and may act on none of them:
+they oversee the estate through Analytics and Reports, while the work itself is
+held and moved by the HOS who staffs it. So assign, claim, status change and
+deleting someone else's attachment are refused for a manager even though the
+ticket is squarely inside their scope — `403`, from the role gate, not the
+scope gate.
+
+The sets live in `apps/common/roles.py` and nowhere else:
+
+| Constant | Members | Gates |
+|---|---|---|
+| `TICKET_SUPERVISOR_ROLES` | admin, hod, hos | acting on someone else's ticket — status, attachment delete |
+| `OVERSIGHT_ROLES` | manager | oversight without ticket authority |
+| `ANALYTICS_ROLES` | the two above combined | the supervising Analytics endpoints |
+| `STAFF_ROLES` | ticket supervisors + technician | staff-only ticket actions — assign |
+
+`ANALYTICS_ROLES` is built by concatenating the other two rather than typed out,
+which is what makes the single-element tuple `("manager",)` impossible to write
+as the bare string `("manager")`: the string raises `TypeError` at import
+instead of silently matching any substring. `tests/test_manager_oversight.py`
+holds the boundary.
+
 `RoleAssignment` collapses to **one row per user** (`OneToOneField`). Removed:
 `is_primary`, `valid_from`, `valid_until`, `is_active()`, `is_demoted()`, the
 `one_primary_role_per_user` partial index, `SwitchRoleView`, `available_roles`, and
