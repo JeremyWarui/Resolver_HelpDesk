@@ -45,7 +45,7 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 
     def get_section_name(self, obj):
         if obj.section_id and obj.section:
-            return str(obj.section)  # e.g. "NRB-ICT-SW"
+            return str(obj.section)  # e.g. "NRB-ADM-MTCE"
         return None
 
     def get_campus_id(self, obj):
@@ -70,10 +70,10 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         )
 
     def get_sub_section_ids(self, obj):
-        """The trades a technician works, from SectionTechnician — empty for other roles.
+        """The trades a technician works — empty for other roles.
 
-        Technician scope lives in SectionTechnician, not here: one role row
-        cannot express "Carpentry and Plumbing at Nairobi".
+        They live in SectionTechnician because one role row cannot express
+        "Carpentry and Plumbing at Nairobi".
         """
         if obj.role != "technician" or not obj.section_id:
             return []
@@ -87,11 +87,11 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 
 
 class RoleAssignmentCreateSerializer(serializers.Serializer):
-    """Write serializer — accepts frontend-friendly campus_id/department_id/section_id.
+    """Write serializer — takes campus_id/department_id/section_id, not objects.
 
     A user has one role, so POSTing this replaces whatever they had.
-    `sub_section_ids` is technician-only and sets their trades in one action;
-    without it a new technician would be left with a role but no ticket access.
+    `sub_section_ids` is technician-only; without it a new technician would
+    have a role but no ticket access.
     """
 
     role = serializers.ChoiceField(choices=RoleAssignment.ROLE_CHOICES)
@@ -189,10 +189,7 @@ class RoleAssignmentCreateSerializer(serializers.Serializer):
 
 
 def _primary_ra(user_obj):
-    """Return the user's RoleAssignment, or None.
-
-    Comes free off `select_related("role_assignment__…")` in the list view.
-    """
+    """The user's RoleAssignment, or None — free off the list view's select_related."""
     try:
         return user_obj.role_assignment
     except RoleAssignment.DoesNotExist:
@@ -278,13 +275,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
 
 class UserCreateSerializer(serializers.Serializer):
-    """Write serializer for admin user creation.
-
-    Username and name are derived from the email (`identity_from_email`) and
-    cannot be supplied: an override here would be a second answer to who this
-    person is, which is exactly what deriving from the address removes. Admin
-    creation and self-registration therefore produce identical accounts.
-    """
+    """Admin user creation. Takes no name — `identity_from_email` derives it."""
 
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -320,21 +311,15 @@ class UserCreateSerializer(serializers.Serializer):
 
 
 class UserUpdateSerializer(serializers.Serializer):
-    """Write serializer for admin user update.
-
-    Name and username are not editable — they follow the email. Changing the
-    address re-derives all three, so someone who moves from
-    `j.mwangi@ksg.ac.ke` to `jeremy.mwangi@ksg.ac.ke` is renamed with it rather
-    than left displaying a name their address no longer supports.
-    """
+    """Admin user update. Name and username are not editable — the email
+    re-derives them."""
 
     email = serializers.EmailField(required=False)
     campus_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_email(self, value):
-        # Case-insensitive: the email is the login credential now, so two
-        # accounts differing only in case would be two ways to sign in as
-        # different people.
+        # Case-insensitive, or two accounts differing only in case would be
+        # two ways to sign in as different people.
         qs = User.objects.filter(email__iexact=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
