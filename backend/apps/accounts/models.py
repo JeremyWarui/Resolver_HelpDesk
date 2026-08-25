@@ -47,13 +47,8 @@ class UserProfile(models.Model):
         return f"{self.user.username} @ {campus_code}"
 
 
-# The per-role scope invariant, declared once as data so `clean()` reads it
-# rather than restating it. Each role carries exactly the one scope FK named
-# here, or none at all where the value is None.
-#
-# `RoleAssignmentCreateSerializer.validate()` still writes this rule out a
-# second time in an if/elif ladder. It should be driven from here instead —
-# until it is, a role added below needs editing in two places.
+# The scope FK each role carries: exactly the one named here, or none at all
+# where the value is None. clean() enforces it on every save.
 SCOPE_FIELD_BY_ROLE = {
     "technician": "section",
     "hos": "section",
@@ -63,6 +58,7 @@ SCOPE_FIELD_BY_ROLE = {
     "user": None,
 }
 
+# Every scope FK on the model, for the walks in clean() and __str__.
 SCOPE_FIELDS = (
     "section",
     "campus_department",
@@ -78,12 +74,8 @@ class RoleAssignment(models.Model):
     primary/secondary distinction and no role switching. Only an admin creates
     or changes these rows.
 
-    Scope constraints per role are declared once in SCOPE_FIELD_BY_ROLE and
-    enforced by clean(), which save() runs on every write:
-        technician / hos → section required
-        hod            → campus_department required
-        manager        → department required
-        admin / user   → no scope (all three must be null)
+    Which scope each role carries is declared in SCOPE_FIELD_BY_ROLE above and
+    enforced by clean(), which save() runs on every write.
     """
 
     ROLE_CHOICES = [
@@ -138,22 +130,15 @@ class RoleAssignment(models.Model):
         app_label = "accounts"
 
     def clean(self):
-        """Per-role scope rules — one readable, testable place.
+        """Reject an assignment whose scope does not match its role.
 
-        A role carries exactly the scope its rule names and nothing else. Both
-        halves matter and they fail differently. The missing half leaves a
-        technician with a role and no reach: `scoped_ticket_qs` matches on the
-        pair, finds none, and shows them an empty queue with no error anywhere.
-        The extra half leaves a row claiming two remits, where
-        `campus_from_role_assignment` and `_department_id_for_assignment` answer
-        "what does this person cover" from different columns and the JWT carries
-        both — an HOD who is also scoped department-wide reads every campus, and
-        nothing in the request looks wrong.
+        The role's rule in SCOPE_FIELD_BY_ROLE names the one scope FK it must
+        carry; every other scope FK must be null. Errors are keyed by field
+        name so a form or serializer shows each one beside its own input.
         """
         if self.role not in SCOPE_FIELD_BY_ROLE:
-            # `clean_fields()` has already recorded the choices error for an
-            # unknown role. Looking it up here would raise KeyError — a 500 —
-            # on top of the validation message the caller should be getting.
+            # Unknown role: clean_fields() has already recorded the choices
+            # error, and there is no rule here to check it against.
             return
 
         required = SCOPE_FIELD_BY_ROLE[self.role]
@@ -168,18 +153,20 @@ class RoleAssignment(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        #  Validate_unique=False: the OneToOne on `user` already enforces
-        # one-role-per-user at the DB. We want clean() + field/choices checks
-        # not redundant uniqueness query that would turn DB's integrityError into ValidationError
+        """Run clean() and the field checks on every write, whatever the caller.
+
+        validate_unique=False skips the uniqueness query: the OneToOne on
+        `user` already enforces one role per user in the database.
+        """
         self.full_clean(validate_unique=False)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        parts = [self.role]
-        if self.section_id:
-            parts.append(f"section={self.section_id}")
-        if self.campus_department_id:
-            parts.append(f"cd={self.campus_department_id}")
-        if self.department_id:
-            parts.append(f"dept={self.department_id}")
-        return f"{self.user_id} / {' > '.join(parts)}"
+        # "<user id> / <role>", then whichever scope FKs are set:
+        # "7 / hos > section=3". Shown in admin FK dropdowns.
+        scope = [
+            f"{field}={getattr(self, f'{field}_id')}"
+            for field in SCOPE_FIELDS
+            if getattr(self, f"{field}_id")
+        ]
+        return f"{self.user_id} / {' > '.join([self.role, *scope])}"

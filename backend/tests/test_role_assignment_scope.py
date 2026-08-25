@@ -167,3 +167,26 @@ def test_replacing_a_users_role_is_not_blocked_by_their_own_existing_row(
         user=unassigned, role="manager", department=scope_objects["department"]
     )
     assert ra.pk and ra.role == "manager"
+
+
+# ── The debug label is driven by the same declaration ─────────────────────────
+
+
+@pytest.mark.parametrize("role,required", sorted(SCOPE_FIELD_BY_ROLE.items()))
+def test_the_label_names_every_scope_the_row_carries_and_no_other(
+    unassigned, scope_objects, role, required
+):
+    """`__str__` walks SCOPE_FIELDS instead of branching once per field.
+
+    It is what an admin FK dropdown renders, so a fourth scope FK that the
+    label quietly omits makes two different assignments look identical in the
+    one place an admin picks between them.
+    """
+    scope = {required: scope_objects[required]} if required else {}
+    label = str(RoleAssignment.objects.create(user=unassigned, role=role, **scope))
+
+    owner, _, described = label.partition(" / ")
+    assert owner == str(unassigned.pk)
+    assert described.split(" > ") == [role] + (
+        [f"{required}={scope_objects[required].pk}"] if required else []
+    )
