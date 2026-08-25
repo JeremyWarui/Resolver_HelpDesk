@@ -339,6 +339,61 @@ def test_a_name_cannot_be_edited_on_its_own(api, admin_user, nrb, db):
     assert response.json()["first_name"] == "Ann"
 
 
+def test_an_admin_cannot_move_someone_onto_a_taken_email(api, admin_user, nrb, db):
+    """Two accounts on one address would be two people with one credential."""
+    api.force_authenticate(admin_user)
+    for email in ("first.owner@ksg.ac.ke", "second.owner@ksg.ac.ke"):
+        created = api.post(
+            "/api/v1/users/",
+            {"email": email, "password": "Str0ngPassphrase!", "campus_id": nrb.id},
+            format="json",
+        ).json()
+
+    response = api.patch(
+        f"/api/v1/users/{created['id']}/",
+        {"email": "FIRST.OWNER@ksg.ac.ke"},
+        format="json",
+    )
+    assert response.status_code == 400, response.json()
+
+
+def test_re_saving_an_account_at_its_own_email_is_not_a_collision(
+    api, admin_user, nrb, db
+):
+    """The uniqueness check has to exclude the account being updated, or nobody
+    could ever be PATCHed twice."""
+    api.force_authenticate(admin_user)
+    created = api.post(
+        "/api/v1/users/",
+        {"email": "sam.kariuki@ksg.ac.ke", "password": "Str0ngPassphrase!",
+         "campus_id": nrb.id},
+        format="json",
+    ).json()
+
+    response = api.patch(
+        f"/api/v1/users/{created['id']}/",
+        {"email": "sam.kariuki@ksg.ac.ke"},
+        format="json",
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["username"] == "sam.kariuki"
+
+
+def test_an_admin_cannot_create_a_user_at_a_campus_that_does_not_exist(
+    api, admin_user, db
+):
+    """A bad campus_id must fail loudly — a user with no campus can raise no
+    ticket, because routing reads their profile campus."""
+    api.force_authenticate(admin_user)
+    response = api.post(
+        "/api/v1/users/",
+        {"email": "no.campus@ksg.ac.ke", "password": "Str0ngPassphrase!",
+         "campus_id": 999999},
+        format="json",
+    )
+    assert response.status_code == 400, response.json()
+
+
 def test_a_renamed_account_signs_in_with_the_new_email(api, admin_user, nrb, db):
     """Re-deriving the username must not lock anyone out — the credential is the
     address, and it is the address that changed."""

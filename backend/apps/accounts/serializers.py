@@ -274,6 +274,27 @@ class UserAdminSerializer(serializers.ModelSerializer):
         return d.name if d else None
 
 
+def _campus_must_exist(value):
+    """None passes — update uses it to clear the profile campus."""
+    from apps.org.models import Campus
+
+    if value is not None and not Campus.objects.filter(pk=value).exists():
+        raise serializers.ValidationError("Campus not found.")
+    return value
+
+
+def _email_must_be_free(value, instance=None):
+    """Case-insensitive, or two accounts differing only in case would be two
+    ways to sign in as different people. `instance` is the account being
+    updated, which does not collide with itself."""
+    qs = User.objects.filter(email__iexact=value)
+    if instance is not None:
+        qs = qs.exclude(pk=instance.pk)
+    if qs.exists():
+        raise serializers.ValidationError("A user with this email already exists.")
+    return value
+
+
 class UserCreateSerializer(serializers.Serializer):
     """Admin user creation. Takes no name — `identity_from_email` derives it."""
 
@@ -282,16 +303,10 @@ class UserCreateSerializer(serializers.Serializer):
     campus_id = serializers.IntegerField()
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
-        return value
+        return _email_must_be_free(value)
 
     def validate_campus_id(self, value):
-        from apps.org.models import Campus
-
-        if not Campus.objects.filter(pk=value).exists():
-            raise serializers.ValidationError("Campus not found.")
-        return value
+        return _campus_must_exist(value)
 
     def create(self, validated_data):
         from apps.accounts.identity import identity_from_email
@@ -318,21 +333,10 @@ class UserUpdateSerializer(serializers.Serializer):
     campus_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_email(self, value):
-        # Case-insensitive, or two accounts differing only in case would be
-        # two ways to sign in as different people.
-        qs = User.objects.filter(email__iexact=value)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError("A user with this email already exists.")
-        return value
+        return _email_must_be_free(value, self.instance)
 
     def validate_campus_id(self, value):
-        from apps.org.models import Campus
-
-        if value is not None and not Campus.objects.filter(pk=value).exists():
-            raise serializers.ValidationError("Campus not found.")
-        return value
+        return _campus_must_exist(value)
 
     def update(self, instance, validated_data):
         from apps.accounts.identity import identity_from_email
