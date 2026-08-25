@@ -1,7 +1,7 @@
 """One definition of how a person's name is rendered.
 
 `apps/accounts/identity.py::display_name_parts` is that definition. It exists
-because a name is not guaranteed — `names_from_email` leaves the surname empty
+because a name is not guaranteed — `identity_from_email` leaves the surname empty
 for a dotless local part like `admin@ksg.ac.ke`, and `createsuperuser` bypasses
 the email rule entirely — so every renderer needs the same username fallback or
 the UI shows a blank cell where a person should be.
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.django_db
     "first,last,username,expected",
     [
         ("Jeremy", "Mwangi", "jeremy.mwangi", "Jeremy Mwangi"),
-        # Dotless email: names_from_email gives a first name and no surname.
+        # Dotless email: identity_from_email gives a first name and no surname.
         ("Admin", "", "admin", "Admin"),
         # createsuperuser: no names at all, so the username carries the row.
         ("", "", "root", "root"),

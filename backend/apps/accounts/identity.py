@@ -16,63 +16,52 @@ def local_part(email):
     return (email or "").strip().split("@")[0].strip().lower()
 
 
-def names_from_email(email):
-    """('Jeremy', 'Mwangi') for jeremy.mwangi@… — dot-separated, title-cased.
-
-    A local part with no dot has no surname to give, so the last name comes
-    back empty rather than guessed. Three or more parts fold everything after
-    the first into the last name; dropping the tail would silently rename
-    people.
-    """
-    parts = [p for p in local_part(email).split(".") if p]
-    if not parts:
-        return "", ""
-    return parts[0].title(), " ".join(p.title() for p in parts[1:])
-
-
-def allocate_username(email, exclude_pk=None):
-    """A free username for this email — the local part, numbered on collision.
-
-    Emails are unique per account but local parts are not (the same
-    jeremy.mwangi at two domains), so the numeric suffix is what keeps the
-    second registration from failing on a username clash.
-
-    `exclude_pk` is the account being re-derived after an email change: without
-    it a person moving domain would collide with their own old username and be
-    renamed to `jeremy.mwangi1`.
-    """
-    User = get_user_model()
-    taken = User.objects.all()
-    if exclude_pk is not None:
-        taken = taken.exclude(pk=exclude_pk)
-    base = local_part(email)[:USERNAME_MAX_LENGTH]
-    username = base
-    n = 1
-    while taken.filter(username__iexact=username).exists():
-        suffix = str(n)
-        username = f"{base[:USERNAME_MAX_LENGTH - len(suffix)]}{suffix}"
-        n += 1
-    return username
-
-
 def identity_from_email(email, exclude_pk=None):
     """(username, first_name, last_name) — the whole of who an account is.
 
     This is the only place any of the three is decided. A caller that lets a
     client pass one in instead is a second answer to the same question, which
     is what the email rule exists to remove.
+
+    The name is the dot-separated local part, title-cased. A local part with no
+    dot has no surname to give, so the last name comes back empty rather than
+    guessed; three or more parts fold everything after the first into the last
+    name, because dropping the tail would silently rename people.
+
+    The username is that same local part, numbered on collision. Emails are
+    unique per account but local parts are not (the same jeremy.mwangi at two
+    domains), so the numeric suffix is what keeps the second registration from
+    failing on a username clash. `exclude_pk` is the account being re-derived
+    after an email change: without it a person moving domain would collide with
+    their own old username and be renamed to `jeremy.mwangi1`.
     """
-    first_name, last_name = names_from_email(email)
-    return allocate_username(email, exclude_pk=exclude_pk), first_name, last_name
+    base = local_part(email)
+    parts = [p for p in base.split(".") if p]
+    first_name = parts[0].title() if parts else ""
+    last_name = " ".join(p.title() for p in parts[1:])
+
+    User = get_user_model()
+    taken = User.objects.all()
+    if exclude_pk is not None:
+        taken = taken.exclude(pk=exclude_pk)
+    base = base[:USERNAME_MAX_LENGTH]
+    username = base
+    n = 1
+    while taken.filter(username__iexact=username).exists():
+        suffix = str(n)
+        username = f"{base[:USERNAME_MAX_LENGTH - len(suffix)]}{suffix}"
+        n += 1
+
+    return username, first_name, last_name
 
 
 def display_name_parts(first_name, last_name, username):
     """The one definition of how a person's name is rendered. Never blank.
 
-    Falls back to the username because a name is not guaranteed: `names_from_email`
-    leaves the surname empty for a dotless local part, and `createsuperuser`
-    bypasses the email rule entirely. Without the fallback a UI row renders an
-    anonymous gap, or the literal string "undefined undefined".
+    Falls back to the username because a name is not guaranteed:
+    `identity_from_email` leaves the surname empty for a dotless local part, and
+    `createsuperuser` bypasses the email rule entirely. Without the fallback a
+    UI row renders an anonymous gap, or the literal string "undefined undefined".
 
     Takes the three columns rather than a user so a `.values()` row can call it:
     an aggregate over thousands of tickets has no model instance per row, and
