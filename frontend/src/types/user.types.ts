@@ -15,7 +15,6 @@ export interface User {
   /** ISO timestamp — only populated on the admin user list (UserAdminSerializer), not on the logged-in user's own auth object. */
   date_joined?: string;
   role: UserRole;
-  campus_name: string | null;
   sections: number[];
   section_names?: string[];
   primary_campus_id: number | null;

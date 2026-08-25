@@ -200,7 +200,6 @@ class UserAdminSerializer(serializers.ModelSerializer):
     """Read serializer for the admin user list — matches the frontend User interface."""
 
     role = serializers.SerializerMethodField()
-    campus_name = serializers.SerializerMethodField()
     sections = serializers.SerializerMethodField()
     section_names = serializers.SerializerMethodField()
     primary_campus_id = serializers.SerializerMethodField()
@@ -219,7 +218,6 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "email",
             "date_joined",
             "role",
-            "campus_name",
             "sections",
             "section_names",
             "primary_campus_id",
@@ -240,11 +238,6 @@ class UserAdminSerializer(serializers.ModelSerializer):
     def get_home_campus_name(self, obj):
         campus = home_campus_from_user(obj)
         return campus.name if campus else None
-
-    def get_campus_name(self, obj):
-        ra = _primary_ra(obj)
-        c = campus_from_role_assignment(ra)
-        return c.name if c else None
 
     def get_sections(self, obj):
         ra = _primary_ra(obj)

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, uniqueSuffix } from './helpers';
+import { loginAsAdmin, uniqueSuffix, USERS } from './helpers';
 
 // Smoke test for the Users admin page — the safety net for the UsersPage
 // decomposition. Creates a user, edits them, deletes them (self-cleaning).
@@ -55,4 +55,30 @@ test('users CRUD: create, search, edit, delete', async ({ page }) => {
   await expect(page.getByRole('row', { name: new RegExp(usernameEdited) })).toHaveCount(0, {
     timeout: 20_000,
   });
+});
+
+// A person has one campus: the one they chose when they registered
+// (UserProfile.campus). A role assignment also resolves to a campus, and for
+// every scoped role the two agree — which is why the Users page reading the
+// role campus went unnoticed. It does not agree for a plain requester, whose
+// role carries no campus at all, so they showed "—" in the Campus column and
+// disappeared from the table the moment any campus was selected.
+test('the campus column and filter show the campus a requester chose', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/dashboard/users');
+
+  const requesterUsername = USERS.requester.split('@')[0];
+  const row = page.getByRole('row', { name: new RegExp(requesterUsername) });
+
+  await page.getByPlaceholder('Search...').fill(requesterUsername);
+  await expect(row).toBeVisible();
+
+  // The seed puts this requester at Nairobi, and the column must say so
+  // rather than the em dash a null campus renders.
+  await expect(row).toContainText('Nairobi');
+
+  // Filtering by that campus must keep them, not drop every requester.
+  await page.getByRole('combobox').filter({ hasText: 'All Campuses' }).click();
+  await page.getByRole('option', { name: 'Nairobi', exact: true }).click();
+  await expect(row).toBeVisible();
 });

@@ -112,7 +112,6 @@ export function flatToUser(flat: LoginResponse): User {
     first_name: flat.first_name,
     last_name: flat.last_name,
     role: flat.role,
-    campus_name: null,
     sections: flat.sections ?? [],
     section_names: [],
     section_name: flat.section_name,

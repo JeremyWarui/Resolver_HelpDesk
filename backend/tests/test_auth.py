@@ -339,6 +339,43 @@ def test_a_name_cannot_be_edited_on_its_own(api, admin_user, nrb, db):
     assert response.json()["first_name"] == "Ann"
 
 
+def test_the_admin_list_carries_the_campus_a_person_chose(api, admin_user, nrb, db):
+    """A plain requester has no role scope, so the campus derived from their
+    RoleAssignment is null — the only campus they have is the one they picked.
+
+    The Users page reads home_campus_* for its column and its filter. When it
+    read the role-derived campus instead, every self-registered account showed
+    "—" and vanished the moment an admin filtered by any campus.
+    """
+    api.force_authenticate(admin_user)
+    created = api.post(
+        "/api/v1/users/",
+        {"email": "plain.requester@ksg.ac.ke", "password": "Str0ngPassphrase!",
+         "campus_id": nrb.id},
+        format="json",
+    ).json()
+
+    rows = api.get("/api/v1/users/").json()
+    rows = rows.get("results", rows)
+    row = next(r for r in rows if r["id"] == created["id"])
+
+    assert row["role"] == "user"
+    assert row["home_campus_id"] == nrb.id
+    assert row["home_campus_name"] == nrb.name
+
+
+def test_a_scoped_role_keeps_its_own_campus_on_the_admin_list(api, admin_user, nrb_hos):
+    """The HOS is the case the two campuses agreed on, which is why reading the
+    wrong one survived until a requester was looked at."""
+    api.force_authenticate(admin_user)
+    rows = api.get("/api/v1/users/").json()
+    rows = rows.get("results", rows)
+    row = next(r for r in rows if r["id"] == nrb_hos.id)
+
+    assert row["home_campus_id"] is not None
+    assert row["home_campus_name"]
+
+
 def test_an_admin_cannot_move_someone_onto_a_taken_email(api, admin_user, nrb, db):
     """Two accounts on one address would be two people with one credential."""
     api.force_authenticate(admin_user)

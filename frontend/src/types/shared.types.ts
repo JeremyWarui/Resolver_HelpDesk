@@ -87,22 +87,7 @@ export interface AppNotification {
 
 // ─── API error shape ──────────────────────────────────────────────────────────
 
-// ─── Auth user (adapted for DRF token auth — no JWT fields) ──────────────────
-
-export interface AuthUser {
-  id: number;
-  username: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: UserRole;
-  campus_name: string | null;
-  primary_campus_id: number | null;
-  primary_department_id: number | null;
-  sections: number[];
-}
-
-// ─── Scope (derived from AuthUser for role-scoped queries) ────────────────────
+// ─── Scope (derived from the signed-in user for role-scoped queries) ─────────
 
 export interface UserScope {
   userId: number;

@@ -73,8 +73,11 @@ const UsersPage = () => {
     });
   };
 
+  // Campus is the one the person chose at registration (UserProfile.campus),
+  // not the campus their role happens to be scoped to. Filtering on the role
+  // campus dropped every plain requester, whose role carries no campus at all.
   const scopedUsers = useMemo(() => users.filter(u =>
-    (campusFilter === 'all' || String(u.primary_campus_id) === campusFilter)
+    (campusFilter === 'all' || String(u.home_campus_id) === campusFilter)
     && (departmentFilter === 'all' || String(u.primary_department_id) === departmentFilter)
   ), [users, campusFilter, departmentFilter]);
 
@@ -111,9 +114,9 @@ const UsersPage = () => {
       cell: ({ row }) => <span className="text-sm text-gray-500">{formatJoinedDate(row.getValue('date_joined'))}</span>,
     },
     {
-      accessorKey: 'campus_name',
+      accessorKey: 'home_campus_name',
       header: 'Campus',
-      cell: ({ row }) => <span className="text-sm text-gray-600">{(row.getValue('campus_name') as string | null) ?? '—'}</span>,
+      cell: ({ row }) => <span className="text-sm text-gray-600">{(row.getValue('home_campus_name') as string | null) ?? '—'}</span>,
     },
     {
       accessorKey: 'primary_department_name',
