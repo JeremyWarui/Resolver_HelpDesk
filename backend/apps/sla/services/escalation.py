@@ -10,9 +10,9 @@ LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 def resolve_active_holder(section, level):
     """The user a ticket escalates to at `level`, or None if the post is vacant.
 
-    Reads the org-structural FK, which is the only source of truth: there is no
-    cover to consult, and an absent HOS is handled organisationally. A vacant
-    post means the escalation falls through to the next level up.
+    Reads the org-structural FK, which is the only source of truth for who
+    holds a post. A vacant post means the escalation falls through to the next
+    level up.
     """
     if level == "hos":
         return section.hos

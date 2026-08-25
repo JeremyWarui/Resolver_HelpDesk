@@ -165,12 +165,9 @@ export async function logout(): Promise<void> {
   }
 }
 
-/** One role per user, held for as long as they hold the post.
- *
- *  No `is_primary` and no validity window: time-boxed cover was an enterprise
- *  Service Desk feature, and reintroducing the fields is what would let it
- *  back in by accident. The backend model is a OneToOne — see the negative
- *  tests in backend/tests/test_auth.py. */
+/** One role per user, held for as long as they hold the post. The backend
+ *  model is a OneToOne; the negative tests in backend/tests/test_auth.py hold
+ *  that boundary. */
 export interface RoleAssignment {
   id: number;
   role: string;

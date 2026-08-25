@@ -1,9 +1,8 @@
 """Login, refresh, and the single role each user carries.
 
-Role cover, role switching and multiple simultaneous roles are all gone. The
-tests that matter here are the ones proving they stayed gone: a removed
-endpoint that quietly comes back is a scope hole nobody notices, because
-nothing fails.
+Role switching and multiple simultaneous roles are gone. The tests that matter
+here are the ones proving they stayed gone: a removed endpoint that quietly
+comes back is a scope hole nobody notices, because nothing fails.
 """
 
 import pytest
@@ -109,8 +108,8 @@ def test_the_switch_role_endpoint_is_gone(api, nrb_electrician):
 
 
 def test_role_assignments_carry_no_validity_window():
-    """Cover was time-boxed; without those fields it cannot be reintroduced by
-    accident."""
+    """A role is held for as long as the post is; without these fields a
+    time-boxed one cannot be reintroduced by accident."""
     names = {f.name for f in RoleAssignment._meta.get_fields()}
     assert not names & {"is_primary", "valid_from", "valid_until"}
 

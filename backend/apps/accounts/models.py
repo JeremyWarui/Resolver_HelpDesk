@@ -69,10 +69,8 @@ SCOPE_FIELDS = (
 class RoleAssignment(models.Model):
     """Maps a user to their one role, with an explicit organisational scope.
 
-    One row per user. Role cover is deliberately absent: absence is handled
-    organisationally, not in software, so there are no validity windows, no
-    primary/secondary distinction and no role switching. Only an admin creates
-    or changes these rows.
+    One row per user, held for as long as they hold the post. Only an admin
+    creates or changes these rows.
 
     Which scope each role carries is declared in SCOPE_FIELD_BY_ROLE above and
     enforced by clean(), which save() runs on every write.

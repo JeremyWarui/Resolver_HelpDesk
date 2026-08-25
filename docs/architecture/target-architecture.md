@@ -117,13 +117,14 @@ as the bare string `("manager")`: the string raises `TypeError` at import
 instead of silently matching any substring. `tests/test_manager_oversight.py`
 holds the boundary.
 
-`RoleAssignment` collapses to **one row per user** (`OneToOneField`). Removed:
+`RoleAssignment` is **one row per user** (`OneToOneField`), held for as long as
+the person holds the post. A role has no validity window and cannot be switched:
 `is_primary`, `valid_from`, `valid_until`, `is_active()`, `is_demoted()`, the
-`one_primary_role_per_user` partial index, `SwitchRoleView`, `available_roles`, and
-`apps/common/time_windows.py`.
+`one_primary_role_per_user` partial index, `SwitchRoleView`, `available_roles`
+and `apps/common/time_windows.py` do not exist, and `tests/test_auth.py` holds
+that boundary.
 
-Role cover is gone. Absence is handled organisationally, not in software. **Only
-admin assigns roles** — HOD loses the role-assignment capability it had.
+**Only admin assigns roles.**
 
 ## 3a. Identity is the email address
 
@@ -404,7 +405,7 @@ no-ops when the channel layer is missing; and the existing channel guard cannot
 express sub-section scope (see §7).
 
 **Web push dropped.** Needs HTTPS + VAPID key rotation for a browser toast, and its
-notification helpers depend on the `is_primary` filters being deleted.
+notification helpers were built on role fields this scope does not have.
 
 **Mobile PWA kept** — mobile ticket views and service-worker caching.
 `PushSubscriptionManager` is dropped with the push backend, and the offline

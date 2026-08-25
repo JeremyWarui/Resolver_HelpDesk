@@ -185,8 +185,8 @@ class UserRoleAssignmentView(APIView):
     frontend reads a list here); POST replaces it, syncing the org-structural
     FKs and, for technicians, the SectionTechnician trade links.
 
-    Only an admin may assign roles — HOD does not, since there is no cover to
-    arrange and a single Maintenance HOS per campus is an org-level decision.
+    Only an admin may assign roles: a single Maintenance HOS per campus is an
+    org-level decision, not a departmental one.
     """
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
