@@ -1,10 +1,9 @@
 # Architecture — Resolver HelpDesk
 
-Status: **as built**. Supersedes the enterprise Service Desk design inherited
-from `django_resolver`.
+Status: **as built**.
 
-Where this document and the code disagree, the code is right and this is a bug
-— say so in the same commit that fixes it.
+Where this document and the code disagree, the code is right and this is a bug.
+Fix the document in the same commit.
 
 ## 1. Organisational hierarchy
 
@@ -181,8 +180,9 @@ There are two answers to "who runs this section", and they must not disagree:
 | `Section.hos`, `CampusDepartment.head_of_department`, `Department.manager_user` | `_sync_org_scope`, on the same request | **`scoped_ticket_qs` — i.e. all actual access** (§3 table) |
 
 Those pointers are single-valued, so promoting a second HOS to a section
-displaces the first. `_sync_org_scope` used to update only the right-hand
-column, which left the displaced person:
+displaces the first. `accounts.posts.assign_role` writes both columns in one
+transaction, because updating only the right-hand one leaves the displaced
+person:
 
 - still listed as Head of Section on the admin Users page, with the section
 - still carrying `role=hos` in their JWT, so still landing on the HOS portal
@@ -260,9 +260,9 @@ testing and reach production. Use the pairwise form unconditionally.
 
 - the `Exists` above matches on it, so a null makes the technician queryset
   silently empty;
-- `analytics.aggregate()` may only touch direct `Ticket` columns (join fan-out
-  there previously caused 500s and timeouts on Neon), and per-trade breakdown is
-  the headline dimension of this system.
+- `analytics.aggregate()` may only touch direct `Ticket` columns: join fan-out
+  there multiplies rows and turns the aggregate into a timeout. Per-trade
+  breakdown is the headline dimension of this system.
 
 Required negative tests (both must exist before the branch is written):
 
@@ -390,28 +390,20 @@ draw both the type tiles and the facility dropdown — so there is no
 `/facility-types/` call, and no further request as they click around. It also
 means only types the campus actually has anything for are offered.
 
-## 6. Deferred and dropped
+## 6. Not in scope
 
-**WebSockets deferred.** `Notification` + its REST endpoints are ported and read
-over plain HTTP. Dropped: `channels`, `channels-redis`, `daphne`, `redis`,
-`pywebpush`, `resolver/asgi.py`, Redis from the deploy — and on the frontend
-`lib/ws/wsClient.ts` and `hooks/useWsChannels.ts`, which were otherwise opening
-a socket against nothing and retrying with exponential backoff for the life of
-the session.
+**No WebSockets.** `Notification` and its REST endpoints are polled over plain
+HTTP. Three reasons: a maintenance helpdesk runs on a minutes-to-hours cadence;
+WS forces ASGI + Redis into the deploy for a low-volume single-department app,
+and silently no-ops when the channel layer is missing; and a correct channel
+guard would need groups keyed on `(section, sub_section)` with membership
+re-derived from `SectionTechnician`, which is scope this app does not need.
 
-Three reasons: a maintenance helpdesk runs on a minutes-to-hours cadence; WS forces
-ASGI + Redis into the deploy for a low-volume single-department app, and silently
-no-ops when the channel layer is missing; and the existing channel guard cannot
-express sub-section scope (see §7).
+**No web push.** Needs HTTPS + VAPID key rotation for a browser toast.
 
-**Web push dropped.** Needs HTTPS + VAPID key rotation for a browser toast, and its
-notification helpers were built on role fields this scope does not have.
-
-**Mobile PWA kept** — mobile ticket views and service-worker caching.
-`PushSubscriptionManager` is dropped with the push backend, and the offline
-action queue went later: nothing ever wrote to it. Both places that would have
-(`MobileTicketDetail`'s status actions and its comment box) abort with "you are
-offline" instead, so the queue only ever replayed an empty list.
+**Mobile PWA is in scope**: mobile ticket views and service-worker caching.
+There is no offline action queue. `MobileTicketDetail`'s status actions and its
+comment box both abort with "you are offline" instead.
 
 ## 6a. Rating the work
 
@@ -488,12 +480,10 @@ the detail sheet offers Claim and nothing else until the ticket is theirs.
 The trade narrowing is entirely server-side and needs no client filter: the page
 passes no `sub_section`, and `/tickets/filter-options/` builds the trade dropdown
 from the caller's own rows, so it offers only trades they hold. Miriam Odongo
-(Electrical + Plumbing at Mombasa) is offered exactly those two of the section's
-five. The page used to pass a `fetchSectionTickets: true` flag that the hook never
-read — it looked like the thing keeping other trades out, and removing it changes
-nothing. The cards above the table are labelled "In your trades at this campus"
-for the same reason: they reuse the HOS aggregate, whose "All tickets in your
-section" claimed a scope the technician does not have.
+(Electrical + Plumbing at Mombasa) is offered exactly those two of the
+section's five. The cards above the table are labelled "In your trades at this
+campus" because they reuse the HOS aggregate, whose "All tickets in your
+section" would claim a scope the technician does not have.
 
 **Assigned Tickets** is their own queue: the same scope narrowed by
 `assigned_to=<self>` (`TechTickets.tsx`, `fixedParams`). It holds tickets the HOS
@@ -626,348 +616,30 @@ item with nothing in it. Only those two items carry counts — a count on
 never widens: `test_a_technician_sees_escalation_in_their_own_trade_only` is the
 negative — an escalated plumbing job stays invisible to an electrician.
 
-## 7. Inherited bugs — do not port
+## 7. Known tech debt
 
-Found during the audit of `django_resolver`. **Still open** — these are live in
-this codebase or deliberately reproduced in it. Anything fixed moves to the list
-below rather than staying here struck through, so this list is only ever the
-work remaining.
+**Tailwind config is inert.** `src/index.css:1` is `@import 'tailwindcss';`
+with no `@config`, so under Tailwind v4 + `@tailwindcss/vite` the config file
+is never loaded and `tailwindcss-animate` is never registered. Every
+`animate-in` / `fade-in-0` / `zoom-in-95` class is a no-op and overlays snap
+open instead of animating. Wiring it up would double-wrap the already-`oklch()`
+tokens and break every colour, so it is recorded rather than fixed.
 
-1. **WS channel guard has no ownership check** (`apps/realtime/consumers.py:100-115`,
-   in the reference repo). `ticket_*` returns `True` for any authenticated user;
-   `section_*` and `campus_department_*` check only the role *name*, so any
-   technician can subscribe to any section's feed. `tests/test_phase6_ws.py:124-139`
-   asserts this as correct. Deferring WS (§6) avoids inheriting it; a correct
-   scheme needs groups keyed on `(section, sub_section)` with membership
-   re-derived from `SectionTechnician` rather than a JWT claim.
-2. **Tailwind config is inert.** `src/index.css:1` is `@import 'tailwindcss';` with
-   no `@config`, so under Tailwind v4 + `@tailwindcss/vite` the config file is never
-   loaded and `tailwindcss-animate` is never registered — every `animate-in` /
-   `fade-in-0` / `zoom-in-95` class is a no-op and overlays snap open. Reproduced
-   verbatim to preserve the current look; wiring it up would double-wrap the
-   already-`oklch()` tokens and break every colour. Tech debt, recorded not fixed.
-
-### Fixed since
-
-- **Frontend posted a backend field that did not exist.** `SectionTypeForm.tsx`
-  and `organizations.ts` sent `parent` / `specialty_ids` for a "specialty within
-  a section type" feature that exists nowhere in the Python; DRF discarded it
-  silently. The UI was reused for SubSection admin, which is the feature it was
-  reaching for.
-- **`check_sla.py` emitted to WS groups no consumer joins** — dead code, removed.
-- **`report_views.py` parsed dates naive under `USE_TZ=True`**, which also made
-  the Summary sheet disagree with the data sheets. Both parsers are now
-  `_build_date_range_params` + `resolve_date_range`.
-- **`process_auto_escalations --verbose`** was declared and never read; removed.
-- **`routing.py` picked a section with `.first()` and no `order_by`** —
-  nondeterministic had a campus ever had two matching active sections. It now
-  orders by `pk`, with a comment saying why. (Fixed in `6bdf179`; this list had
-  not caught up.)
-- **`process_auto_escalations --dry-run` reported nothing.** It printed a
-  warning and returned. It now runs the real path inside a rolled-back
-  transaction and reports the count, so the preview cannot drift from the run
-  it predicts. Both halves of the command have tests; the sibling `check_sla`
-  had one and this did not.
-- **Four read paths were duplicated and had already drifted.**
-  `TicketDetailView` kept a hand-written `select_related` that had lost
-  `sub_section` and never applied the `has_feedback` annotation, so every
-  detail read paid for both; `DepartmentViewSet` and `SectionTypeViewSet`
-  declared `prefetch_related` and then had it thrown away by serializers that
-  built fresh querysets. All now go through `ticket_base_qs()` / `Prefetch()`,
-  with query-count tests (`test_ticket_read_queries.py`,
-  `test_org_catalogue_queries.py`) — a count is the only thing that sees this.
-- **`TicketFeedbackView` skipped the IDOR guard**, fetching with a bare
-  `get_object_or_404`. Safe only because the next line rejected non-requesters.
-  It uses `get_ticket_for_request_or_403` and is in the OUTSIDERS matrix now.
-- **`TicketAssignView` mutated the Ticket directly**, the only action view that
-  did. Moved to `lifecycle.assign_ticket()`.
-- **Dead config and fields, removed.** `role_config`'s `headline`,
-  `facilities`, `ticket_flow` and `comparison` keys were read by nothing — the
-  frontend keeps its own copy of that shape. `get_primary_campus_display` was
-  character-for-character `get_campus_name`, and neither `*_display` field was
-  read anywhere in the client. `_SectionMinSerializer` emitted
-  `section_type_name` and `name` from one source. `rest_framework.authtoken`
-  was installed under JWT-only auth.
-- **`report_views.py` had no test at all** — 653 lines of workbook building.
-  `tests/test_reports.py` covers every report type, the Summary agreeing with
-  the analytics endpoint, and a cross-campus negative.
-- **Manager was the last role on the older ticket-table stack.** Admin, HOD
-  and HOS render `RoleTicketsPage`; manager wired `DataTable` +
-  `createTicketTableColumns` by hand, while `RoleTicketsPage` already held a
-  complete `manager` entry nothing called. The user-visible cost was the
-  `FilterPills` row: managers had no **Overdue** filter, the one every other
-  supervisory role gets. `e2e/manager.spec.ts` now asserts the page renders and
-  the pill narrows.
-- **`useTicketTable` carried a third of itself for nobody.** Six config options
-  (`externalSections/Users/Technicians/Facilities`, `initialData`,
-  `onDataFetched`) had no call site, which made `technicians` and `users`
-  permanently `[]` — so `createTicketTableFilters`' technician and requester
-  dropdowns could only ever offer "All", and the `raisedByName` lookup searched
-  an empty array for a value nothing read. `unassignedFilter` was state that
-  never reached `ticketParams`, the same defect as the Overdue pill. Worst of
-  it: the hook called `useSections()` and an unfiltered `useFacilities()` —
-  the whole estate — on every mount of every ticket table, and no caller read
-  either. 345 lines to 277, and two requests per table gone.
-- **Three table headers were one table header.** `AdminTableHeader` and
-  `TechTableHeader` differed from the default by one CSS class each and neither
-  rendered `subtitle`; that retires `DataTable`'s `renderHeader` escape hatch
-  with its last two consumers. The sortable-header block was hand-inlined in
-  five `TableUtils` columns beside `useSortableColumn`, which already existed
-  and which three admin pages already used — now `sortableHeader`, named for
-  what it is, since it returns a component and is called from plain factories.
-- **Four small vocabularies had two definitions each.** `timeAgo` had a fourth
-  copy in `NotificationItem` (that copy contributed the "Just now" branch,
-  which is better than the "0m ago" the shared one rendered — so it was kept
-  and the copy deleted). `BadgeColor` was declared three times and had already
-  drifted: the canonical export carried an `'orange'` nothing produces, the two
-  local copies did not. The JWT base64url decode was written twice with the same
-  swallowed catch, now `decodeJwtPayload`. The role → base-path map lived in
-  `AppSidebar` as `ROLE_BASE` and in `LoginForm` as `roleRedirect`; renaming a
-  prefix would have landed a signed-in user on a 404 while the sidebar kept
-  working. `App.tsx` still spells its routes literally, deliberately.
-- **~1,200 lines of dead frontend code, removed.** The bulk of it was code
-  that could not run rather than code nobody called: 30 `export default`s no
-  importer used (only `useTickets` was imported both ways, which is the drift
-  the pattern invites), the whole `section` branch of `UnifiedDetailsSheet`
-  and its config entry — both callers are typed to `facility` or `technician`,
-  so its roster fetch, `related-list` field type and loading skeleton were
-  unreachable — `SECTION_OVERVIEW_STATS` and `STAT_DEFINITIONS` (reachable
-  only through a `STAT_VIEWS` key nothing reads), four of five schemas in
-  `ticketValidation`, `ChartLegend`/`ChartLegendContent`, the `UserDashboard`
-  type chain, `hod.types.ts`, `manager.types.ts`, `useCreateTicket`,
-  `useTicketFilters`, seven single-fetch service methods, and the `uiStore`
-  modal slice. `AdminRoute`/`TechnicianRoute`/`UserRoute` went too: besides
-  having no callers, `UserRoute` required `role === 'user'`, which would have
-  locked five roles out of raising tickets (invariant 5) had anyone reached
-  for it.
-  Nine unused runtime dependencies went with it. `progress.tsx` and
-  `@radix-ui/react-progress` were live only for the simulated upload bar.
-  **What was deliberately kept:** types exported but only used inside their own
-  file (they document the API shape), the shadcn re-exports, and
-  `REPORTS_STYLING_GUIDE.md`, which is current and moved to `docs/` rather
-  than deleted — it sat under `features/reports/`, a directory with no code in
-  it.
-- **Two tables paginated to nowhere.** `FacilitiesTable` passed a literal
-  `pagination: {pageIndex: 0, pageSize: 10}` into `state` with no
-  `onPaginationChange`. A controlled slice with no setter makes TanStack drop
-  every internal update, so `table.nextPage()` did nothing while
-  `getCanNextPage()` still returned `true` — Next stayed enabled, the counter
-  read "Page 1 of 2", and most of the register had no route to it; "Rows per
-  page" was dead the same way. `CampusesPage` had the same
-  defect through split `pageIndex`/`pageSize` state whose setters were only
-  ever called with `0`, masked because five campuses fit on one page. Both hold
-  one `pagination` object with `onPaginationChange`, and
-  `AdminResourceTable`'s redundant `pageSize`/`onPageSizeChange` props are gone
-  — it already receives the `table`, which carries both.
-- **Assigned Tickets sat at a different inset from every other ticket table.**
-  `DataTable`'s `variant` prop does two unrelated jobs: it names a layout *and*
-  it sets the card padding (`isAdminVariant ? "pt-7" : "p-6"`). `TicketTable`
-  pins `variant="admin"` for all five of its variants, and the other two direct
-  callers pass `"admin"` as well — `TechTickets` was the only place in the app
-  passing anything else, so its card carried 20px more top inset than the list
-  beside it in the same sidebar. It passes `"admin"` too now.
-
-  That leaves `"user"` and `"tech"` as members of the union nothing selects.
-  The prop is one value away from being removable, and the padding branch with
-  it; left in place deliberately rather than widening a spacing fix.
-
-  The bigger version of this — moving `RecentTickets`, `TechTickets` and
-  `TechSectionTickets` off `createTicketTableColumns` onto `TicketTable` — was
-  scoped and declined. The three pages differ from the `admin` variant by
-  exactly one column (`updated_at`), so the migration is small, but it is a
-  column-visibility change on three live pages and not a spacing fix.
-- **Facilities told a HOD and HOS it was showing "your campus"** while showing
-  all five, directly above a pill row offering every campus. The register is
-  deliberately not role-scoped — `FacilityRegisterView`'s own header says so,
-  and `FacilityViewSet.get_queryset()` filters only on `?campus=` — so the
-  sentence was the bug, not the scope. It now reads "Every building the
-  institution maintains. Filter by campus to see only yours."
-
-  Unresolved: the OPEN/RESOLVED/CLOSED columns on that register *are* ticket
-  data, and they are unscoped too, so a Nairobi HOS can read Mombasa's open
-  counts. Aggregate counts rather than ticket content, but it sits against the
-  rule that every ticket read goes through `scoped_ticket_qs`.
-- **`truncate` with no bounded width does nothing.** The pending-reason cell
-  carried `truncate` on its note and a table cell sizes to its content, so the
-  note simply widened the column: the Pending Work table ran 1787px inside a
-  1208px wrapper and pushed the Resume buttons — the point of the page — off
-  the right edge behind a horizontal scrollbar, for the section heads as well.
-  A `max-w` makes the existing class mean something (1787 → 1281). Nine columns
-  still overflow a 1280px viewport, as every wide table here does; the spec
-  pins the width it actually guarantees rather than pretending otherwise.
-- **`DataTable` printed the words "Data Table" on screen.** Its `title` prop
-  defaulted to that placeholder, and `DefaultTableHeader` already renders no
-  header at all when the title is absent — so the default did nothing except
-  caption the two tables whose callers deliberately omit a title, the
-  requester's Recent activity and SLA Tracking, each already sitting under its
-  own real heading. Default removed.
-- **`formatRelativeTime` had no singular.** Ticket lists read "1 hours ago",
-  and a ticket seconds old read "0 minutes ago" — the same defect `timeAgo`
-  had, fixed there earlier and never here. This is the fourth relative-time
-  formatter in the codebase and the other three are genuinely different
-  questions (compact, duration, countdown), so it stays where it is.
-- **The facility register only ever held 20 of the 37 buildings.** Fixing the
-  controls above exposed the half underneath: `/facilities/` is paginated by
-  `ConfigListPagination` at 20 a page, and `toArray()` — the DRF list
-  normaliser every service in `organizations.ts` uses — keeps `results` and
-  drops `next`. So a working Next button reached "Page 2 of 2" and stopped;
-  seventeen facilities were never on the client. `getFacilities` follows `next`
-  now, and the e2e asserts the exact page count ("Page 1 of 4") rather than
-  merely that paging works, because the two defects hide each other.
-
-  It is the only list where this bites today: `/users/` and `/catalog/` are
-  custom unpaginated views, and every other config list is under 20 rows in the
-  seed. That is a property of the fixture, not a guarantee — any of them
-  crossing 20 will silently truncate the same way.
-- **The ticket search box emptied three tables instead of filtering them.**
-  `useTicketTable` built its hidden `searchField` from `ticket_no` and
-  `description`; the Title column renders `service_item.name`, because a ticket
-  has no title field. So typing a service name plainly visible on screen
-  matched nothing on Recent Tickets, Assigned Tickets and Section Tickets.
-  `TicketTable` already built the field correctly — which is why the admin
-  Tickets page searched fine and the technician's did not, and why the fix is
-  the same expression, not a new one.
-- **"This Month" charted the last four days as four weeks.** `ChartsSection`
-  took `trend.slice(-4)` and labelled the bars `Week 1`…`Week 4`. `flow_trend`
-  is one point per *day* and omits days with no activity, so position in the
-  array carries no date information at all — those were the last four days that
-  happened to have tickets. Each point is now bucketed onto the Monday of its
-  own week and the bar is labelled with that date, so a gap moves nothing.
-  (Dates are parsed as local midnight: `new Date('2026-08-19')` is UTC and
-  lands on the previous day for anyone west of Greenwich.)
-- **One status, two words.** `STATUS_LABELS.pending` read "Pending" while the
-  technician's filter pills, all of mobile, My Tickets and the Resume Work
-  modal said "On Hold" — and `STATUS_LABELS` is what `StatusBadge` renders, so
-  a single ticket showed an "On Hold" pill directly above a row badged
-  "Pending". The badge and the overview stat card say **On Hold** now. The
-  *page* is still called Pending Work; renaming a navigation destination is a
-  separate call. The dashboard's status doughnut was labelling its slices with
-  the raw wire values — `in_progress`, `pending` — so it went through
-  `STATUS_LABELS` too, as did the Analytics doughnut in `RoleAnalyticsView`,
-  which stripped the underscore and stopped ("in progress", "pending",
-  lowercase). Neither looks wrong in the source — `name: s.status` reads fine —
-  and the requester's **On Hold** stat card still carried a badge saying
-  "Pending". A role-by-role walk of all 21 pages is what found them.
-- **Four cards labelled the Overdue count "Breached".** `aggregate()`'s
-  `breached` gates on `_q_running`, so it counts tickets that are live and past
-  target — Overdue, in the vocabulary §"SLA: settled ≠ running" defines. A
-  ticket finished late is *Missed* and is judged against `resolved_at`.
-  `statCardsConfig` (whose card id already said `admin-overdue`),
-  `MyPerformancePanel`, `RoleAnalyticsView` and `ServiceHealthCards` all say
-  Overdue now, agreeing with SLA Tracking.
-- **Two sentences that described something the code does not do.**
-  `ComingSoonSection` printed "Development in progress: 75% complete" over a
-  three-quarters-full progress bar for every unbuilt section — a fabricated
-  number, on screen, for all of them. SLA Rules invited the reader to "click a
-  name, time, or rank to edit it inline" while rank is plain text; rank is
-  fixed at creation because `Priority.default()` returns the lowest one, so
-  reordering silently changes what every future ticket opens at. The claim was
-  made twice — the page header said "click any value to edit inline" one line
-  above the card that said it more precisely — and both now say the same thing.
-- **Five destructive confirmations, five implementations.** `ConfirmDialog`'s
-  own header claimed it was "used by every action that cannot be undone" while
-  having exactly one consumer. Users, Departments, SLA priorities and the
-  service Catalogue had each rebuilt the same title/description/cancel/confirm
-  AlertDialog by hand (the Catalogue's in a file of its own,
-  `DeleteConfirmDialog.tsx`), and Campuses used a raw `window.confirm` — a
-  native modal in an app that renders its own, with no loading state, so a slow
-  DELETE looked like nothing had happened. All five now call `ConfirmDialog`;
-  `title` and `description` take a `ReactNode` because some of them format the
-  entity name into the sentence or put an icon in the title. `alert-dialog` has
-  one importer again, and `grep window.confirm src/` returns only a comment.
-  Departments and SLA priorities have no E2E coverage — those two were verified
-  by types and build only.
-- **The my-tickets Actions cell read a detail-only field.** `rateAndCloseColumn`
-  tested `ticket.feedback`, which only `TicketDetailReadSerializer` nests; the
-  list sends `has_feedback`. The test was therefore always `undefined`. It is
-  *not* the "rated tickets keep offering Rate & close" bug it looks like —
-  `RatingModal` posts feedback and then closes the ticket, so a rated row is
-  `closed` and fails the `resolved` test either way. It bites when the close
-  after the feedback fails (the modal's `catch` swallows it): the ticket stays
-  resolved and rated, the button is offered again, and the endpoint answers
-  409 "Feedback has already been submitted." Both branches key on
-  `has_feedback` now, and `Ticket` says which of the two fields a list row
-  carries.
-- **Two details-sheet saves reported success and wrote nothing.** The facility
-  branch of `handleSaveChanges` was an empty `// TODO` and fell through to
-  `toast.success('Facility updated successfully')`, so the admin saw a save
-  that never happened and the list refetched the old values. It now calls
-  `facilitiesService.updateFacility`, over the writable half only — the config
-  had been offering `type` and `status` (read-only) and `location` (not a
-  column). The technician sheet had a full add/remove section picker whose
-  save sent `{email}` alone; the comment beside it already said the server has
-  never read `sections` off that endpoint. Section membership is a role
-  assignment and belongs to `TechnicianForm`, so the picker and its three
-  handlers are gone rather than given a new backend surface.
-- **Technician sections rendered as a run of digits.** The same config listed
-  `sections` as a `readonly` view field, so it fell past the branch that maps
-  ids to names and React concatenated the array — a technician in sections 3
-  and 7 read "37", and an unassigned one showed blank rather than an em dash,
-  since `[] || '—'` is truthy. Typed `sections` now, which is what the
-  already-written `technicianSectionNames` was waiting for.
-- **"New Facility" could never create a facility.** The dialog collected
-  `facility_code`, `type`, `status` and `location` and posted them: of those,
-  the real field name is `code`, `type` and `status` are read-only
-  `SerializerMethodField`s, and `location` is not a column. `facility_type` —
-  the one required FK, which has no default — was never sent, so every submit
-  answered `400 {"facility_type": ["This field is required."]}` behind a
-  generic "Failed to create facility". The payload type simply described a
-  different API than the one being called, so `tsc` was green. The form now
-  reads `GET /facility-types/` (registered since the port and never called
-  until now) and sends the FK. `e2e/facilities.spec.ts` drives the dialog and
-  asserts 201 — it fails with the original 400 if the field is dropped again.
-- **`Facility` described fields the API has never sent.** `facility_code` and
-  `floors_count` were declared; `code`, `facility_type`, `facility_type_name`
-  and the three ticket counts, which the serializer always returns, were not.
-  `FacilityRegisterView` had quietly re-declared the missing half locally as
-  `FacilityRow`. The type now mirrors `FacilitySerializer.Meta.fields` and the
-  local copy is gone.
-- **Attachments were never uploaded.** `AttachmentUploader` made no network
-  call at all: `simulateProgress()` advanced a bar on a `setTimeout` until it
-  read 100% and flipped the row to `done`, and the wizard's payload had no
-  attachment field. A requester photographed a fault, watched the bar fill, saw
-  the file on the review step, submitted — and the bytes never left the browser.
-  The endpoint, the compression service and the model had been built all along;
-  only the call was missing. The wizard now posts to
-  `/tickets/<id>/attachments/` after create (there is no id to post to before
-  it), and reports a ticket-created-but-upload-failed partial rather than a
-  failed submission the user would retry into a duplicate. Per-file progress is
-  gone rather than made real — one request carries the batch, so a per-file bar
-  would be a second invented number. `tests/test_attachments.py` covers the
-  field name, both caps, the type rejection and uploader-or-supervisor delete;
-  `ticket-lifecycle` attaches a real PNG and asserts the technician sees it.
-- **Uploads had nowhere to land in the UI.** Nothing rendered attachments on a
-  ticket, so wiring the upload alone would have moved the bug rather than fixed
-  it. `TicketDetailPage` now has an Attachments card, fed by
-  `useTicketAttachments`, and `useTicketInvalidate` clears that key too.
-- **The Overdue pill listed every ticket.** `overdueFilter` was held in
-  `useTicketTable` state, read back only to light the pill, and applied
-  nowhere — and the handler set `status` to `all` alongside it, so "Overdue"
-  widened the table instead of narrowing it, resolved rows included. It is now
-  `?overdue=1` on the list endpoint, server-side like every other filter
-  (client-side would filter the 20 rows the page happens to hold), using the
-  same predicate as analytics' `breached`: RUNNING_STATUSES past
-  `resolution_due_at`. The pill and the SLA Tracking card now both say 25.
 
 ## 7a. Keeping the two halves in step
 
-Frontend code can call an endpoint that does not exist and still compile, build
-and pass lint. That is the failure mode this port kept hitting, and the first
-sign of it is a 404 in front of a user.
+Frontend code can call an endpoint that does not exist and still compile,
+build and pass lint. The first sign of it is a 404 in front of a user.
 
-The check is mechanical — extract every `apiClient.<verb>('…')` path, extract
-every Django route, diff them. Doing it once found six unmatched calls: five
-dead (push, `/admin/config/`, `/auth/profile/`, `assign-hos`) and one live —
-`GET /tickets/feedback/`, which four roles' Feedback tab was calling and which
-had never been ported. Worth re-running after any batch of endpoint changes.
+The check is mechanical: extract every `apiClient.<verb>('…')` path, extract
+every Django route, diff them. Worth re-running after any batch of endpoint
+changes.
 
-**There is one API mount.** `/api/v1/` is it. `apps.accounts.urls` used to be
-included a second time at bare `/api/` "for backward compatibility", so every
-auth and user endpoint answered on two paths — a second, unwatched copy of the
-login surface that nothing in this repo called. Both mounts shared URL names, so
-`reverse()` silently resolved to the v1 copy and the duplicate was invisible from
-inside the code. Removed; if a path outside `/api/v1/` ever answers again, that
-is the bug.
+**There is one API mount.** `/api/v1/` is it. If a path outside `/api/v1/` ever
+answers, that is the bug: a second mount of `apps.accounts.urls` puts an
+unwatched copy of the login surface on a second path, and because both mounts
+share URL names, `reverse()` resolves to the v1 copy and hides the duplicate
+from inside the code.
 
 **Compare trailing slashes exactly.** The first version of this check
 normalised them on both sides, which hid a real bug: the client posted to
@@ -994,30 +666,34 @@ a property its rows did not carry. `tsc` is green for all of them.
 | `facilities` | the New Facility dialog actually creates one (the required FK reaches the server) |
 | `ticket-lifecycle` | raise → route → claim → resolve, plus a same-campus/different-trade negative; the raise step attaches a real PNG and the technician step asserts it rendered |
 
-Run it with `E2E_PASSWORD=<seed password> npm run test:e2e`. Both servers start
-automatically; the backend command points at **`../backend`**, which is worth
-checking if the suite ever starts behaving like a different application — it
-pointed at the reference repo for the whole first part of this port, so the
-suite was testing the enterprise Service Desk.
+Run it with `E2E_PASSWORD=<seed password> npm run test:e2e`. Both servers
+start automatically; the backend command must point at **`../backend`**, which
+is worth checking if the suite ever starts behaving like a different
+application.
 
 ## 8. Target app layout
 
 ```
 apps/
-  common/      roles, permissions, pagination, phone, admin, seed
-                                                           (no time_windows)
-  accounts/    CustomUser, UserProfile, RoleAssignment(1:1)  (no switch-role)
+  common/      roles (tiers + permissions), pagination, phone, admin, seed
+  accounts/    CustomUser, UserProfile, RoleAssignment(1:1)
+               identity / scope / posts
   org/         Campus, Department, CampusDepartment, SectionType,
                SubSection, Section, SectionTechnician, ServiceItem
-  sla/         Priority, EscalationRule, due_dates, escalation
-  facilities/  FacilityType, Facility, validators            (unchanged)
+  sla/         Priority, EscalationRule; clock (due dates + predicates),
+               escalation
+  facilities/  FacilityType, Facility, validators
   tickets/     Ticket, Location, Log, Comment, Feedback, Attachment,
-               Sequence; scope / routing / lifecycle / attachments
+               Sequence; constants / scope / lifecycle / attachments
   analytics/   services, insights, role_config, views, report_views
-  notifications/  Notification model + REST                  (ex-realtime slice)
+  notifications/  Notification model + REST
 ```
 
-9 apps → 8. 24 models → 23.
+8 apps, 23 models, 47 modules. No app has a `services/` subpackage: a module
+that a package would have held sits directly in the app.
+
+Every module carries a **Used by** list in its docstring, naming the app
+modules that import it. It is a fact about the current code, not an intention.
 
 ### Where the shared vocabularies live
 
@@ -1026,14 +702,15 @@ of them has drifted here at least once:
 
 | Definition | Home | Read by |
 |---|---|---|
-| `ACTIVE/RUNNING/TERMINAL_STATUSES`, `ESCALATED_LEVELS` | `apps/tickets/statuses.py` | tickets, sla, analytics, facilities, common |
-| `SUPERVISOR_ROLES`, `STAFF_ROLES` | `apps/common/roles.py` | tickets, analytics |
-| `PENDING_REASONS` | `apps/tickets/pending_reasons.py` | model choices, lifecycle, analytics, the API |
-| `ticket_base_qs()` — relations + `has_feedback` | `apps/tickets/services/scope.py` | the scoped list and the detail view |
-| `compute_due_dates()` | `apps/sla/services/due_dates.py` | creation, reopen, assignment, the seed |
+| `ACTIVE/RUNNING/TERMINAL_STATUSES`, `ESCALATED_LEVELS`, `PENDING_REASONS` | `apps/tickets/constants.py` | tickets, sla, analytics, facilities, common |
+| `TICKET_SUPERVISOR_ROLES`, `STAFF_ROLES`, `ANALYTICS_ROLES`, `IsAdminGroup`, `IsAdminOrReadOnly` | `apps/common/roles.py` | accounts, org, sla, facilities, tickets, analytics |
+| `SCOPE_FIELD_BY_ROLE`, `SECTION_PATH_BY_ROLE`, `technician_pair_exists()` | `apps/accounts/scope.py` | accounts, tickets, org |
+| `ticket_base_qs()` — relations + `has_feedback` | `apps/tickets/scope.py` | the scoped list and the detail view |
+| `compute_due_dates()`, `q_overdue()`, `q_at_risk()`, `q_met()` | `apps/sla/clock.py` | creation, reopen, analytics, check_sla |
 | `created_window()` / `resolved_window()` / `resolution_seconds()` | `apps/analytics/services.py` | `aggregate()`, `insights`, `report_views` |
 
-`test_no_module_writes_the_status_list_out_by_hand` is the enforcement for the
-first row; it greps `apps/` for the literal and fails on a copy. The others
-rely on review — a second definition of any of them is a bug, not a style
-preference.
+`test_no_module_writes_the_status_list_out_by_hand` enforces the first row: it
+greps `apps/` for the literal and fails on a copy.
+`test_no_module_writes_the_overdue_predicate_out_by_hand` does the same for the
+SLA predicates. The rest rely on review; a second definition of any of them is
+a bug, not a style preference.
