@@ -8,9 +8,11 @@ so it ends with an accurate 'Used by:' list.
     python tools/used_by.py . apply    # add a block where there is none
     python tools/used_by.py . force    # replace every block, stale ones included
 
-`tests/test_used_by_headers.py` is the gate: it fails when a header names a
-module that no longer imports it, or omits one that does. When it fails, run
-`force` rather than editing the block by hand.
+`force` is the check as well as the fix: it rewrites every block from the real
+imports, so `git diff` afterwards names exactly the headers that had gone
+stale, and an empty diff means none had. `report` only lists modules carrying
+no block at all — it does not inspect the ones that have one. Never edit a
+block by hand.
 
 A module with no docstring needs a one-line summary in `summaries.py` first;
 the run reports which ones are missing one.

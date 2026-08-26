@@ -694,8 +694,10 @@ that a package would have held sits directly in the app.
 
 Every module carries a **Used by** list in its docstring, naming the app
 modules that import it. It is a fact about the current code, not an intention.
-`test_used_by_headers.py` reads the AST and fails on a name that no longer
-imports the module, and on an importer the header omits.
+`tools/used_by.py` derives it from the AST. `force` rewrites every block from
+the real imports, so `git diff` afterwards is the drift and an empty one means
+no header is stale; `report` only names modules carrying no block at all. The
+header is generated, never hand-edited.
 
 A module docstring also opens with a **Contents** index: one line per model,
 function or property, giving its purpose and, where it is not obvious, why.

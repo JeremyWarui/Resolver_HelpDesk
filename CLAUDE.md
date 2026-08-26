@@ -51,7 +51,10 @@ No app has a `services/` subpackage. A service module sits directly in its app:
 
 Every module's docstring carries a **Used by** list naming the app modules that
 import it. It states the current code, so update it when an importer changes.
-Derive it by reference-counting the AST, not by reading comments.
+Derive it by reference-counting the AST, not by reading comments. From
+`backend/`, `../venv/Scripts/python tools/used_by.py . force` rewrites every
+block from the real imports; `git diff` is then the drift, and an empty one
+means no header is stale. Never edit a block by hand.
 
 The docstring also opens with a **Contents** index — one line per model,
 function or property, saying its purpose and, where it is not obvious, why.
