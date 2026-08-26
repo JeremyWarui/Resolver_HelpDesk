@@ -53,6 +53,15 @@ Every module's docstring carries a **Used by** list naming the app modules that
 import it. It states the current code, so update it when an importer changes.
 Derive it by reference-counting the AST, not by reading comments.
 
+The docstring also opens with a **Contents** index — one line per model,
+function or property, saying its purpose and, where it is not obvious, why.
+That index is where a reader looks first, so per-function docstrings and `#`
+comments carry only what the index cannot: the why behind a line, a return
+shape, a trap. A comment that restates the code or the index gets deleted.
+`test_contents_headers.py` checks every listed name exists and every top-level
+function and class is listed; it only inspects modules that carry the header,
+so apps convert one at a time. Converted: accounts.
+
 Frontend: `features/<role>/` pages, shared role-parametrised views in
 `features/shared/`, self-fetching scoped data components in
 `components/shared/data/`. Extend those rather than re-implementing per role.

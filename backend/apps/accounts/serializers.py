@@ -1,7 +1,32 @@
 """How accounts renders a person, a role, and the two together.
 
-`UserMinSerializer` is the one shape for "a person" in any API response.
-Anything that puts a user in a payload imports it from here.
+Neither create nor update takes a name. The email is the identity: username,
+first and last name are derived from its local part and never accepted from a
+client, so an account's display name and its login cannot drift apart.
+
+Contents:
+    UserMinSerializer            purpose: a person, as any payload refers to one.
+                                 Why: one shape everywhere — importers take it
+                                 from here rather than assembling their own.
+    RoleAssignmentSerializer     purpose: a role as every reader sees it, for
+                                 `/users/{id}/role-assignments/` and the
+                                 `active_role` of `/auth/me/`.
+    RoleAssignmentWriteSerializer  purpose: validate campus/department/section
+                                 ids and apply the assignment. Why: POSTing it
+                                 replaces the one role a user holds.
+    UserAdminSerializer          purpose: the admin user list and the technician
+                                 roster's person half. Why: spells out both
+                                 campuses, which are different facts.
+    _campus_must_exist           purpose: reject an unknown campus id.
+    _email_must_be_free          purpose: reject an email another account holds.
+    _email_must_carry_a_name     purpose: reject an email with nothing before
+                                 the '@'. Why: it would render as a username
+                                 forever.
+    UserCreateSerializer         purpose: admin account creation, and register.
+    UserUpdateSerializer         purpose: admin account edit — email and campus.
+    create_account               purpose: build the account, its home campus and
+                                 the floor role. Why: one definition of what an
+                                 account is, for both API paths.
 
 Used by:
     accounts.views       RoleAssignmentSerializer, RoleAssignmentWriteSerializer, UserAdminSerializer, UserCreateSerializer, …
@@ -28,15 +53,9 @@ from apps.accounts.scope import (
 User = get_user_model()
 
 
-# ── A person ──────────────────────────────────────────────────────────────────
-
-
 class UserMinSerializer(serializers.Serializer):
-    """A person, as any payload refers to one.
-
-    `full_name` is `identity.display_name` — never assembled at the call site,
-    and never blank: a dotless email has no surname and `createsuperuser` skips
-    the email rule, so the username is the fallback.
+    """`full_name` is `identity.display_name` — never assembled at the call site,
+    and never blank.
     """
 
     id = serializers.IntegerField(read_only=True)
@@ -49,16 +68,10 @@ class UserMinSerializer(serializers.Serializer):
         return display_name(obj)
 
 
-# ── A role ────────────────────────────────────────────────────────────────────
-
-
 class RoleAssignmentSerializer(serializers.ModelSerializer):
-    """A RoleAssignment as every reader sees it: one shape, two endpoints.
-
-    `/users/{id}/role-assignments/` returns it, and it is also the `active_role`
-    of `/auth/me/`. `campus_id` and `department_id` come from `scope.campus_for`
-    and `scope.department_for`, never from the direct FK, because a technician
-    or an HOS reaches their department through their section.
+    """`campus_id` and `department_id` come from `scope.campus_for` and
+    `scope.department_for`, never from the direct FK, because a technician or an
+    HOS reaches their department through their section.
     """
 
     section_id = serializers.IntegerField(read_only=True)
@@ -88,7 +101,7 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_section_name(self, obj):
-        return str(obj.section) if obj.section_id else None  # "NRB-ADM-MTCE"
+        return str(obj.section) if obj.section_id else None
 
     def get_campus_id(self, obj):
         campus = campus_for(obj)
@@ -110,10 +123,8 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         return obj.assigned_by.username if obj.assigned_by_id else None
 
     def get_sub_section_ids(self, obj):
-        """The trades a technician works — empty for every other role.
-
-        They live in SectionTechnician because one role row cannot express
-        "Carpentry and Plumbing at Nairobi".
+        """Empty for every other role. They live in SectionTechnician because one
+        role row cannot express "Carpentry and Plumbing at Nairobi".
         """
         if obj.role != "technician" or not obj.section_id:
             return []
@@ -127,12 +138,9 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 
 
 class RoleAssignmentWriteSerializer(serializers.Serializer):
-    """Takes campus_id/department_id/section_id and gives back scope objects.
-
-    A user has one role, so POSTing this replaces whatever they held. Which
-    scope each role needs is not decided here — `posts.scope_kwargs_from_ids`
-    reads it from `SCOPE_FIELD_BY_ROLE`, so this serializer cannot drift from
-    the rule `RoleAssignment.clean()` enforces on save.
+    """Which scope each role needs is not decided here — `posts.scope_kwargs_from_ids`
+    reads it from `SCOPE_FIELD_BY_ROLE`, so this cannot drift from the rule
+    `RoleAssignment.clean()` enforces on save.
     """
 
     role = serializers.ChoiceField(choices=RoleAssignment.ROLE_CHOICES)
@@ -204,17 +212,12 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
         )
 
 
-# ── A person and their role ───────────────────────────────────────────────────
-
-
 class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
-    """The admin user list, and the technician roster's person half.
-
-    Two campuses appear here and they are different facts, so both names are
-    spelled out. `home_campus_*` is where the person works and routes the
-    tickets they raise. `primary_campus_*` is what their role oversees, and is
-    null for a manager, an admin and a plain requester. Never collapse the two
-    into one `campus_id`: the ticket wizard routes off `home_campus_id`.
+    """Two campuses appear here and they are different facts. `home_campus_*` is
+    where the person works and routes the tickets they raise. `primary_campus_*`
+    is what their role oversees, and is null for a manager, an admin and a plain
+    requester. Never collapse the two: the ticket wizard routes off
+    `home_campus_id`.
     """
 
     role = serializers.SerializerMethodField()
@@ -286,12 +289,6 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
         return campus.name if campus else None
 
 
-# ── Creating and editing an account ───────────────────────────────────────────
-# Neither takes a name. The email is the identity: username, first
-# and last name are derived from its local part and never accepted from a
-# client, so an account's display name and its login cannot drift apart.
-
-
 def _campus_must_exist(value):
     """None passes — an update uses it to clear the profile campus."""
     from apps.org.models import Campus
@@ -326,8 +323,6 @@ def _email_must_carry_a_name(value):
 
 
 class UserCreateSerializer(serializers.Serializer):
-    """Admin account creation. Registration goes through the same rules."""
-
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     campus_id = serializers.IntegerField()
@@ -347,8 +342,8 @@ class UserCreateSerializer(serializers.Serializer):
 
 
 class UserUpdateSerializer(serializers.Serializer):
-    """Admin account edit. Name and username are not editable — changing the
-    email re-derives them, and there is no way to set one on its own."""
+    """Name and username are not editable — changing the email re-derives them,
+    and there is no way to set one on its own."""
 
     email = serializers.EmailField(required=False)
     campus_id = serializers.IntegerField(required=False, allow_null=True)
@@ -380,18 +375,10 @@ class UserUpdateSerializer(serializers.Serializer):
 
 
 def create_account(*, email, password, campus_id):
-    """Make an account: identity from the email, a home campus, the floor role.
-
-    Registration and admin-create both land here, so the two API paths cannot
-    disagree about what an account is.
-
-    Not the only way a CustomUser is created. `common.seed` builds its own
-    identity and calls `User.objects.get_or_create` so it can stay idempotent
-    and set a phone number, and `tests.factories` calls `create_user` directly.
-    Both reach the same result by a different route.
-
-    Called by UserCreateSerializer.create, which serves both /auth/register/
-    and POST /users/.
+    """Registration and admin-create both land here, so the two API paths cannot
+    disagree about what an account is. Not the only way a CustomUser is created:
+    `common.seed` builds its own identity to stay idempotent, and
+    `tests.factories` calls `create_user` directly.
     """
     from apps.accounts.posts import ensure_requester
 

@@ -694,6 +694,16 @@ that a package would have held sits directly in the app.
 
 Every module carries a **Used by** list in its docstring, naming the app
 modules that import it. It is a fact about the current code, not an intention.
+`test_used_by_headers.py` reads the AST and fails on a name that no longer
+imports the module, and on an importer the header omits.
+
+A module docstring also opens with a **Contents** index: one line per model,
+function or property, giving its purpose and, where it is not obvious, why.
+Everything below the header carries only what the index cannot — the why behind
+a line, a return shape, a trap — so a comment that restates the code or the
+index is deleted rather than kept. `test_contents_headers.py` enforces the
+index the same way, and inspects only modules that carry one, so apps convert
+one at a time. Converted so far: **accounts**.
 
 ### Where the shared vocabularies live
 

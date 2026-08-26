@@ -1,5 +1,19 @@
 """The account, its campus placement, and the one role it holds.
 
+Contents:
+    CustomUser       purpose: the login. Adds a phone number; the role is not
+                     stored here, it is derived from the RoleAssignment.
+    CustomUser.role  purpose: the one role held, or None. Why: convenience only —
+                     gate access through `common.roles.resolve_role`, which
+                     prefers the JWT claim and falls back to this.
+    UserProfile      purpose: campus placement. Why: where a person works is what
+                     routes the tickets they raise, and is not their role's scope.
+    RoleAssignment   purpose: one row per user mapping them to their role and the
+                     org object that role is scoped to.
+      .clean()       purpose: reject a scope that does not match the role.
+      .save()        purpose: run clean() on every write, whatever the caller.
+      .__str__()     purpose: "<user id> / <role> > <scope>" for admin dropdowns.
+
 Used by:
     accounts.posts                   RoleAssignment
     accounts.scope                   RoleAssignment
@@ -14,15 +28,13 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 
-# The scope rules live in `scope.py`, beside the queryset traversals they pair
-# with, so one module answers "what may this role reach" in both directions.
-# Imported rather than restated: `clean()` here and the write serializer read
-# the same dict, so neither can drift from the other.
+# Imported, not restated: clean() here and the write serializer read the same
+# dict, so neither can drift from the other.
 from apps.accounts.scope import SCOPE_FIELD_BY_ROLE, SCOPE_FIELDS, role_of
 
 
 class CustomUser(AbstractUser):
-    """User model. Role is derived from the RoleAssignment — not stored here."""
+    """The login. Role is derived from the RoleAssignment, not stored here."""
 
     phone_number = models.CharField(max_length=15, blank=True)
 
@@ -35,19 +47,10 @@ class CustomUser(AbstractUser):
 
     @property
     def role(self):
-        """The one role this account holds, or None.
-
-        Convenience only, and read from exactly one place: `resolve_role`
-        prefers the JWT claim and falls back here for requests authenticated
-        without a token. Nothing should gate access on this without going
-        through `common.roles.resolve_role`.
-        """
         return role_of(self)
 
 
 class UserProfile(models.Model):
-    """One-to-one extension of CustomUser carrying campus placement."""
-
     user = models.OneToOneField(
         CustomUser,
         on_delete=models.CASCADE,
@@ -70,15 +73,12 @@ class UserProfile(models.Model):
 
 
 class RoleAssignment(models.Model):
-    """Maps a user to their one role, with an explicit organisational scope.
+    """A user's one role, with the org object it is scoped to.
 
-    One row per user, held for as long as they hold the post. Only an admin
-    creates or changes these rows.
-
-    Which scope each role carries is declared in `accounts.scope`'s
-    SCOPE_FIELD_BY_ROLE and enforced by clean(), which save() runs on every
-    write. Who *writes* these rows is `accounts.posts.assign_role`, and only it:
-    the org FKs that `accounts.scope` reads have to move in step with this one.
+    One row per user, held for as long as they hold the post. Which scope each
+    role carries is declared in `accounts.scope.SCOPE_FIELD_BY_ROLE`. Only
+    `accounts.posts.assign_role` writes these rows: the org FKs that
+    `accounts.scope` reads have to move in step with this one.
     """
 
     ROLE_CHOICES = [
@@ -133,15 +133,12 @@ class RoleAssignment(models.Model):
         app_label = "accounts"
 
     def clean(self):
-        """Reject an assignment whose scope does not match its role.
-
-        The role's rule in SCOPE_FIELD_BY_ROLE names the one scope FK it must
-        carry; every other scope FK must be null. Errors are keyed by field
-        name so a form or serializer shows each one beside its own input.
+        """The role's rule names the one scope FK it must carry; every other must
+        be null. Errors are keyed by field name so a form or serializer shows
+        each one beside its own input.
         """
         if self.role not in SCOPE_FIELD_BY_ROLE:
-            # Unknown role: clean_fields() has already recorded the choices
-            # error, and there is no rule here to check it against.
+            # Unknown role: clean_fields() already recorded the choices error.
             return
 
         required = SCOPE_FIELD_BY_ROLE[self.role]
@@ -156,17 +153,13 @@ class RoleAssignment(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        """Run clean() and the field checks on every write, whatever the caller.
-
-        validate_unique=False skips the uniqueness query: the OneToOne on
-        `user` already enforces one role per user in the database.
+        """validate_unique=False skips the uniqueness query: the OneToOne on `user`
+        already enforces one role per user in the database.
         """
         self.full_clean(validate_unique=False)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        # "<user id> / <role>", then whichever scope FKs are set:
-        # "7 / hos > section=3". Shown in admin FK dropdowns.
         scope = [
             f"{field}={getattr(self, f'{field}_id')}"
             for field in SCOPE_FIELDS

@@ -3,6 +3,16 @@
 `jeremy.mwangi@ksg.ac.ke` becomes username `jeremy.mwangi`, shown as
 "Jeremy Mwangi". Nothing else invents a username.
 
+Contents:
+    local_part           purpose: the part before the '@', lower-cased; '' when
+                         there isn't one.
+    identity_from_email  purpose: (username, first_name, last_name). Why: the
+                         only place any of the three is decided, so a display
+                         name and a login cannot drift apart.
+    display_name_parts   purpose: how a person's name is rendered, from columns.
+                         Why: a `.values()` row can call it without re-fetching.
+    display_name         purpose: the same, for a user object; '' if no user.
+
 Used by:
     accounts.serializers             display_name, identity_from_email
     accounts.views                   display_name
@@ -21,14 +31,11 @@ USERNAME_MAX_LENGTH = 150  # AbstractUser.username
 
 
 def local_part(email):
-    """The part before the '@', lower-cased — '' when there isn't one."""
     return (email or "").strip().split("@")[0].strip().lower()
 
 
 def identity_from_email(email, exclude_pk=None):
-    """(username, first_name, last_name) — the only place any of the three is decided.
-
-    Dots separate the names; a dotless local part has no surname to give, and a
+    """Dots separate the names; a dotless local part has no surname to give, and a
     third part folds into the last name rather than being dropped. Local parts
     are not unique the way emails are, so a taken username gets a numeric
     suffix. `exclude_pk` is the account being re-derived after an email change,
@@ -55,18 +62,13 @@ def identity_from_email(email, exclude_pk=None):
 
 
 def display_name_parts(first_name, last_name, username):
-    """The one definition of how a person's name is rendered. Never blank.
-
-    A name is not guaranteed — dotless emails have no surname and
+    """Never blank: a name is not guaranteed — dotless emails have no surname and
     `createsuperuser` skips the email rule — so the username is the fallback.
-    Takes columns rather than a user so a `.values()` row can call it without
-    re-fetching the model; callers holding a user want `display_name`.
     """
     return f"{first_name or ''} {last_name or ''}".strip() or (username or "")
 
 
 def display_name(user):
-    """`display_name_parts` for a user object — '' if no user."""
     if user is None:
         return ""
     return display_name_parts(user.first_name, user.last_name, user.username)
