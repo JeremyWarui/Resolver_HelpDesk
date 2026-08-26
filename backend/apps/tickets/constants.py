@@ -4,17 +4,17 @@ Defined here because `tickets` owns the model that has the fields. Every other
 app is a consumer.
 
 Used by:
-    tickets.models        PENDING_REASONS as field choices
-    tickets.serializers   ALL_STATUSES, PENDING_REASON_CODES
-    tickets.lifecycle     TERMINAL_STATUSES, PENDING_REASON_* , REASON_REQUIRING_NOTE
-    tickets.views         PENDING_REASONS, status sets
-    sla.clock             RUNNING_STATUSES, TERMINAL_STATUSES
-    sla.escalation        ACTIVE_STATUSES, TERMINAL_STATUSES
-    analytics.services    status sets, ESCALATED_LEVELS, PENDING_REASON_LABELS
-    analytics.report_views  status sets
-    facilities.views      ACTIVE_STATUSES
-    common.admin          ACTIVE_STATUSES
-    common.seed           TERMINAL_STATUSES, PENDING_REASON_LABELS
+    analytics.report_views           ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
+    analytics.services               PENDING_REASON_LABELS, ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
+    common.admin                     ACTIVE_STATUSES
+    common.management.commands.seed  PENDING_REASON_LABELS, TERMINAL_STATUSES
+    facilities.views                 ACTIVE_STATUSES
+    sla.clock                        RUNNING_STATUSES, TERMINAL_STATUSES
+    sla.escalation                   ACTIVE_STATUSES, TERMINAL_STATUSES
+    tickets.lifecycle                PENDING_REASON_CODES, PENDING_REASON_LABELS, REASON_REQUIRING_NOTE, TERMINAL_STATUSES
+    tickets.models                   PENDING_REASONS
+    tickets.serializers              ALL_STATUSES, PENDING_REASON_CODES
+    tickets.views                    PENDING_REASONS, ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
 """
 
 # ── Statuses ──────────────────────────────────────────────────────────────────

@@ -1,3 +1,9 @@
+"""Read and write shapes for priorities and escalation rules.
+
+Used by:
+    sla.views  EscalationRuleSerializer, PrioritySerializer
+"""
+
 from rest_framework import serializers
 
 from apps.sla.models import EscalationRule, Priority

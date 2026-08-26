@@ -1,3 +1,9 @@
+"""Read and write shapes for a ticket and its nested reference data.
+
+Used by:
+    tickets.views  TicketCreateSerializer, TicketReadSerializer, TicketDetailReadSerializer, TicketStatusUpdateSerializer, …
+"""
+
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers

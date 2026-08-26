@@ -1,3 +1,22 @@
+"""The ticket and everything hung off it: location, log, comment, feedback, attachment.
+
+Used by:
+    analytics.insights                 TicketFeedback
+    analytics.report_views             Ticket
+    analytics.services                 TicketLog, TicketFeedback, TicketLocation
+    analytics.views                    Ticket
+    common.admin                       Ticket, TicketLocation, TicketComment, TicketFeedback
+    common.management.commands.seed    Ticket, TicketComment, TicketFeedback, TicketLocation, …
+    facilities.views                   TicketLocation
+    sla.escalation                     TicketLog, Ticket
+    sla.management.commands.check_sla  Ticket, TicketLog
+    sla.views                          Ticket
+    tickets.lifecycle                  TicketLog
+    tickets.scope                      Ticket, TicketFeedback
+    tickets.serializers                Ticket, TicketAttachment, TicketComment, TicketFeedback, …
+    tickets.views                      Ticket, TicketAttachment, TicketLog, TicketComment, …
+"""
+
 import os
 import uuid
 from datetime import timedelta

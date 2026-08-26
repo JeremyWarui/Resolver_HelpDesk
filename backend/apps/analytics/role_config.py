@@ -14,6 +14,9 @@ that shape, and config nothing enforces is worse than no config.
 
 The absence of "technician" from a technician's allowed_group_by is what
 prevents them from seeing peer rankings; `resolve_group_by` enforces it.
+
+Used by:
+    analytics.views  get_role_config, resolve_group_by
 """
 
 # Dimensions the analytics engine can group by. Backend validates a requested

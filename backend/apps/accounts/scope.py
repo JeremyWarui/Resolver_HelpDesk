@@ -11,10 +11,10 @@ from here, so a module-level import would close a cycle.
 Used by:
     accounts.models       SCOPE_FIELD_BY_ROLE, SCOPE_FIELDS, role_of
     accounts.posts        SCOPE_FIELD_BY_ROLE
-    accounts.serializers  campus_for, department_for, home_campus, assignment_of
+    accounts.serializers  SCOPE_FIELD_BY_ROLE, assignment_of, campus_for, department_for, …
     accounts.views        department_for, home_campus
-    tickets.scope         section_path, technician_pair_exists
     org.views             visible_sections
+    tickets.scope         section_path, technician_pair_exists
 """
 
 from django.db.models import Exists, OuterRef

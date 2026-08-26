@@ -4,9 +4,9 @@
 Anything that puts a user in a payload imports it from here.
 
 Used by:
-    accounts.views       every endpoint under /auth/ and /users/
+    accounts.views       RoleAssignmentSerializer, RoleAssignmentWriteSerializer, UserAdminSerializer, UserCreateSerializer, …
     org.serializers      UserMinSerializer
-    org.views            UserMinSerializer, UserAdminSerializer
+    org.views            UserAdminSerializer, UserMinSerializer
     tickets.serializers  UserMinSerializer
     tickets.views        UserMinSerializer
 """

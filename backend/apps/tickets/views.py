@@ -1,3 +1,13 @@
+"""Ticket endpoints: the scoped list, the detail, and every action on one.
+
+A view never mutates a Ticket directly; it calls `tickets.lifecycle`.
+Every `/tickets/{pk}/...` action fetches through
+`get_ticket_for_request_or_403()`, never a bare `get_object_or_404`.
+
+Used by:
+    tickets.urls  TicketListCreateView, TicketFilterOptionsView, TicketDetailView, TicketStatusView, …
+"""
+
 from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response

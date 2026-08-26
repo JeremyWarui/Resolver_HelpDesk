@@ -4,6 +4,11 @@ Single entry point: aggregate(scoped_qs, date_range, group_by).
 Every role endpoint supplies (a) a scoped queryset from Phase 6 and
 (b) a group_by dimension. Dashboard preset (overview) and deep-dive
 endpoints call the SAME core — same scope+window yields identical numbers.
+
+Used by:
+    analytics.insights      _percentile, created_window, resolution_seconds, resolved_window
+    analytics.report_views  aggregate, created_window, resolution_seconds, resolve_date_range
+    analytics.views         aggregate, breakdown, config_health, resolve_date_range, …
 """
 
 from datetime import timedelta, datetime

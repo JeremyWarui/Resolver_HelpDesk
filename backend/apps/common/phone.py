@@ -8,6 +8,9 @@ number that a technician needs to be able to tap and call.
 Kenyan numbering plan, national significant number (what follows +254):
   mobile    9 digits beginning 7 or 1   → 0712 345 678, 0110 123 456
   landline  8-9 digits beginning 2-6    → 020 271 1000 (Nairobi), 041 …
+
+Used by:
+    tickets.serializers  CONTACT_PHONE_HELP, InvalidPhoneNumber, normalise_phone
 """
 
 import re

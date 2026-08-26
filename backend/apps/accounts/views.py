@@ -5,7 +5,7 @@ writing a post in `posts.py`, and the payload shapes in `serializers.py`. A view
 here reads the request, calls one of those, and renders the result.
 
 Used by:
-    accounts.urls   every route under /auth/ and /users/
+    accounts.urls  MeView, UserRoleAssignmentView, UserListCreateView, UserDetailView, …
 """
 
 import logging

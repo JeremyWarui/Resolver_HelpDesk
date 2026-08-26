@@ -1,3 +1,13 @@
+"""Page-size policies. Config lists and ticket feeds page by number; the
+append-only feeds use a cursor, which is stable while rows are inserted.
+
+Used by:
+    facilities.views  ConfigListPagination
+    org.views         ConfigListPagination
+    sla.views         ConfigListPagination
+    tickets.views     AppendOnlyFeedPagination, TicketFeedPagination
+"""
+
 from rest_framework.pagination import PageNumberPagination, CursorPagination
 from rest_framework.response import Response
 

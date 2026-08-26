@@ -8,6 +8,9 @@ Every view:
 
 The dashboard preset (OverviewView) and deep-dive endpoints call the same core,
 so the same scope+window yields identical headline numbers in both.
+
+Used by:
+    analytics.urls  (module)
 """
 
 from rest_framework.permissions import IsAuthenticated

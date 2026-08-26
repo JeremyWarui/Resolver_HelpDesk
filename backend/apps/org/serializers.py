@@ -1,3 +1,9 @@
+"""Read and write shapes for the org tree and the service catalogue.
+
+Used by:
+    org.views  CampusDepartmentSerializer, CampusSerializer, DepartmentSerializer, SectionSerializer, …
+"""
+
 from rest_framework import serializers
 from apps.org.models import (
     Campus,

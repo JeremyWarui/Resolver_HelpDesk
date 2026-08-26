@@ -1,3 +1,9 @@
+"""Read and write shapes for the facility registry.
+
+Used by:
+    facilities.views  FacilitySerializer, FacilityTypeSerializer
+"""
+
 from rest_framework import serializers
 
 from apps.facilities.models import Facility, FacilityType

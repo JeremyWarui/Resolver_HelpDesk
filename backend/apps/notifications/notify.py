@@ -11,6 +11,12 @@ WebSockets are deferred, not removed: a maintenance helpdesk runs on a
 minutes-to-hours cadence, and live delivery would force ASGI plus Redis into
 the deploy for a low-volume single-department app. Re-adding it means giving
 these functions a second sink, not restructuring them.
+
+Used by:
+    sla.escalation                     emit_ticket_escalated
+    sla.management.commands.check_sla  emit_sla_breach
+    tickets.lifecycle                  emit_ticket_assigned, emit_ticket_resolved, emit_ticket_status_changed
+    tickets.views                      emit_ticket_created, emit_comment_added
 """
 
 import functools

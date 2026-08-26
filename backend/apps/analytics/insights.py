@@ -7,6 +7,9 @@ something useful (low-scope roles legitimately produce few/no insights).
 
 All computations are DB-agnostic (no Postgres-only SQL; DurationField math is
 reduced in Python) so SQLite tests and Postgres prod agree.
+
+Used by:
+    analytics.views  compute_insights
 """
 
 from collections import defaultdict

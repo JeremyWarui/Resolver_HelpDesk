@@ -5,13 +5,13 @@ module writing one by hand is how a ticket's own badge starts contradicting
 the dashboard it appears on.
 
 Used by:
-    tickets.serializers      is_overdue, compute_due_dates
-    tickets.lifecycle        compute_due_dates (create and reopen)
-    tickets.views            q_overdue (the ?overdue=1 filter)
-    analytics.services       q_overdue, q_at_risk, q_met, q_settled_with_due
-    analytics.insights       q_overdue
-    sla.check_sla            q_overdue
-    common.seed              compute_due_dates
+    analytics.insights                 q_overdue
+    analytics.services                 q_at_risk, q_met, q_overdue, q_settled_with_due
+    common.management.commands.seed    compute_due_dates
+    sla.management.commands.check_sla  q_overdue
+    tickets.lifecycle                  compute_due_dates
+    tickets.serializers                compute_due_dates, is_overdue
+    tickets.views                      q_overdue
 """
 
 from datetime import timedelta

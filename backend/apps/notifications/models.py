@@ -1,3 +1,10 @@
+"""One row per thing a user should be told about.
+
+Used by:
+    notifications.notify  Notification
+    notifications.views   Notification
+"""
+
 from django.conf import settings
 from django.db import models
 

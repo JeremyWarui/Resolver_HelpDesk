@@ -1,3 +1,15 @@
+"""Priority levels and the escalation thresholds hung off them.
+
+Used by:
+    analytics.services               Priority
+    common.admin                     Priority, EscalationRule
+    common.management.commands.seed  EscalationRule, Priority
+    sla.escalation                   EscalationRule
+    sla.serializers                  EscalationRule, Priority
+    sla.views                        EscalationRule, Priority
+    tickets.serializers              Priority
+"""
+
 from django.db import models
 
 

@@ -2,6 +2,17 @@
 
 `jeremy.mwangi@ksg.ac.ke` becomes username `jeremy.mwangi`, shown as
 "Jeremy Mwangi". Nothing else invents a username.
+
+Used by:
+    accounts.serializers             display_name, identity_from_email
+    accounts.views                   display_name
+    analytics.report_views           display_name, display_name_parts
+    analytics.services               display_name_parts
+    common.management.commands.seed  local_part
+    notifications.notify             display_name
+    org.serializers                  display_name
+    tickets.lifecycle                display_name
+    tickets.views                    display_name, display_name_parts
 """
 
 from django.contrib.auth import get_user_model

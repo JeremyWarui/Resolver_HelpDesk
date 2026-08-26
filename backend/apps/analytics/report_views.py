@@ -5,6 +5,9 @@ All reports use scoped_ticket_qs so every role only exports their own data.
 Every report includes a Summary sheet that mirrors the analytics overview cards
 (open_backlog, SLA compliance, CSAT, resolution p50/p90) so the Excel data
 is consistent with what the analytics/reports pages show in the UI.
+
+Used by:
+    analytics.urls  (module)
 """
 
 from collections import defaultdict

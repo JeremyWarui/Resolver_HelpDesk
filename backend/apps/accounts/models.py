@@ -1,3 +1,15 @@
+"""The account, its campus placement, and the one role it holds.
+
+Used by:
+    accounts.posts                   RoleAssignment
+    accounts.scope                   RoleAssignment
+    accounts.serializers             RoleAssignment, UserProfile
+    accounts.views                   RoleAssignment
+    common.admin                     CustomUser, UserProfile, RoleAssignment
+    common.management.commands.seed  UserProfile
+    notifications.notify             RoleAssignment
+"""
+
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models

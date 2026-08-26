@@ -1,3 +1,12 @@
+"""What a location of each facility type must state.
+
+`TYPE_SPECS` is the contract. It is mirrored in the frontend by
+`TicketCreationWizard.tsx::FACILITY_FORMS`; change both together.
+
+Used by:
+    tickets.serializers  validate_location
+"""
+
 from rest_framework import serializers
 
 # What the ticket wizard asks for, per facility type. Each entry is the whole

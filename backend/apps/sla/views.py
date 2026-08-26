@@ -1,3 +1,9 @@
+"""Priority and escalation-rule endpoints. Admin-writable policy.
+
+Used by:
+    sla.urls  EscalationRuleViewSet, PriorityViewSet
+"""
+
 from django.db.models import ProtectedError
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated

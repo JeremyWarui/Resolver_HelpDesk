@@ -4,13 +4,13 @@ The role tiers below and `resolve_role` are the single answer to "who is this
 request"; the two permission classes are the DRF wrappers around it.
 
 Used by:
-    accounts.views       IsAdminGroup
-    org.views            IsAdminGroup, IsAdminOrReadOnly, resolve_role
-    sla.views            IsAdminGroup
-    facilities.views     IsAdminOrReadOnly
-    tickets.views        STAFF_ROLES, TICKET_SUPERVISOR_ROLES, resolve_role
-    analytics.views      ANALYTICS_ROLES, resolve_role
+    accounts.views          IsAdminGroup
     analytics.report_views  resolve_role
+    analytics.views         ANALYTICS_ROLES, resolve_role
+    facilities.views        IsAdminOrReadOnly
+    org.views               IsAdminGroup, IsAdminOrReadOnly, resolve_role
+    sla.views               IsAdminGroup
+    tickets.views           STAFF_ROLES, TICKET_SUPERVISOR_ROLES, resolve_role
 """
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission

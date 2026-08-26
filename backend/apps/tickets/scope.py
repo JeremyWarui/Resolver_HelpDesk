@@ -1,3 +1,14 @@
+"""The Ticket querysets every read starts from, narrowed by role.
+
+Scope derives server-side from the JWT role claim, never from client
+params, and fails closed: a role with no rule sees nothing.
+
+Used by:
+    analytics.report_views  scoped_ticket_qs
+    analytics.views         scoped_ticket_qs
+    tickets.views           scoped_ticket_qs, ticket_base_qs
+"""
+
 from django.db.models import Exists, OuterRef
 
 from apps.accounts.scope import section_path, technician_pair_exists

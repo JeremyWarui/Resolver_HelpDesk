@@ -1,3 +1,20 @@
+"""The organisational tree, the trades hung off it, and the service catalogue.
+
+Used by:
+    accounts.posts                   SectionTechnician, CampusDepartment, Department, Section
+    accounts.scope                   SectionTechnician, Section
+    accounts.serializers             Campus, SectionTechnician, SubSection
+    accounts.views                   Campus
+    analytics.services               Section
+    common.admin                     Campus, Department, CampusDepartment, SectionType, …
+    common.management.commands.seed  Campus, CampusDepartment, Department, Section, …
+    notifications.notify             Section
+    org.serializers                  Campus, CampusDepartment, Department, Section, …
+    org.views                        Campus, CampusDepartment, Department, Section, …
+    tickets.lifecycle                Section
+    tickets.serializers              SectionTechnician, ServiceItem
+"""
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models

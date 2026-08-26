@@ -1,3 +1,9 @@
+"""Org-tree and catalogue endpoints. Reference data, admin-writable.
+
+Used by:
+    org.urls  CampusDepartmentViewSet, CampusViewSet, CatalogTreeView, DepartmentViewSet, …
+"""
+
 from django.contrib.auth import get_user_model
 from rest_framework import generics, viewsets
 from rest_framework.permissions import IsAuthenticated

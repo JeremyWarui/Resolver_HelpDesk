@@ -1,3 +1,13 @@
+"""Moving a ticket up a level when it has been open too long.
+
+Escalation is structural (technician to HOS to HOD), not configurable
+workflow. A vacant post is skipped and the ticket carries on upward.
+
+Used by:
+    common.management.commands.seed                   run_escalations
+    sla.management.commands.process_auto_escalations  run_escalations
+"""
+
 from datetime import timedelta
 
 from django.utils import timezone

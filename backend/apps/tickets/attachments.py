@@ -5,6 +5,9 @@ recompressed to JPEG (quality 75) or kept as PNG/WebP/GIF where appropriate.
 
 PDFs and office documents are stored as-is — meaningful PDF compression
 requires a system-level tool (pikepdf/libqpdf) and is out of scope here.
+
+Used by:
+    tickets.views  process_upload, MAX_ATTACHMENTS_PER_TICKET, MIME_TO_EXT
 """
 
 import io

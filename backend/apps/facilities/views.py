@@ -1,3 +1,9 @@
+"""Facility and facility-type endpoints, with per-facility ticket counts.
+
+Used by:
+    facilities.urls  FacilityTypeViewSet, FacilityViewSet
+"""
+
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from rest_framework import viewsets

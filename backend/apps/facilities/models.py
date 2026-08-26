@@ -1,3 +1,14 @@
+"""The facility registry: a type, and the named places of that type at a campus.
+
+Used by:
+    analytics.services               FacilityType
+    common.admin                     FacilityType, Facility
+    common.management.commands.seed  Facility, FacilityType
+    facilities.serializers           Facility, FacilityType
+    facilities.views                 Facility, FacilityType
+    tickets.serializers              Facility, FacilityType
+"""
+
 from django.db import models
 
 

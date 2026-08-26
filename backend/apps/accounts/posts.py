@@ -14,9 +14,8 @@ Anything that needs a role written calls `assign_role`. Nothing assigns a
 `RoleAssignment` or an org FK directly.
 
 Used by:
-    accounts.serializers  assign_role, scope_kwargs_from_ids (the admin API)
-    common.seed           assign_role
-    tests.factories       assign_role, add_trade
+    accounts.serializers             assign_role, scope_kwargs_from_ids, ensure_requester
+    common.management.commands.seed  assign_role
 """
 
 from django.db import transaction

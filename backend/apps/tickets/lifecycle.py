@@ -3,8 +3,8 @@
 Views never mutate a Ticket directly; they call one of the functions here.
 
 Used by:
-    tickets.serializers  resolve_routing, compute_due_dates on create
-    tickets.views        transition_status, claim_ticket, assign_ticket
+    tickets.serializers  ServiceNotAvailableError, resolve_routing
+    tickets.views        assign_ticket, claim_ticket, transition_status, TransitionError
 """
 
 from datetime import timedelta
