@@ -1,6 +1,6 @@
 """Management command: process automatic ticket escalations.
 
-Delegates to apps.sla.services.escalation. Run periodically (e.g., hourly) via a cron job or task scheduler:
+Delegates to apps.sla.escalation. Run periodically (e.g., hourly) via a cron job or task scheduler:
     python manage.py process_auto_escalations
 
 Options:
@@ -10,7 +10,7 @@ Options:
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.sla.services.escalation import run_escalations
+from apps.sla.escalation import run_escalations
 
 
 class Command(BaseCommand):

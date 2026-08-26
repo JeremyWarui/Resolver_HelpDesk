@@ -12,7 +12,7 @@ class ConfigListPagination(PageNumberPagination):
 
 class TicketFeedPagination(PageNumberPagination):
     """For the ticket queue — activity-first, ordered -updated_at.
-    PageNumber because the sort key moves constantly, ruling out cursor (D6/§3.7)."""
+    PageNumber because the sort key moves constantly, ruling out cursor."""
 
     page_size = 20
     page_size_query_param = "page_size"

@@ -55,9 +55,15 @@ def test_login_no_longer_accepts_a_username(api, nrb_hos):
 
 
 def test_login_without_an_email_is_a_validation_error(api, nrb_hos):
+    """400 with the error under its field name, like every other endpoint.
+
+    Auth used to answer in a bespoke envelope — `{"error": {"code", "message"}}`
+    with 422 and 409 — which is a second error contract for one API and the
+    reason the registration form rendered "[object Object]" at users.
+    """
     response = api.post(LOGIN, {"password": "pw"}, format="json")
-    assert response.status_code == 422
-    assert "email" in response.json()["error"]["message"]
+    assert response.status_code == 400
+    assert "email" in response.json()
 
 
 def test_me_reports_the_current_role(api, nrb_electrician):
@@ -153,7 +159,7 @@ def test_a_user_with_no_assignment_has_no_role(db, nrb):
 
 def test_scope_fails_closed_for_a_roleless_user(db, nrb, nrb_electrical_ticket):
     """No role must mean no tickets, never all tickets."""
-    from apps.tickets.services.scope import scoped_ticket_qs
+    from apps.tickets.scope import scoped_ticket_qs
 
     roleless = factories.make_user("roleless2", campus=nrb)
     assert not scoped_ticket_qs(roleless, None).exists()
@@ -228,12 +234,30 @@ def test_the_same_name_at_another_domain_gets_a_numbered_username(api, nrb, db):
 
 
 def test_registration_rejects_an_email_already_in_use(api, nrb, db):
+    """Case-insensitively: two accounts differing only in case would be two ways
+    to sign in as different people."""
     assert _register(api, "dup.user@ksg.ac.ke", nrb).status_code in (200, 201)
-    assert _register(api, "DUP.USER@ksg.ac.ke", nrb).status_code == 409
+    response = _register(api, "DUP.USER@ksg.ac.ke", nrb)
+    assert response.status_code == 400
+    assert "email" in response.json()
 
 
 def test_registration_rejects_a_malformed_email(api, nrb, db):
-    assert _register(api, "not-an-email", nrb).status_code == 422
+    response = _register(api, "not-an-email", nrb)
+    assert response.status_code == 400
+    assert "email" in response.json()
+
+
+def test_registration_rejects_an_email_with_no_name_in_it(api, nrb, db):
+    """`@ksg.ac.ke` would render as its username everywhere, forever: the name
+    is derived from the local part and there is no way to set one separately.
+
+    Admin account creation goes through the same serializer, so it cannot skip
+    this rule the way the separate code path used to.
+    """
+    response = _register(api, "@ksg.ac.ke", nrb)
+    assert response.status_code == 400
+    assert "email" in response.json()
 
 
 def test_a_registered_user_can_sign_in_with_their_email(api, nrb, db):

@@ -117,6 +117,30 @@ class SectionType(models.Model):
         return f"{self.department.code}-{self.code}: {self.name}"
 
 
+class SubSectionManager(models.Manager):
+    def visible_at(self, campus_id):
+        """The trades offered at `campus_id`.
+
+        A trade is visible iff an active Section of its parent section_type
+        exists in a CampusDepartment at that campus. Sub-sections are global,
+        so this is what stops a campus that runs no masonry from offering
+        masonry in the ticket wizard.
+
+        Called by org.views for the catalogue tree.
+        """
+        return (
+            self.filter(
+                is_active=True,
+                section_type__sections__is_active=True,
+                section_type__sections__campus_department__campus_id=campus_id,
+            )
+            .select_related("section_type__department")
+            .prefetch_related("service_items")
+            .distinct()
+            .order_by("section_type", "name")
+        )
+
+
 class SubSection(models.Model):
     """A trade within a SectionType — Carpentry, Masonry, Painting, Plumbing, Electrical.
 
@@ -139,6 +163,8 @@ class SubSection(models.Model):
     code = models.CharField(max_length=20)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+
+    objects = SubSectionManager()
 
     class Meta:
         app_label = "org"
@@ -236,6 +262,21 @@ class Section(models.Model):
                 "section_type.department must match campus_department.department (R2)."
             )
 
+    def save(self, *args, **kwargs):
+        """Run clean() on every write, whatever the caller.
+
+        R2 held only in the admin form until this existed: nothing on the API
+        path calls full_clean(), so a Section whose type belonged to another
+        department could be created and would then route tickets to a
+        department that does not run the trade.
+
+        The uniqueness of (campus_department, section_type) is R3 and belongs to
+        the database — checking it here would add a query to every save to
+        re-learn what the constraint already refuses.
+        """
+        self.full_clean(validate_unique=False, validate_constraints=False)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         campus = self.campus_department.campus.code
         dept = self.campus_department.department.code
@@ -299,6 +340,20 @@ class SectionTechnician(models.Model):
             raise ValidationError(
                 {"sub_section": "sub_section must belong to the section's section_type."}
             )
+
+    def save(self, *args, **kwargs):
+        """Run clean() on every write — the rule lives here and nowhere else.
+
+        The write serializer restated it because nothing on the API path calls
+        full_clean(); with the rule enforced on save, the two copies cannot
+        disagree because there is only one.
+
+        Uniqueness stays with the database: `get_or_create` in
+        `accounts.posts.assign_role` recovers from an IntegrityError, and a
+        ValidationError raised here instead would escape it.
+        """
+        self.full_clean(validate_unique=False, validate_constraints=False)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username} → {self.section}/{self.sub_section.code}"

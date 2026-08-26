@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.pagination import ConfigListPagination
-from apps.common.permissions import IsAdminGroup
+from apps.common.roles import IsAdminGroup
 from apps.sla.models import EscalationRule, Priority
 from apps.sla.serializers import EscalationRuleSerializer, PrioritySerializer
 from apps.tickets.models import Ticket

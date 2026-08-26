@@ -1,5 +1,5 @@
 """Per-role analytics configuration — the single source of truth that makes
-KPIs scope-invariant (SoT §5.4).
+KPIs scope-invariant.
 
 The metric engine (`aggregate()` + `insights.py`) is identical for every role;
 only three things vary by role and they all live here:
@@ -8,10 +8,9 @@ only three things vary by role and they all live here:
   * default_group_by + allowed_group_by — the comparison dimension(s)
   * insights       — which prescriptive computations the role is served
 
-Those three are what the code reads, so those three are what is here. Keys
-describing what a role "may see" used to sit alongside them, unread by anything
-— the frontend keeps its own copy of that shape — and config that documents an
-intention nobody enforces is worse than no config at all.
+Those three are what the code reads, so those three are what is here. Do not
+add keys describing what a role "may see": the frontend keeps its own copy of
+that shape, and config nothing enforces is worse than no config.
 
 The absence of "technician" from a technician's allowed_group_by is what
 prevents them from seeing peer rankings; `resolve_group_by` enforces it.

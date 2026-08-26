@@ -10,7 +10,7 @@ import pytest
 from django.urls import reverse
 
 from apps.notifications.models import Notification
-from apps.tickets.services.lifecycle import claim_ticket, transition_status
+from apps.tickets.lifecycle import claim_ticket, transition_status
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -273,7 +273,7 @@ def test_escalation_notifies_the_holder_it_escalated_to(
 ):
     from django.utils import timezone
 
-    from apps.sla.services.escalation import run_escalation_for_ticket
+    from apps.sla.escalation import run_escalation_for_ticket
 
     factories.age_ticket(nrb_electrical_ticket, days=2)
     assert run_escalation_for_ticket(
@@ -290,7 +290,7 @@ def test_escalation_tells_the_assigned_technician(
 ):
     from django.utils import timezone
 
-    from apps.sla.services.escalation import run_escalation_for_ticket
+    from apps.sla.escalation import run_escalation_for_ticket
 
     nrb_electrical_ticket.assigned_to = nrb_electrician
     nrb_electrical_ticket.save(update_fields=["assigned_to"])
@@ -306,7 +306,7 @@ def test_an_unassigned_ticket_escalates_without_a_second_notification(
 ):
     from django.utils import timezone
 
-    from apps.sla.services.escalation import run_escalation_for_ticket
+    from apps.sla.escalation import run_escalation_for_ticket
 
     assert nrb_electrical_ticket.assigned_to_id is None
     factories.age_ticket(nrb_electrical_ticket, days=2)
@@ -321,7 +321,7 @@ def test_a_technician_who_holds_the_post_is_told_once(
     """The holder and the assignee can be the same person — one notification."""
     from django.utils import timezone
 
-    from apps.sla.services.escalation import run_escalation_for_ticket
+    from apps.sla.escalation import run_escalation_for_ticket
 
     nrb_electrical_ticket.assigned_to = nrb_hos
     nrb_electrical_ticket.save(update_fields=["assigned_to"])

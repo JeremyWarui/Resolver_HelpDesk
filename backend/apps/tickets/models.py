@@ -3,14 +3,14 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 
-from apps.tickets.pending_reasons import PENDING_REASONS
+from apps.tickets.constants import PENDING_REASONS
 
 
 class Ticket(models.Model):
-    """A service request — intrinsic current state only (SoT §3.2a).
+    """A service request — intrinsic current state only.
 
     No derived values, no history, no child data on this row.
     Business logic lives in apps/tickets/services/.
@@ -364,16 +364,23 @@ class TicketFeedback(models.Model):
         on_delete=models.CASCADE,
         related_name="feedback",
     )
-    rating = models.PositiveSmallIntegerField()
+    # 1..5 stated once, on the column, plus a DB constraint below. A validator
+    # alone would not hold: nothing calls `full_clean()` outside the admin form,
+    # so `objects.create(rating=9)` would otherwise be accepted.
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
     comment = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "tickets"
-
-    def clean(self):
-        if not (1 <= self.rating <= 5):
-            raise ValidationError({"rating": "Rating must be between 1 and 5."})
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(rating__gte=1, rating__lte=5),
+                name="ticket_feedback_rating_between_1_and_5",
+            )
+        ]
 
     def __str__(self):
         return f"Feedback {self.rating}/5 for {self.ticket_id}"

@@ -8,10 +8,9 @@ derived server-side from that one choice plus the requester's own campus.
 import pytest
 from django.urls import reverse
 
-from apps.org.models import Section, ServiceItem
-from apps.org.services.visibility import get_visible_sub_sections
+from apps.org.models import Section, ServiceItem, SubSection
 from apps.tickets.models import Ticket
-from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
+from apps.tickets.lifecycle import ServiceNotAvailableError, resolve_routing
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -60,26 +59,26 @@ def test_routing_is_deterministic(socket, nrb_section, nrb):
 
 
 def test_visible_trades_are_those_the_campus_runs(nrb, nrb_section, electrical, plumbing):
-    codes = {sub.code for sub in get_visible_sub_sections(nrb.id)}
+    codes = {sub.code for sub in SubSection.objects.visible_at(nrb.id)}
     assert codes == {electrical.code, plumbing.code}
 
 
 def test_a_campus_with_no_section_offers_nothing(electrical, nrb_section, db):
     lonely = factories.make_campus("KSM", "Kisumu")
-    assert list(get_visible_sub_sections(lonely.id)) == []
+    assert list(SubSection.objects.visible_at(lonely.id)) == []
 
 
 def test_inactive_trades_are_hidden(nrb, nrb_section, electrical, plumbing):
     electrical.is_active = False
     electrical.save(update_fields=["is_active"])
-    codes = {sub.code for sub in get_visible_sub_sections(nrb.id)}
+    codes = {sub.code for sub in SubSection.objects.visible_at(nrb.id)}
     assert electrical.code not in codes
 
 
 def test_each_trade_appears_once(nrb, nrb_section, msa_section, electrical):
     """The traversal joins through sections; without `distinct()` a trade would
     repeat per campus running it."""
-    subs = list(get_visible_sub_sections(nrb.id))
+    subs = list(SubSection.objects.visible_at(nrb.id))
     assert len(subs) == len({sub.pk for sub in subs})
 
 

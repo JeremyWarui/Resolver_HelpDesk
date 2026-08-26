@@ -108,39 +108,35 @@ def admin_user(db):
     return factories.make_user("admin", role="admin")
 
 
+# Giving someone a post is one call. These fixtures used to write the role row
+# and then the org FK — `section.hos = user` — by hand, which is the very
+# divergence `accounts.posts` exists to prevent: a suite that sets both cannot
+# fail when production sets only one.
+
+
 @pytest.fixture
 def manager(db, department):
-    user = factories.make_user("manager", role="manager", department=department)
-    department.manager_user = user
-    department.save(update_fields=["manager_user"])
-    return user
+    return factories.make_user("manager", role="manager", department=department)
 
 
 @pytest.fixture
 def nrb_hod(nrb, department, nrb_section):
-    cd = nrb_section.campus_department
-    user = factories.make_user(
-        "nrb_hod", campus=nrb, role="hod", campus_department=cd
+    return factories.make_user(
+        "nrb_hod",
+        campus=nrb,
+        role="hod",
+        campus_department=nrb_section.campus_department,
     )
-    cd.head_of_department = user
-    cd.save(update_fields=["head_of_department"])
-    return user
 
 
 @pytest.fixture
 def nrb_hos(nrb, nrb_section):
-    user = factories.make_user("nrb_hos", campus=nrb, role="hos", section=nrb_section)
-    nrb_section.hos = user
-    nrb_section.save(update_fields=["hos"])
-    return user
+    return factories.make_user("nrb_hos", campus=nrb, role="hos", section=nrb_section)
 
 
 @pytest.fixture
 def msa_hos(msa, msa_section):
-    user = factories.make_user("msa_hos", campus=msa, role="hos", section=msa_section)
-    msa_section.hos = user
-    msa_section.save(update_fields=["hos"])
-    return user
+    return factories.make_user("msa_hos", campus=msa, role="hos", section=msa_section)
 
 
 @pytest.fixture

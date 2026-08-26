@@ -28,14 +28,14 @@ from apps.analytics.services import (
     resolution_seconds,
     resolve_date_range,
 )
-from apps.tickets.statuses import (
+from apps.tickets.constants import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
     TERMINAL_STATUSES,
 )
 from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
-from apps.tickets.services.scope import scoped_ticket_qs
+from apps.tickets.scope import scoped_ticket_qs
 from apps.accounts.identity import display_name, display_name_parts
 
 # ── Excel styling ──────────────────────────────────────────────────────────────
@@ -117,9 +117,8 @@ def _base_qs(request, role):
         qs = Ticket.objects.filter(raised_by=request.user)
 
     # The same parse the Summary sheet uses, so the sheets cannot disagree
-    # about which window they cover. (It previously parsed the dates a second
-    # time with a naive strptime, which both skewed the boundary by the TZ
-    # offset and warned under USE_TZ.)
+    # about which window they cover. A naive strptime here would skew the
+    # boundary by the TZ offset and warn under USE_TZ.
     params = _build_date_range_params(request)
     if params:
         qs = created_window(qs, resolve_date_range(params))

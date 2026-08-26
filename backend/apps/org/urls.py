@@ -38,21 +38,17 @@ urlpatterns = router.urls + [
         SectionAssignableTechniciansView.as_view(),
         name="section-assignable-technicians",
     ),
+    # Read only, both of them: a technician's trade links come from
+    # `accounts.posts.assign_role`, so there is no create, update or destroy to
+    # route to.
     path(
         "sections/<int:section_pk>/technicians/",
-        SectionTechnicianViewSet.as_view({"get": "list", "post": "create"}),
+        SectionTechnicianViewSet.as_view({"get": "list"}),
         name="section-technicians-list",
     ),
     path(
         "sections/<int:section_pk>/technicians/<int:pk>/",
-        SectionTechnicianViewSet.as_view(
-            {
-                "get": "retrieve",
-                "put": "update",
-                "patch": "partial_update",
-                "delete": "destroy",
-            }
-        ),
+        SectionTechnicianViewSet.as_view({"get": "retrieve"}),
         name="section-technicians-detail",
     ),
 ]

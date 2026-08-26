@@ -23,10 +23,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.identity import local_part
-from apps.accounts.models import RoleAssignment, UserProfile
+from apps.accounts.models import UserProfile
+from apps.accounts.posts import assign_role
 from apps.facilities.models import Facility, FacilityType
-from apps.tickets.pending_reasons import PENDING_REASON_LABELS
-from apps.tickets.statuses import TERMINAL_STATUSES
+from apps.tickets.constants import PENDING_REASON_LABELS
+from apps.tickets.constants import TERMINAL_STATUSES
 
 # What a technician would actually have typed, per reason — so the demo shows
 # the note carrying information the code cannot ("which part", "whose
@@ -52,7 +53,7 @@ from apps.org.models import (
     SubSection,
 )
 from apps.sla.models import EscalationRule, Priority
-from apps.sla.services.due_dates import compute_due_dates
+from apps.sla.clock import compute_due_dates
 from apps.tickets.models import Ticket, TicketComment, TicketFeedback, TicketLocation, TicketLog
 
 User = get_user_model()
@@ -347,8 +348,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Seed complete."))
 
     def _print_demo_logins(self):
-        """One account per role, since sign-in is by email and the addresses are
-        people's names — `hos.nrb` no longer tells you who the Nairobi HOS is."""
+        """One account per role. Sign-in is by email and the addresses are
+        people's names, so the role is not guessable from the address."""
         roster = self._roster or []
         self.stdout.write("")
         self.stdout.write("  Demo logins (password: $SEED_DEFAULT_PASSWORD)")
@@ -376,7 +377,7 @@ class Command(BaseCommand):
         This runs the real engine rather than stamping levels by hand, so the
         demo shows what production would actually have done.
         """
-        from apps.sla.services.escalation import run_escalations
+        from apps.sla.escalation import run_escalations
 
         count = run_escalations()
         self.stdout.write(f"  Escalations: {count} ticket(s) raised above the technician")
@@ -495,7 +496,7 @@ class Command(BaseCommand):
     def _make_user(self, first, last, password, campus=None):
         """Create a person from their name the way the app creates them from an
         email: address first (`first.last@ksg.ac.ke`), username derived back out
-        of it (SOT §3a).
+        of it.
 
         A username invented here — `hos.nrb`, `tech.nrb.plumb` — was a second
         identity rule the running system cannot reproduce: registering that
@@ -534,11 +535,17 @@ class Command(BaseCommand):
 
     _roster = None
 
-    def _set_role(self, user, role, **scope):
-        RoleAssignment.objects.get_or_create(user=user, defaults={"role": role, **scope})
-        # Kept so the run can end by printing one login per role: the addresses
-        # are no longer guessable from the role (that was the point), and a demo
-        # nobody can sign into is not a demo.
+    def _set_role(self, user, role, sub_sections=(), **scope):
+        """One call writes the role and the org FK that grants it.
+
+        Delegates to `accounts.posts.assign_role`, the only writer of both. A
+        seed keeping its own copy would seed a state the running app cannot
+        produce.
+        """
+        assign_role(user, role, sub_sections=sub_sections, **scope)
+        # Collected so the run can end by printing one login per role: the
+        # addresses are not guessable from the role, and a demo nobody can sign
+        # into is not a demo.
         if self._roster is None:
             self._roster = []
         profile = getattr(user, "profile", None)
@@ -558,9 +565,6 @@ class Command(BaseCommand):
         """The Corporate HOD — manager role, Administration across all campuses."""
         user = self._make_user("Wanjiku", "Kamau", password)
         self._set_role(user, "manager", department=department)
-        if department.manager_user_id is None:
-            department.manager_user = user
-            department.save(update_fields=["manager_user"])
         self.stdout.write("  manager: 1 (director)")
 
     def _seed_supervisors(self, campuses, sections, password):
@@ -571,15 +575,9 @@ class Command(BaseCommand):
 
             hod = self._make_user(hod_first, hod_last, password, campus)
             self._set_role(hod, "hod", campus_department=campus_department)
-            if campus_department.head_of_department_id is None:
-                campus_department.head_of_department = hod
-                campus_department.save(update_fields=["head_of_department"])
 
             hos = self._make_user(hos_first, hos_last, password, campus)
             self._set_role(hos, "hos", section=section)
-            if section.hos_id is None:
-                section.hos = hos
-                section.save(update_fields=["hos"])
 
         self.stdout.write(f"  hod: {len(SUPERVISORS)}   hos: {len(SUPERVISORS)}")
 
@@ -602,9 +600,11 @@ class Command(BaseCommand):
                 user = self._make_user(
                     first, last, password, section.campus_department.campus
                 )
-                self._set_role(user, "technician", section=section)
-                SectionTechnician.objects.get_or_create(
-                    user=user, section=section, sub_section=sub_sections[trade_code]
+                self._set_role(
+                    user,
+                    "technician",
+                    section=section,
+                    sub_sections=[sub_sections[trade_code]],
                 )
                 count += 1
 
@@ -623,11 +623,12 @@ class Command(BaseCommand):
             user = self._make_user(
                 first, last, password, section.campus_department.campus
             )
-            self._set_role(user, "technician", section=section)
-            for trade_code in trade_codes:
-                SectionTechnician.objects.get_or_create(
-                    user=user, section=section, sub_section=sub_sections[trade_code]
-                )
+            self._set_role(
+                user,
+                "technician",
+                section=section,
+                sub_sections=[sub_sections[code] for code in trade_codes],
+            )
             count += 1
 
         self.stdout.write(f"  technician: {count}")

@@ -1,4 +1,4 @@
-"""Analytics aggregation service — one core, role presets on top (SoT §5.4).
+"""Analytics aggregation service — one core, role presets on top.
 
 Single entry point: aggregate(scoped_qs, date_range, group_by).
 Every role endpoint supplies (a) a scoped queryset from Phase 6 and
@@ -32,18 +32,24 @@ from django.utils import timezone
 from apps.accounts.identity import display_name_parts
 
 from apps.tickets.models import TicketLog, TicketFeedback, TicketLocation
-from apps.tickets.pending_reasons import PENDING_REASON_LABELS
+from apps.tickets.constants import PENDING_REASON_LABELS
 
-# Re-exported so existing importers keep working; defined in tickets.statuses,
-# which is where the vocabulary belongs — see the note there on why one home.
-from apps.tickets.statuses import (  # noqa: E402,F401
+# The status vocabulary lives in tickets.statuses; analytics is a consumer of
+# it, like sla and org.
+from apps.tickets.constants import (  # noqa: E402
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
-    RUNNING_STATUSES,
     TERMINAL_STATUSES,
 )
 
-AT_RISK_WINDOW = timedelta(hours=4)
+# Every "is this late?" predicate below is `apps.sla.clock`'s, never a local
+# copy, so this module and the ticket's own badge cannot disagree.
+from apps.sla.clock import (  # noqa: E402
+    q_at_risk,
+    q_met,
+    q_overdue,
+    q_settled_with_due,
+)
 
 
 # ── Date range ─────────────────────────────────────────────────────────────────
@@ -133,19 +139,8 @@ def _standard_breakdown_metrics():
         open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
         resolved_count=Count("id", filter=Q(status__in=TERMINAL_STATUSES)),
         escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
-        resolution_sla_met=Count(
-            "id",
-            filter=Q(
-                status__in=TERMINAL_STATUSES,
-                resolved_at__isnull=False,
-                resolution_due_at__isnull=False,
-                resolved_at__lte=F("resolution_due_at"),
-            ),
-        ),
-        total_resolved_with_due=Count(
-            "id",
-            filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-        ),
+        resolution_sla_met=Count("id", filter=q_met()),
+        total_resolved_with_due=Count("id", filter=q_settled_with_due()),
     )
 
 
@@ -383,19 +378,8 @@ def facility_trade_mix(scoped_qs, date_range):
             total=Count("id"),
             open_count=Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
             escalated_count=Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
-            resolution_sla_met=Count(
-                "id",
-                filter=Q(
-                    status__in=TERMINAL_STATUSES,
-                    resolved_at__isnull=False,
-                    resolution_due_at__isnull=False,
-                    resolved_at__lte=F("resolution_due_at"),
-                ),
-            ),
-            total_resolved_with_due=Count(
-                "id",
-                filter=Q(status__in=TERMINAL_STATUSES, resolution_due_at__isnull=False),
-            ),
+            resolution_sla_met=Count("id", filter=q_met()),
+            total_resolved_with_due=Count("id", filter=q_settled_with_due()),
         )
         # `Ticket.Meta.ordering` is `-updated_at`; an ordering field joins the
         # GROUP BY even when absent from values(), which would split every
@@ -618,7 +602,7 @@ def aggregate(
     Returns:
         Full metrics dict. Role endpoints slice what they expose to the client.
         The same scope+window yields identical numbers regardless of which
-        endpoint calls this function (acceptance criterion §7 step 2).
+        endpoint calls this function.
     """
     date_from = date_range["date_from"]
     date_to = date_range["date_to"]
@@ -651,10 +635,10 @@ def aggregate(
         status__in=TERMINAL_STATUSES,
     )
     _q_active = Q(status__in=ACTIVE_STATUSES)
-    _q_running = Q(status__in=RUNNING_STATUSES)
-    _q_resolved_due = _q_resolved & Q(resolution_due_at__isnull=False)
-    _q_prior_resolved_due = _q_prior_resolved & Q(resolution_due_at__isnull=False)
-    _q_met = Q(resolved_at__lte=F("resolution_due_at"))
+    # The resolved_at window is analytics' own lens on the SLA question; whether
+    # a ticket was measurable, and whether it made its target, is the clock's.
+    _q_resolved_due = _q_resolved & q_settled_with_due()
+    _q_prior_resolved_due = _q_prior_resolved & q_settled_with_due()
     _q_escalated = Q(current_level__in=ESCALATED_LEVELS)
     counts = scoped_qs.aggregate(
         open_backlog=Count("id", filter=_q_active),
@@ -663,26 +647,11 @@ def aggregate(
         resolved=Count("id", filter=_q_resolved),
         prior_resolved=Count("id", filter=_q_prior_resolved),
         resolution_sla_total=Count("id", filter=_q_resolved_due),
-        resolution_sla_met=Count("id", filter=_q_resolved_due & _q_met),
+        resolution_sla_met=Count("id", filter=_q_resolved & q_met()),
         prior_resolution_sla_total=Count("id", filter=_q_prior_resolved_due),
-        prior_resolution_sla_met=Count("id", filter=_q_prior_resolved_due & _q_met),
-        at_risk=Count(
-            "id",
-            filter=_q_running
-            & Q(
-                resolution_due_at__isnull=False,
-                resolution_due_at__gt=now,
-                resolution_due_at__lte=now + AT_RISK_WINDOW,
-            ),
-        ),
-        breached=Count(
-            "id",
-            filter=_q_running
-            & Q(
-                resolution_due_at__isnull=False,
-                resolution_due_at__lt=now,
-            ),
-        ),
+        prior_resolution_sla_met=Count("id", filter=_q_prior_resolved & q_met()),
+        at_risk=Count("id", filter=q_at_risk(now)),
+        breached=Count("id", filter=q_overdue(now)),
         escalated_window=Count("id", filter=_q_window & _q_escalated),
         escalated_live=Count("id", filter=_q_escalated),
         unassigned=Count("id", filter=_q_active & Q(assigned_to__isnull=True)),
@@ -926,11 +895,8 @@ def aggregate(
     )
 
     # ── Demand shape ──────────────────────────────────────────────────────────
-    # Named for the trade it actually groups by. It was `by_category` — a
-    # leftover from ServiceCategory, which no longer exists — and the name was
-    # actively misleading: the payload holds the per-trade split, which is the
-    # most useful breakdown this system has, while a chart bound to "sections"
-    # sat empty next to it.
+    # Named for the trade it groups by. The payload holds the per-trade split,
+    # which is the most useful breakdown this system has.
     # `sub_section_id` is a real column on Ticket, so it is selected directly —
     # aliasing it via F() collides with the field. (The old `category_id=F(...)`
     # alias sidestepped that by accident, not design.)
@@ -1096,7 +1062,7 @@ def aggregate(
 
 
 def config_health() -> dict:
-    """Org-wide config-health signals for the admin overview (SoT §5.4).
+    """Org-wide config-health signals for the admin overview.
 
     Returns counts and lists of misconfigured objects that need attention.
     Only called when role == 'admin'.

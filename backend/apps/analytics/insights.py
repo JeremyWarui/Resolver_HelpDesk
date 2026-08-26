@@ -1,4 +1,4 @@
-"""Insights layer — turns the scoped analytics data into decisions (SoT §5.4).
+"""Insights layer — turns the scoped analytics data into decisions.
 
 Heavier, prescriptive computations kept separate from the headline `aggregate()`
 core. Fed the SAME role-scoped queryset, so insights never widen scope. Each
@@ -16,12 +16,12 @@ from django.db.models import Count, F
 from django.utils import timezone
 
 from apps.analytics.services import (
-    RUNNING_STATUSES,
     _percentile,
     created_window,
     resolution_seconds,
     resolved_window,
 )
+from apps.sla.clock import q_overdue
 from apps.tickets.models import TicketFeedback
 
 # How long a ticket can sit paused before the pause is the problem rather than
@@ -139,20 +139,14 @@ def _bottleneck(scoped_qs, date_range):
 def _sla_leak(scoped_qs):
     """Classify currently-breached tickets by cause — each points to a different fix.
 
-    Counts only tickets whose clock is running (R9). A paused ticket has a
-    frozen deadline and is not breaching, so including it here would both
-    overstate the leak and disagree with the `breached` headline KPI — two
-    numbers on one dashboard that never reconcile.
+    "Breached" here is `clock.q_overdue`, the same predicate behind the headline
+    `breached` KPI, so the two numbers on one dashboard always reconcile.
 
     Long-parked tickets are still a real problem, so they are surfaced as their
     own cause rather than dropped: they are stuck, just not late.
     """
     now = timezone.now()
-    breached = scoped_qs.filter(
-        status__in=RUNNING_STATUSES,
-        resolution_due_at__isnull=False,
-        resolution_due_at__lt=now,
-    )
+    breached = scoped_qs.filter(q_overdue(now))
     total = breached.count()
 
     # Parked past the point where the pause is the problem, not the fix.

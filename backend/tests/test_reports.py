@@ -14,7 +14,7 @@ import openpyxl
 import pytest
 from django.urls import reverse
 
-from apps.tickets.services.lifecycle import transition_status
+from apps.tickets.lifecycle import transition_status
 
 pytestmark = pytest.mark.django_db
 

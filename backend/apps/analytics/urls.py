@@ -12,21 +12,15 @@ urlpatterns = [
         report_views.GenerateReportView.as_view(),
         name="report-generate",
     ),
-    # Unified endpoint — one view, full envelope, every role. `headline` and
-    # `series` carry what four separate slice endpoints (sla-compliance,
-    # resolution-times, flow, quality) used to return, each of which re-ran the
-    # whole ~40-query aggregate() for a handful of scalars. RoleAnalyticsView
-    # called all four *and* this one for a single render.
-    #
-    # Those four are gone. Anything wanting an SLA percentage, a percentile, a
-    # flow trend or a CSAT reads the envelope — adding a fifth slice endpoint
-    # is how the five-aggregates-per-page problem comes back.
+    # Unified endpoint: one view, full envelope, every role. Anything wanting
+    # an SLA percentage, a percentile, a flow trend or a CSAT reads `headline`
+    # or `series` off this envelope. Do not add a per-slice endpoint beside it;
+    # each one re-runs the whole ~40-query aggregate() for a few scalars.
     #
     # A technician is answered with `individual`/`sectional` instead of
-    # `headline` (SoT 5.4). MyPerformancePanel reads `individual`: their own
-    # numbers, which is what a panel titled "my performance" must show — it
-    # previously took its resolution percentiles from the sectional pool.
-    # ServiceHealthCards reads `headline` and is never rendered for them.
+    # `headline`. MyPerformancePanel reads `individual`, which is their own
+    # numbers rather than the sectional pool. ServiceHealthCards reads
+    # `headline` and is never rendered for them.
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
     path("analytics/overview/", views.OverviewView.as_view(), name="overview"),
     path("analytics/demand/", views.DemandView.as_view(), name="demand"),

@@ -9,7 +9,7 @@ from apps.common.phone import (
     normalise_phone,
 )
 from apps.sla.models import Priority
-from apps.sla.services.due_dates import compute_due_dates
+from apps.sla.clock import compute_due_dates
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import validate_location
 from apps.tickets.models import (
@@ -20,10 +20,11 @@ from apps.tickets.models import (
     TicketLocation,
     TicketLog,
 )
-from apps.tickets.services.routing import ServiceNotAvailableError, resolve_routing
-from apps.tickets.statuses import ALL_STATUSES, RUNNING_STATUSES
-from apps.tickets.pending_reasons import PENDING_REASON_CODES
-from apps.accounts.identity import display_name
+from apps.tickets.lifecycle import ServiceNotAvailableError, resolve_routing
+from apps.tickets.constants import ALL_STATUSES
+from apps.tickets.constants import PENDING_REASON_CODES
+from apps.accounts.serializers import UserMinSerializer
+from apps.sla.clock import is_overdue
 
 User = get_user_model()
 
@@ -31,17 +32,6 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 # Read serializers (Phase 6 — role-scoped list + detail)
 # ---------------------------------------------------------------------------
-
-
-class _UserMinSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    username = serializers.CharField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    full_name = serializers.SerializerMethodField()
-
-    def get_full_name(self, obj):
-        return display_name(obj)
 
 
 class _PriorityMinSerializer(serializers.Serializer):
@@ -59,7 +49,6 @@ class _SubSectionMinSerializer(serializers.Serializer):
 class _ServiceItemMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
-    sub_section = _SubSectionMinSerializer()
 
 
 class _SectionMinSerializer(serializers.Serializer):
@@ -105,8 +94,8 @@ class TicketReadSerializer(serializers.ModelSerializer):
     sub_section = _SubSectionMinSerializer(read_only=True)
     section = _SectionMinSerializer(read_only=True)
     priority = _PriorityMinSerializer(read_only=True)
-    assigned_to = _UserMinSerializer(read_only=True, allow_null=True)
-    raised_by = _UserMinSerializer(read_only=True)
+    assigned_to = UserMinSerializer(read_only=True, allow_null=True)
+    raised_by = UserMinSerializer(read_only=True)
     raised_by_id = serializers.IntegerField(read_only=True)
     requester_campus = _CampusMinSerializer(read_only=True)
     location = _TicketLocationSerializer(read_only=True, allow_null=True)
@@ -152,17 +141,8 @@ class TicketReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_is_breaching(self, ticket):
-        """Whether the ticket is past its resolution deadline right now.
-
-        A paused ticket never is (R9): its clock is frozen, so the stored
-        deadline drifts into the past while it waits and would otherwise show
-        red for a delay the section was told to take.
-        """
-        if ticket.status not in RUNNING_STATUSES:
-            return False
-        if ticket.resolution_due_at is None:
-            return False
-        return timezone.now() > ticket.resolution_due_at
+        """The badge. `sla.clock` decides what late means; see its docstring."""
+        return is_overdue(ticket)
 
     def get_has_feedback(self, ticket):
         """Whether the requester has rated this yet — a flag, not the rating.
@@ -385,7 +365,7 @@ class TicketAssignSerializer(serializers.Serializer):
     # does not — which cupboard the stopcock is behind, that this is the third
     # failure this month. It lands on the `assigned` log row's `reason`, not on
     # the Ticket: it describes the handover, not the ticket's own state
-    # (invariant 2), and a reassignment must not overwrite what the last one
+    #, and a reassignment must not overwrite what the last one
     # said.
     note = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=True
@@ -408,9 +388,9 @@ class TicketAssignSerializer(serializers.Serializer):
 
 
 class TicketCommentSerializer(serializers.ModelSerializer):
-    # Nested author (QA B2e) — the comment header renders name + timestamp,
+    # Nested author — the comment header renders name + timestamp,
     # matching the timeline's actor attribution.
-    author = _UserMinSerializer(read_only=True)
+    author = UserMinSerializer(read_only=True)
 
     class Meta:
         model = TicketComment
@@ -424,11 +404,6 @@ class TicketFeedbackSerializer(serializers.ModelSerializer):
         fields = ["id", "rating", "comment", "created_at"]
         read_only_fields = ["id", "created_at"]
 
-    def validate_rating(self, value):
-        if not (1 <= value <= 5):
-            raise serializers.ValidationError("Rating must be between 1 and 5.")
-        return value
-
 
 class TicketFeedbackRowSerializer(serializers.ModelSerializer):
     """A rating as the Feedback tab lists it — flattened, with enough of the
@@ -437,7 +412,7 @@ class TicketFeedbackRowSerializer(serializers.ModelSerializer):
     ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
     service_item = serializers.SerializerMethodField()
     section = serializers.SerializerMethodField()
-    assigned_to = _UserMinSerializer(source="ticket.assigned_to", read_only=True, allow_null=True)
+    assigned_to = UserMinSerializer(source="ticket.assigned_to", read_only=True, allow_null=True)
     resolved_at = serializers.DateTimeField(source="ticket.resolved_at", read_only=True)
 
     class Meta:
@@ -469,7 +444,7 @@ class TicketFeedbackRowSerializer(serializers.ModelSerializer):
 
 
 class TicketAttachmentSerializer(serializers.ModelSerializer):
-    uploaded_by = _UserMinSerializer(read_only=True)
+    uploaded_by = UserMinSerializer(read_only=True)
     url = serializers.SerializerMethodField()
     size_saved_pct = serializers.SerializerMethodField()
 

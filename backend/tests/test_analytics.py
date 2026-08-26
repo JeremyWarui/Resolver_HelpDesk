@@ -28,8 +28,8 @@ from apps.analytics.services import (
     technician_trade_mix,
     facility_trade_mix,
 )
-from apps.tickets.services.lifecycle import transition_status
-from apps.tickets.services.scope import scoped_ticket_qs
+from apps.tickets.lifecycle import transition_status
+from apps.tickets.scope import scoped_ticket_qs
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -274,23 +274,66 @@ def test_a_running_overdue_ticket_is_flagged_on_the_ticket_too(
 # ── One status vocabulary ─────────────────────────────────────────────────────
 
 
-def test_every_module_reads_the_same_status_sets():
+def _source_files():
+    """Every module under apps/, excluding migrations and caches."""
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "apps"
+    return [
+        path
+        for path in root.rglob("*.py")
+        if "migrations" not in path.parts and "__pycache__" not in path.parts
+    ]
+
+
+def test_no_module_writes_the_status_list_out_by_hand():
     """These were literals in six places and locally-named constants in two
     more, and they had already drifted — `common.admin` counted a different set
-    than everything else. The R9 bug was this exact shape: four places computing
-    "is this late?" and disagreeing, so a ticket's badge contradicted the
-    dashboard it sat on."""
-    from apps.analytics import services
-    from apps.tickets import statuses
+    than everything else.
 
-    assert services.ACTIVE_STATUSES is statuses.ACTIVE_STATUSES
-    assert services.RUNNING_STATUSES is statuses.RUNNING_STATUSES
+    Asserting that one module re-exports another proves nothing about the module
+    that quietly typed the tuple out instead, so this reads the source. The
+    single legal copy is the definition itself.
+    """
+    from apps.tickets import constants as statuses
+
+    literal = '"open", "assigned", "in_progress"'
+    offenders = [
+        path.name
+        for path in _source_files()
+        if literal in path.read_text(encoding="utf-8")
+        and path.name != "constants.py"
+    ]
+    assert not offenders, (
+        f"{offenders} spell the status list out; import it from "
+        f"apps/tickets/constants.py instead"
+    )
+    assert statuses.RUNNING_STATUSES == ("open", "assigned", "in_progress")
+
+
+def test_no_module_writes_the_overdue_predicate_out_by_hand():
+    """The R9 bug's exact shape: five places computing "is this late?", one of
+    them gating on the wrong status set, so a ticket's badge contradicted the
+    dashboard it sat on.
+
+    `apps/sla/clock.py` is the only module allowed to name the columns that
+    decide it. Everything else asks it.
+    """
+    offenders = [
+        path.name
+        for path in _source_files()
+        if "resolution_due_at__lt" in path.read_text(encoding="utf-8")
+        and path.name != "clock.py"
+    ]
+    assert not offenders, (
+        f"{offenders} compute overdue by hand; use apps/sla/clock.py"
+    )
 
 
 def test_pending_is_active_but_not_running():
     """The whole distinction in one assertion: a paused ticket is still open
     work, and its clock is not moving."""
-    from apps.tickets import statuses
+    from apps.tickets import constants as statuses
 
     assert "pending" in statuses.ACTIVE_STATUSES
     assert "pending" not in statuses.RUNNING_STATUSES
@@ -301,7 +344,7 @@ def test_the_status_sets_cover_the_model_choices_exactly():
     """A status added to the model but not to these sets would be invisible to
     every count in the system."""
     from apps.tickets.models import Ticket
-    from apps.tickets import statuses
+    from apps.tickets import constants as statuses
 
     assert set(statuses.ALL_STATUSES) == {value for value, _ in Ticket.STATUS}
     assert not set(statuses.ACTIVE_STATUSES) & set(statuses.TERMINAL_STATUSES)
@@ -312,7 +355,7 @@ def test_the_escalated_levels_are_every_level_above_technician():
     `NOT current_level='technician'`. Those agree only while LEVEL has exactly
     three values, so pin the relationship rather than the pair."""
     from apps.tickets.models import Ticket
-    from apps.tickets.statuses import ESCALATED_LEVELS
+    from apps.tickets.constants import ESCALATED_LEVELS
 
     assert set(ESCALATED_LEVELS) == {v for v, _ in Ticket.LEVEL} - {"technician"}
 
@@ -329,7 +372,7 @@ def test_no_module_writes_the_status_list_out_by_hand():
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if "migrations" not in path.parts
-        and path.name != "statuses.py"
+        and path.name != "constants.py"
         and literal.search(path.read_text())
     ]
     assert offenders == [], f"status list written out by hand in: {offenders}"

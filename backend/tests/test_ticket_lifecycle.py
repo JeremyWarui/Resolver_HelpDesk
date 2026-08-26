@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from apps.tickets.models import TicketLog
 from tests import factories
-from apps.tickets.services.lifecycle import (
+from apps.tickets.lifecycle import (
     ALLOWED,
     TransitionError,
     transition_status,

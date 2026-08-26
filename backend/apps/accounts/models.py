@@ -2,6 +2,12 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 
+# The scope rules live in `scope.py`, beside the queryset traversals they pair
+# with, so one module answers "what may this role reach" in both directions.
+# Imported rather than restated: `clean()` here and the write serializer read
+# the same dict, so neither can drift from the other.
+from apps.accounts.scope import SCOPE_FIELD_BY_ROLE, SCOPE_FIELDS, role_of
+
 
 class CustomUser(AbstractUser):
     """User model. Role is derived from the RoleAssignment — not stored here."""
@@ -17,10 +23,14 @@ class CustomUser(AbstractUser):
 
     @property
     def role(self):
-        try:
-            return self.role_assignment.role  # type: ignore[attr-defined]
-        except RoleAssignment.DoesNotExist:
-            return None
+        """The one role this account holds, or None.
+
+        Convenience only, and read from exactly one place: `resolve_role`
+        prefers the JWT claim and falls back here for requests authenticated
+        without a token. Nothing should gate access on this without going
+        through `common.roles.resolve_role`.
+        """
+        return role_of(self)
 
 
 class UserProfile(models.Model):
@@ -47,33 +57,16 @@ class UserProfile(models.Model):
         return f"{self.user.username} @ {campus_code}"
 
 
-# The scope FK each role carries: exactly the one named here, or none at all
-# where the value is None. clean() enforces it on every save.
-SCOPE_FIELD_BY_ROLE = {
-    "technician": "section",
-    "hos": "section",
-    "hod": "campus_department",
-    "manager": "department",
-    "admin": None,
-    "user": None,
-}
-
-# Every scope FK on the model, for the walks in clean() and __str__.
-SCOPE_FIELDS = (
-    "section",
-    "campus_department",
-    "department",
-)
-
-
 class RoleAssignment(models.Model):
     """Maps a user to their one role, with an explicit organisational scope.
 
     One row per user, held for as long as they hold the post. Only an admin
     creates or changes these rows.
 
-    Which scope each role carries is declared in SCOPE_FIELD_BY_ROLE above and
-    enforced by clean(), which save() runs on every write.
+    Which scope each role carries is declared in `accounts.scope`'s
+    SCOPE_FIELD_BY_ROLE and enforced by clean(), which save() runs on every
+    write. Who *writes* these rows is `accounts.posts.assign_role`, and only it:
+    the org FKs that `accounts.scope` reads have to move in step with this one.
     """
 
     ROLE_CHOICES = [

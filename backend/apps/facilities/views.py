@@ -5,11 +5,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from apps.common.pagination import ConfigListPagination
-from apps.common.permissions import IsAdminOrReadOnly
+from apps.common.roles import IsAdminOrReadOnly
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
 
-from apps.tickets.statuses import ACTIVE_STATUSES
+from apps.tickets.constants import ACTIVE_STATUSES
 
 
 def _ticket_count_subq(status_filter: Q):
@@ -46,7 +46,7 @@ class FacilityTypeViewSet(ReadOnlyModelViewSet):
 class FacilityViewSet(viewsets.ModelViewSet):
     """Admin CRUD for the Facility registry (buildings per campus).
     GET /facilities/?campus=&facility_type= is open to any authenticated user
-    for the ticket creation location dropdown (§5.3)."""
+    for the ticket creation location dropdown."""
 
     serializer_class = FacilitySerializer
     permission_classes = [IsAdminOrReadOnly]

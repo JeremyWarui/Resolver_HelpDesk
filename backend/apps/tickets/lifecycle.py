@@ -1,26 +1,36 @@
+"""How a ticket is routed at creation, then moved through its states.
+
+Views never mutate a Ticket directly; they call one of the functions here.
+
+Used by:
+    tickets.serializers  resolve_routing, compute_due_dates on create
+    tickets.views        transition_status, claim_ticket, assign_ticket
+"""
+
 from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.sla.services.due_dates import compute_due_dates
-from apps.tickets.models import TicketLog
-from apps.tickets.statuses import TERMINAL_STATUSES
-from apps.tickets.pending_reasons import (
+from apps.accounts.identity import display_name
+from apps.notifications.notify import (
+    emit_ticket_assigned,
+    emit_ticket_resolved,
+    emit_ticket_status_changed,
+)
+from apps.org.models import Section
+from apps.sla.clock import compute_due_dates
+from apps.tickets.constants import (
     PENDING_REASON_CODES,
     PENDING_REASON_LABELS,
     REASON_REQUIRING_NOTE,
+    TERMINAL_STATUSES,
 )
-from apps.notifications.notify import (
-    emit_ticket_assigned,
-    emit_ticket_status_changed,
-    emit_ticket_resolved,
-)
-from apps.accounts.identity import display_name
+from apps.tickets.models import TicketLog
 
 # Reopen (resolved/closed → open) restarts the lifecycle: `open` is the
-# unassigned state, so reopen clears the assignee and the SLA clock restarts
-# (QA B2f). Keep the frontend mirror in sync:
-# frontend/src/features/technician/StatusUpdateModal.tsx (VALID_NEXT).
+# unassigned state, so reopen clears the assignee and the SLA clock restarts.
+# Mirrored in frontend/src/features/technician/StatusUpdateModal.tsx
+# (VALID_NEXT); the two must change together.
 ALLOWED = {
     "open": {"assigned"},
     "assigned": {"in_progress"},
@@ -170,7 +180,7 @@ def transition_status(
 
 
 def claim_ticket(ticket, technician):
-    """Self-assign an unassigned open ticket to `technician` (QA B2a).
+    """Self-assign an unassigned open ticket to `technician`.
 
     Caller must hold the row lock (select_for_update) inside an atomic block —
     the guard here is the post-lock re-check that makes a double claim lose.
@@ -201,7 +211,7 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     """Hand a ticket to `assignee`, optionally setting its real priority.
 
     The HOS does both in one action: a ticket opens at Low and gets its true
-    priority when someone decides who works it (invariant 6). Reassignment is
+    priority when someone decides who works it. Reassignment is
     the same call — `previous_assignee` is what tells the two apart in the log,
     so the caller must pass a ticket whose `assigned_to` is still the old one.
     """
@@ -248,3 +258,45 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     )
     emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
     return ticket
+
+
+# ── Routing ───────────────────────────────────────────────────────────────────
+
+
+class ServiceNotAvailableError(Exception):
+    pass
+
+
+def resolve_routing(requester_campus_id, service_item):
+    """Return the Section that handles `service_item` at `requester_campus_id`.
+
+    The service item names a sub-section, the sub-section names a section type,
+    and the section is that type's instance at the requester's campus. Routing
+    is therefore fully determined by the one choice the requester makes.
+
+    Raises ServiceNotAvailableError if no active section handles the service at
+    the campus, e.g. a campus that runs no Maintenance section at all.
+    """
+    section = (
+        Section.objects.filter(
+            campus_department__campus_id=requester_campus_id,
+            section_type_id=service_item.sub_section.section_type_id,
+            is_active=True,
+        )
+        .select_related(
+            "campus_department__head_of_department",
+            "campus_department__campus",
+            "hos",
+            "section_type",
+        )
+        # (campus_department, section_type) is unique and a campus has one
+        # Administration department, so this matches at most one row. Ordered
+        # anyway so the result can never depend on insertion order.
+        .order_by("pk")
+        .first()
+    )
+    if section is None:
+        raise ServiceNotAvailableError(
+            "No active section handles this service at the requester's campus."
+        )
+    return section

@@ -9,7 +9,6 @@ import os
 
 from django.core.files.base import ContentFile
 from django.db.models import Q
-from django.utils import timezone
 
 from apps.tickets.models import (
     Ticket,
@@ -27,27 +26,27 @@ from apps.tickets.serializers import (
     TicketCommentSerializer,
     TicketFeedbackSerializer,
     TicketAttachmentSerializer,
-    _UserMinSerializer,
 )
-from apps.tickets.pending_reasons import PENDING_REASONS
-from apps.tickets.statuses import (
+from apps.tickets.constants import PENDING_REASONS
+from apps.tickets.constants import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
-    RUNNING_STATUSES,
     TERMINAL_STATUSES,
 )
-from apps.tickets.services.attachments import (
+from apps.tickets.attachments import (
     process_upload,
     MAX_ATTACHMENTS_PER_TICKET,
     MIME_TO_EXT,
 )
-from apps.tickets.services.lifecycle import (
+from apps.tickets.lifecycle import (
     assign_ticket,
     claim_ticket,
     transition_status,
     TransitionError,
 )
-from apps.tickets.services.scope import scoped_ticket_qs, ticket_base_qs
+from apps.tickets.scope import scoped_ticket_qs, ticket_base_qs
+from apps.accounts.serializers import UserMinSerializer
+from apps.sla.clock import q_overdue
 from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
 from apps.common.roles import STAFF_ROLES, TICKET_SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import (
@@ -83,8 +82,8 @@ def get_ticket_for_request_or_403(
 
 
 class TicketLogSerializer(drf_serializers.ModelSerializer):
-    actor = _UserMinSerializer(read_only=True, allow_null=True)
-    level_user = _UserMinSerializer(read_only=True, allow_null=True)
+    actor = UserMinSerializer(read_only=True, allow_null=True)
+    level_user = UserMinSerializer(read_only=True, allow_null=True)
 
     class Meta:
         model = TicketLog
@@ -192,7 +191,7 @@ class TicketAssignView(APIView):
 
 class TicketClaimView(APIView):
     """POST /tickets/{pk}/claim/ — technician self-assigns an unassigned open
-    ticket in one of their sections (QA B2a).
+    ticket in one of their sections.
 
     Scope: technician role only; the IDOR guard's scoped queryset already
     restricts technicians to their SectionTechnician sections. Race-safe via
@@ -336,7 +335,7 @@ class TicketListCreateView(generics.ListCreateAPIView):
     GET  (no ?mine) → role-scoped queryset; users with no role get an empty result.
     POST → create a new ticket.
     Filters: status, priority (id), section (id), sub_section (id), current_level.
-    Pagination: PageNumber ordered -updated_at (D6 / §3.7).
+    Pagination: PageNumber ordered -updated_at.
     """
 
     permission_classes = [IsAuthenticated]
@@ -400,21 +399,10 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(
                 current_level__in=ESCALATED_LEVELS, status__in=ACTIVE_STATUSES
             )
-        # Live work that has passed its resolution target. RUNNING_STATUSES,
-        # not ACTIVE_STATUSES: a paused ticket's stored deadline drifts into
-        # the past while it waits, and it is not late for a hold the section
-        # was told to take. Settled tickets are judged against resolved_at, not
-        # the clock, so they are never "overdue" — a resolved ticket answering
-        # this filter is the R9 bug wearing a different name.
-        #
-        # Same predicate as analytics' `breached` KPI, so the pill and the card
-        # cannot disagree about what the word means.
+        # The same Q analytics' `breached` KPI counts, so the pill and the card
+        # cannot disagree about what the word means. See `sla.clock`.
         if params.get("overdue") == "1":
-            qs = qs.filter(
-                status__in=RUNNING_STATUSES,
-                resolution_due_at__isnull=False,
-                resolution_due_at__lt=timezone.now(),
-            )
+            qs = qs.filter(q_overdue())
 
         return qs
 

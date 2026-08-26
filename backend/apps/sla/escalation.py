@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from apps.tickets.statuses import ACTIVE_STATUSES, TERMINAL_STATUSES
+from apps.tickets.constants import ACTIVE_STATUSES, TERMINAL_STATUSES
 
 LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 

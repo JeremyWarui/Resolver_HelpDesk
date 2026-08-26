@@ -11,7 +11,7 @@ asserted here, and both are asserted again through the API in
 import pytest
 
 from apps.org.models import SectionTechnician
-from apps.tickets.services.scope import scoped_ticket_qs
+from apps.tickets.scope import scoped_ticket_qs
 from tests import factories
 
 pytestmark = pytest.mark.django_db

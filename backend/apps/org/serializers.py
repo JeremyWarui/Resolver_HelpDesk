@@ -10,6 +10,7 @@ from apps.org.models import (
     SubSection,
 )
 from apps.accounts.identity import display_name
+from apps.accounts.serializers import UserMinSerializer
 
 
 class CampusSerializer(serializers.ModelSerializer):
@@ -43,15 +44,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
         result = []
         for cd in obj.campus_departments.all():
             if cd.head_of_department:
-                hod = cd.head_of_department
                 result.append({
                     "campus_department_id": cd.id,
                     "campus": cd.campus.code,
-                    "hod": {
-                        "id": hod.id,
-                        "name": display_name(hod),
-                        "username": hod.username,
-                    },
+                    "hod": UserMinSerializer(cd.head_of_department).data,
                 })
         return result
 
@@ -156,7 +152,6 @@ class SectionSerializer(serializers.ModelSerializer):
     campus = serializers.SerializerMethodField()
     department = serializers.SerializerMethodField()
     technician_count = serializers.SerializerMethodField()
-    description = serializers.SerializerMethodField()
     hos_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -173,8 +168,10 @@ class SectionSerializer(serializers.ModelSerializer):
             "hos_name",
             "is_active",
             "technician_count",
-            "description",
         ]
+        # `hos` is shown, never set: moving a head of section is a role change,
+        # and `accounts.posts.assign_role` is the one writer of both halves.
+        read_only_fields = ["hos"]
 
     def get_name(self, obj):
         return obj.section_type.name if obj.section_type_id else None
@@ -197,9 +194,6 @@ class SectionSerializer(serializers.ModelSerializer):
             return obj.technician_count
         return obj.technician_links.count()
 
-    def get_description(self, obj):
-        return ""
-
     def get_hos_name(self, obj):
         """Who heads this section, by name.
 
@@ -217,19 +211,3 @@ class SectionTechnicianSerializer(serializers.ModelSerializer):
         model = SectionTechnician
         fields = ["id", "user", "section", "sub_section", "sub_section_name", "added_at"]
         read_only_fields = ["added_at", "sub_section_name"]
-
-    def validate(self, attrs):
-        """Mirror SectionTechnician.clean() — the trade must belong to the section's type."""
-        section = attrs.get("section") or getattr(self.instance, "section", None)
-        sub_section = attrs.get("sub_section") or getattr(
-            self.instance, "sub_section", None
-        )
-        if (
-            section
-            and sub_section
-            and sub_section.section_type_id != section.section_type_id
-        ):
-            raise serializers.ValidationError(
-                {"sub_section": "sub_section must belong to the section's section_type."}
-            )
-        return attrs

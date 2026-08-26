@@ -14,7 +14,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.sla.services.escalation import (
+from apps.sla.escalation import (
     resolve_active_holder,
     run_escalation_for_ticket,
     run_escalations,

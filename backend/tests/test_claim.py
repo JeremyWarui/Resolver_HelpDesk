@@ -9,7 +9,7 @@ import pytest
 from django.urls import reverse
 
 from apps.tickets.models import Ticket, TicketLog
-from apps.tickets.services.lifecycle import TransitionError, claim_ticket
+from apps.tickets.lifecycle import TransitionError, claim_ticket
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -68,7 +68,7 @@ def test_a_reopened_ticket_becomes_claimable_again(
 ):
     """Reopen clears the assignee, so the next technician can pick it up —
     this is the behaviour that makes `open` mean unassigned."""
-    from apps.tickets.services.lifecycle import transition_status
+    from apps.tickets.lifecycle import transition_status
 
     api.force_authenticate(nrb_electrician)
     claim(api, nrb_electrical_ticket)

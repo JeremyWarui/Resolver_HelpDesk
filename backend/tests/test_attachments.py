@@ -12,7 +12,7 @@ import pytest
 from django.urls import reverse
 
 from apps.tickets.models import TicketAttachment
-from apps.tickets.services.attachments import MAX_ATTACHMENTS_PER_TICKET
+from apps.tickets.attachments import MAX_ATTACHMENTS_PER_TICKET
 
 
 def an_image(name="photo.jpg", size=(60, 40), fmt="JPEG"):

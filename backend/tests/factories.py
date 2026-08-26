@@ -14,14 +14,14 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.accounts.models import RoleAssignment, UserProfile
-from apps.sla.services.due_dates import compute_due_dates
+from apps.accounts.models import UserProfile
+from apps.accounts.posts import add_trade, assign_role
+from apps.sla.clock import compute_due_dates
 from apps.org.models import (
     Campus,
     CampusDepartment,
     Department,
     Section,
-    SectionTechnician,
     SectionType,
     ServiceItem,
     SubSection,
@@ -59,16 +59,17 @@ def make_section_type(department=None, code="MAINT", name="Maintenance"):
     )[0]
 
 
-def make_section(campus_department, section_type=None, hos=None):
-    """A campus's instance of a section type — this is the row that carries campus."""
-    section = Section.objects.get_or_create(
+def make_section(campus_department, section_type=None):
+    """A campus's instance of a section type — this is the row that carries campus.
+
+    Takes no `hos`: who heads a section is written by `accounts.posts`, never by
+    assigning the FK. Give someone the post with
+    `make_user(..., role="hos", section=section)`.
+    """
+    return Section.objects.get_or_create(
         campus_department=campus_department,
         section_type=section_type or make_section_type(),
     )[0]
-    if hos is not None:
-        section.hos = hos
-        section.save(update_fields=["hos"])
-    return section
 
 
 def make_sub_section(section_type=None, name="Electrical", code=None, **kwargs):
@@ -88,11 +89,14 @@ def make_service_item(sub_section, name="Faulty socket"):
 
 
 def make_user(username, campus=None, role=None, **scope):
-    """Create a user with a profile campus and, optionally, their one role.
+    """Create a user with a profile campus and, optionally, their one post.
 
-    `scope` takes the same keys as RoleAssignment: section / campus_department /
-    department. Technicians additionally need `sub_sections=[...]`, since a role
-    row alone grants a technician nothing — see `make_technician`.
+    `scope` takes the same keys as `accounts.posts.assign_role`: section /
+    campus_department / department, plus `sub_sections=[...]` for a technician.
+    The role goes through `assign_role` rather than being inserted, so a fixture
+    grants exactly the access production would — a test whose HOS could see
+    tickets only because the fixture also set `section.hos` by hand was testing
+    the fixture, not the system.
     """
     user = User.objects.create_user(
         username=username,
@@ -102,30 +106,30 @@ def make_user(username, campus=None, role=None, **scope):
     )
     UserProfile.objects.create(user=user, campus=campus)
     if role is not None:
-        scope.pop("sub_sections", None)
-        RoleAssignment.objects.create(user=user, role=role, **scope)
+        assign_role(user, role, **scope)
     return user
 
 
 def make_technician(username, section, sub_sections, campus=None):
-    """A technician linked to specific (section, sub_section) pairs.
+    """A technician holding specific (section, sub_section) pairs.
 
-    Pass several sections by calling this once and then `link_technician` again:
-    the pairs are what scope matches on, never the cross product.
+    For a technician working a *second* campus, call `link_technician` after:
+    the role row names one section, while scope matches on the pairs, and the
+    difference between those two is the bug the multi-campus test exists to
+    catch.
     """
-    user = make_user(
-        username, campus=campus or section.campus_department.campus,
-        role="technician", section=section,
+    return make_user(
+        username,
+        campus=campus or section.campus_department.campus,
+        role="technician",
+        section=section,
+        sub_sections=list(sub_sections),
     )
-    for sub_section in sub_sections:
-        link_technician(user, section, sub_section)
-    return user
 
 
 def link_technician(user, section, sub_section):
-    return SectionTechnician.objects.get_or_create(
-        user=user, section=section, sub_section=sub_section
-    )[0]
+    """One more (campus, trade) pair — `accounts.posts` writes it, not this."""
+    return add_trade(user, section, sub_section)
 
 
 # ── SLA ───────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-"""Analytics views — role-scoped endpoints over the aggregate() core (SoT §5.4).
+"""Analytics views — role-scoped endpoints over the aggregate() core.
 
 Every view:
   1. Extracts role from JWT payload (role claim set at login).
@@ -17,7 +17,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.common.roles import ANALYTICS_ROLES, resolve_role
 from apps.tickets.models import Ticket
-from apps.tickets.services.scope import scoped_ticket_qs
+from apps.tickets.scope import scoped_ticket_qs
 
 from .insights import compute_insights
 from .role_config import get_role_config, resolve_group_by
@@ -115,7 +115,7 @@ def _sectional_slice(data: dict) -> dict:
 
 
 class OverviewView(BaseAnalyticsView):
-    """Role-scoped summary — same core as all other endpoints (SoT §5.4)."""
+    """Role-scoped summary — same core as all other endpoints."""
 
     def get(self, request):
         role = self.get_role(request)
@@ -123,7 +123,7 @@ class OverviewView(BaseAnalyticsView):
         date_range = resolve_date_range(request.query_params)
 
         if role == "technician":
-            # TWO scopes in SEPARATE keys (SoT §5.4 — never mix them)
+            # TWO scopes in SEPARATE keys, never mixed
             individual_qs = Ticket.objects.filter(assigned_to=user)
             sectional_qs = scoped_ticket_qs(user, "technician")
             individual_data = aggregate(individual_qs, date_range)
@@ -335,7 +335,7 @@ class AnalyticsView(BaseAnalyticsView):
         cfg = get_role_config(role)
         granularity = _granularity(request)
 
-        # Technician: two scopes in SEPARATE keys, never mixed (SoT §5.4).
+        # Technician: two scopes in SEPARATE keys, never mixed.
         if role == "technician":
             individual = aggregate(
                 Ticket.objects.filter(assigned_to=user),

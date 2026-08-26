@@ -7,7 +7,7 @@ Unfold callback stubs are defined here and referenced in settings.UNFOLD.
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from apps.tickets.statuses import ACTIVE_STATUSES
+from apps.tickets.constants import ACTIVE_STATUSES
 from unfold.admin import ModelAdmin
 
 from apps.accounts.models import CustomUser, UserProfile, RoleAssignment
