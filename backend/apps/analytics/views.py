@@ -1,16 +1,8 @@
-"""Analytics views — role-scoped endpoints over the aggregate() core.
+"""
+The analytics endpoints. Two of them, both thin.
 
-Every view:
-  1. Extracts role from JWT payload (role claim set at login).
-  2. Obtains a scoped queryset from Phase 6 scope resolver — NEVER re-derives scope.
-  3. Calls aggregate(scoped_qs, date_range, group_by) once (or twice for technician).
-  4. Returns a slice of the metrics dict relevant to the endpoint.
-
-The dashboard preset (OverviewView) and deep-dive endpoints call the same core,
-so the same scope+window yields identical headline numbers in both.
-
-Used by:
-    analytics.urls  (module)
+A view reads the role from the JWT, gets the scoped queryset, calls into
+`services` and returns the result. Scope is never re-derived here.
 """
 
 from rest_framework.permissions import IsAuthenticated
@@ -18,378 +10,92 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.common.roles import ANALYTICS_ROLES, resolve_role
+from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.scope import scoped_ticket_qs
 
-from .insights import compute_insights
-from .role_config import get_role_config, resolve_group_by
-from .services import (
-    aggregate,
-    breakdown,
-    config_health,
-    resolve_date_range,
-    technician_load,
-    technician_trade_mix,
-    facility_trade_mix,
-)
+from .role_config import resolve_group_by
+from .services import aggregate, breakdown, resolve_date_range, technician_load
 
 
 class BaseAnalyticsView(APIView):
+    """The preamble every analytics endpoint runs: role, scope, window."""
+
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def get_role(self, request):
-        return resolve_role(request)
-
-    def get_scoped_qs(self, request, role=None):
-        user = request.user
-        role = role or self.get_role(request)
-        return scoped_ticket_qs(user, role)
-
     def scope_and_range(self, request):
-        """(scoped_qs, date_range) — the preamble every analytics endpoint runs."""
-        return (
-            self.get_scoped_qs(request, self.get_role(request)),
-            resolve_date_range(request.query_params),
+        """Return (role, scoped_qs, date_range)."""
+        role = resolve_role(request)
+        # No role means a plain requester: their own tickets and nothing else.
+        qs = (
+            scoped_ticket_qs(request.user, role)
+            if role
+            else Ticket.objects.filter(raised_by=request.user)
         )
+        return role, qs, resolve_date_range(request.query_params)
 
 
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-
-def _granularity(request):
-    """The requested trend bucket, falling back to 'day' for anything unknown."""
-    value = request.query_params.get("granularity", "day")
-    return value if value in ("day", "week", "month", "quarter") else "day"
-
-
-def _date_range_meta(date_range):
+def _range_meta(date_range):
+    """The window, echoed back so a chart can label its own axis."""
     return {
         "from": date_range["date_from"].isoformat(),
         "to": date_range["date_to"].isoformat(),
     }
 
 
-def _overview_slice(data: dict) -> dict:
-    """The four health headlines + supporting metrics for the overview preset.
-    status_distribution (windowed) is for charts; live_status_distribution
-    counts ALL scoped tickets by current status so stat cards always reflect
-    the true current state regardless of the selected date window."""
-    return {
-        "open_backlog": data["open_backlog"],
-        "created": data["created"],
-        "resolved": data["resolved"],
-        "net_flow": data["net_flow"],
-        "status_distribution": data.get("status_distribution", []),
-        "live_status_distribution": data.get("live_status_distribution", []),
-        "resolution_sla_pct": data["resolution_sla_pct"],
-        "response_sla_pct": data["response_sla_pct"],
-        "csat": data["csat"],
-        "reopen_rate": data["reopen_rate"],
-        "at_risk": data["at_risk"],
-        "breached": data["breached"],
-        "escalation_rate": data["escalation_rate"],
-        # Blocked is not the same as behind. A technician looking at their own
-        # numbers needs to tell "I am late" from "I am waiting on a part nobody
-        # can order", and the aging buckets say which of the backlog is old.
-        # Both are already computed by aggregate(); they were just not sliced.
-        "currently_paused": data.get("currently_paused", 0),
-        "aging_buckets": data.get("aging_buckets", {}),
-        "delta": data["delta"],
-    }
-
-
-def _sectional_slice(data: dict) -> dict:
-    """Sectional context for technician — separate key, never shown as own perf."""
-    return {
-        "open_backlog": data["open_backlog"],
-        "created": data["created"],
-        "resolved": data["resolved"],
-        "net_flow": data["net_flow"],
-        "status_distribution": data["status_distribution"],
-        "live_status_distribution": data.get("live_status_distribution", []),
-        "unassigned": data.get("unassigned", 0),
-    }
-
-
-# ── Overview (dashboard preset) ────────────────────────────────────────────────
-
-
-class OverviewView(BaseAnalyticsView):
-    """Role-scoped summary — same core as all other endpoints."""
-
-    def get(self, request):
-        role = self.get_role(request)
-        user = request.user
-        date_range = resolve_date_range(request.query_params)
-
-        if role == "technician":
-            # TWO scopes in SEPARATE keys, never mixed
-            individual_qs = Ticket.objects.filter(assigned_to=user)
-            sectional_qs = scoped_ticket_qs(user, "technician")
-            individual_data = aggregate(individual_qs, date_range)
-            sectional_data = aggregate(sectional_qs, date_range)
-            return Response(
-                {
-                    "date_range": _date_range_meta(date_range),
-                    "individual": _overview_slice(individual_data),
-                    "sectional": _sectional_slice(sectional_data),
-                }
-            )
-
-        # HOD → group by section; Manager → group by campus; others → no breakdown
-        group_by_map = {"hod": "section", "manager": "campus"}
-        group_by = group_by_map.get(role)
-
-        scoped_qs = scoped_ticket_qs(user, role)
-
-        data = aggregate(scoped_qs, date_range, group_by)
-        response_data = {
-            "date_range": _date_range_meta(date_range),
-            **_overview_slice(data),
-        }
-        if data.get("breakdown") is not None:
-            response_data["breakdown"] = data["breakdown"]
-        if role == "admin":
-            response_data["config_health"] = config_health()
-        return Response(response_data)
-
-
-# ── Demand shape ──────────────────────────────────────────────────────────────
-
-
-class DemandView(BaseAnalyticsView):
-    def get(self, request):
-        scoped_qs, date_range = self.scope_and_range(request)
-        data = aggregate(scoped_qs, date_range)
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                **data["demand"],
-            }
-        )
-
-
-# ── Performance endpoints ─────────────────────────────────────────────────────
-
-
-class PerformanceTechniciansView(BaseAnalyticsView):
-    def get(self, request):
-        scoped_qs, date_range = self.scope_and_range(request)
-        # Two cheap queries (live load + windowed breakdown) instead of the
-        # ~23-query full aggregate (see services.breakdown / technician_load).
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "technician_load": technician_load(scoped_qs),
-                "breakdown": breakdown(scoped_qs, date_range, group_by="technician"),
-            }
-        )
-
-
-class PerformanceFacilitiesView(BaseAnalyticsView):
-    """Tickets per facility, split by trade.
-
-    The estate view: which building is consuming the section, and with what
-    kind of work. Available to every supervising role — an HOS sees their own
-    campus's buildings, an HOD theirs, a manager all of them — because the
-    scope does the narrowing and the question is the same at every level.
-    """
-
-    def get(self, request):
-        if self.get_role(request) not in ANALYTICS_ROLES:
-            return Response({"detail": "Not available for this role."}, status=403)
-        scoped_qs, date_range = self.scope_and_range(request)
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "facilities": facility_trade_mix(scoped_qs, date_range),
-            }
-        )
-
-
-class PerformanceTradeMixView(BaseAnalyticsView):
-    """What share of each technician's work is which trade.
-
-    Answers the staffing question a flat ticket count cannot: a campus doing
-    most of its work in one craft with one person qualified for it is visible
-    here and nowhere else.
-
-    Deliberately excluded from the technician role's own view — `role_config`
-    already refuses them `technician` as a group_by so they are never ranked
-    against peers, and this is that ranking with an extra axis.
-    """
-
-    def get(self, request):
-        if self.get_role(request) not in ANALYTICS_ROLES:
-            return Response({"detail": "Not available for this role."}, status=403)
-        scoped_qs, date_range = self.scope_and_range(request)
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "technicians": technician_trade_mix(scoped_qs, date_range),
-            }
-        )
-
-
-class _BreakdownOnlyView(BaseAnalyticsView):
-    """A single group-by breakdown, without the headline metrics.
-
-    Skips the ~40-query aggregate() (see services.breakdown()); subclasses only
-    name the dimension.
-    """
-
-    group_by = None
-
-    def get(self, request):
-        scoped_qs, date_range = self.scope_and_range(request)
-        return Response(
-            {
-                "date_range": _date_range_meta(date_range),
-                "breakdown": breakdown(scoped_qs, date_range, group_by=self.group_by),
-            }
-        )
-
-
-class PerformanceSectionsView(_BreakdownOnlyView):
-    group_by = "section"
-
-
-class PerformanceTradesView(_BreakdownOnlyView):
-    """Breakdown by trade (sub_section) — the useful split below a section.
-
-    Maintenance is the only section type, so a HOD or HOS grouping by section
-    gets a single bar covering their whole scope. The craft is what actually
-    varies: Plumbing, Electrical, Carpentry, Masonry, Painting. `role_config`
-    already reflects this (HOD defaults to sub_section and is not allowed
-    section at all); this gives the breakdown-only charts the same dimension.
-    """
-
-    group_by = "sub_section"
-
-
-class PerformanceCampusDepartmentsView(_BreakdownOnlyView):
-    group_by = "campus_department"
-
-
-# ── Unified analytics endpoint (one view serves every role) ────────────────────
-
-
-def _range_meta(dr):
-    """`_date_range_meta` plus the comparison window, for endpoints that trend."""
-    return {
-        **_date_range_meta(dr),
-        "prev_from": dr["prior_from"].isoformat(),
-        "prev_to": dr["prior_to"].isoformat(),
-    }
-
-
-def _headline(data: dict) -> dict:
-    """The full headline metric set. Scope is already applied; the frontend
-    picks which of these to surface per the role config (KPIs are scope-invariant,
-    so we compute once and let the client slice)."""
-    keys = (
-        "open_backlog",
-        "created",
-        "resolved",
-        "net_flow",
-        "resolution_sla_pct",
-        "response_sla_pct",
-        "resolution_time_p50_seconds",
-        "resolution_time_p90_seconds",
-        "first_response_p50_seconds",
-        "first_response_p90_seconds",
-        "at_risk",
-        "breached",
-        "escalation_rate",
-        "escalated_count",
-        "reassignment_rate",
-        "unassigned",
-        "currently_paused",
-        "pause_total_seconds",
-        "pause_avg_seconds",
-        "ever_paused_count",
-        "csat",
-        "csat_satisfied_pct",
-        "feedback_response_rate",
-        "reopen_rate",
-        "aging_buckets",
-        "delta",
-    )
-    return {k: data.get(k) for k in keys}
-
-
 class AnalyticsView(BaseAnalyticsView):
-    """Single role-scoped analytics endpoint returning the full envelope
-    {scope, range, headline, series, breakdown, ticket_flow, insights}.
+    """GET /analytics/ — the whole figure set, in one call, for every role.
 
-    The metric engine is identical for every role; the role config controls the
-    default breakdown dimension, the enabled insights, and (client-side) which
-    headline KPIs are shown. group_by is validated against the role's allowed
-    list and falls back to the role default (a technician can never request peer
-    rankings)."""
+    One endpoint because the aggregate is the expensive part and everything a
+    dashboard renders comes out of a single run of it. `group_by` is the one
+    thing a client may steer, and it is checked against the role's list first.
+    """
 
     def get(self, request):
-        role = self.get_role(request)
-        user = request.user
-        date_range = resolve_date_range(request.query_params)
-        cfg = get_role_config(role)
-        granularity = _granularity(request)
+        role, scoped_qs, date_range = self.scope_and_range(request)
+        group_by = resolve_group_by(role, request.query_params.get("group_by"))
+        data = aggregate(scoped_qs, date_range, group_by)
 
-        # Technician: two scopes in SEPARATE keys, never mixed.
-        if role == "technician":
-            individual = aggregate(
-                Ticket.objects.filter(assigned_to=user),
-                date_range,
-                granularity=granularity,
-            )
-            sectional = aggregate(
-                scoped_ticket_qs(user, "technician"),
-                date_range,
-                granularity=granularity,
-            )
-            return Response(
-                {
-                    "scope": {"role": role},
-                    "range": _range_meta(date_range),
-                    "individual": _headline(individual),
-                    "sectional": _sectional_slice(sectional),
-                    "series": {"flow_trend": individual["flow_trend"]},
-                    "ticket_flow": sectional["ticket_flow"],
-                    "insights": [],
-                }
-            )
-
-        if not role:
-            scoped_qs = Ticket.objects.filter(raised_by=user)
-            group_by = None
-        else:
-            scoped_qs = scoped_ticket_qs(user, role)
-            group_by = resolve_group_by(role, request.query_params.get("group_by"))
-
-        data = aggregate(scoped_qs, date_range, group_by, granularity=granularity)
-        insights = (
-            compute_insights(scoped_qs, date_range, cfg["insights"])
-            if role and cfg.get("insights")
-            else []
+        return Response(
+            {
+                "scope": {"role": role, "group_by": group_by},
+                "range": _range_meta(date_range),
+                "headline": {
+                    key: data[key]
+                    for key in (
+                        "open_backlog",
+                        "created",
+                        "resolved",
+                        "response_sla_pct",
+                        "resolution_sla_pct",
+                        "response_time_avg_seconds",
+                        "resolution_time_avg_seconds",
+                        "breached",
+                        "escalated_count",
+                        "csat",
+                        "feedback_count",
+                    )
+                },
+                "status_distribution": data["status_distribution"],
+                "breakdown": {"dimension": group_by, "rows": data["breakdown"]},
+                "demand": data["demand"],
+                # Live, not windowed: a supervisor asks who is carrying what now.
+                "technician_load": technician_load(scoped_qs),
+            }
         )
 
-        envelope = {
-            "scope": {"role": role, "group_by": group_by},
-            "range": _range_meta(date_range),
-            "headline": _headline(data),
-            "series": {
-                "flow_trend": data["flow_trend"],
-                "status_distribution": data["status_distribution"],
-                "priority_distribution": data["priority_distribution"],
-            },
-            "breakdown": {"dimension": group_by, "rows": data.get("breakdown", [])},
-            "ticket_flow": data["ticket_flow"],
-            "demand": data["demand"],
-            "insights": insights,
-        }
-        if role == "admin":
-            envelope["config_health"] = config_health()
-        return Response(envelope)
+
+class BreakdownView(BaseAnalyticsView):
+    """GET /analytics/breakdown/?group_by= — one dimension's rows, no figures."""
+
+    def get(self, request):
+        role, scoped_qs, date_range = self.scope_and_range(request)
+        group_by = resolve_group_by(role, request.query_params.get("group_by"))
+        return Response(
+            {
+                "range": _range_meta(date_range),
+                "dimension": group_by,
+                "rows": breakdown(scoped_qs, date_range, group_by),
+            }
+        )

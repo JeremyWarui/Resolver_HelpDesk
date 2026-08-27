@@ -1,42 +1,33 @@
-"""The account, its campus placement, and the one role it holds.
+"""
+The account, its campus placement, and the posts it holds.
 
-Contents:
-    CustomUser       purpose: the login. Adds a phone number; the role is not
-                     stored here, it is derived from the RoleAssignment.
-    CustomUser.role  purpose: the one role held, or None. Why: convenience only —
-                     gate access through `common.roles.resolve_role`, which
-                     prefers the JWT claim and falls back to this.
-    UserProfile      purpose: campus placement. Why: where a person works is what
-                     routes the tickets they raise, and is not their role's scope.
-    RoleAssignment   purpose: one row per user mapping them to their role and the
-                     org object that role is scoped to.
-      .clean()       purpose: reject a scope that does not match the role.
-      .save()        purpose: run clean() on every write, whatever the caller.
-      .__str__()     purpose: "<user id> / <role> > <scope>" for admin dropdowns.
-
-Used by:
-    accounts.posts                   RoleAssignment
-    accounts.scope                   RoleAssignment
-    accounts.serializers             RoleAssignment, UserProfile
-    accounts.views                   RoleAssignment
-    common.admin                     CustomUser, UserProfile, RoleAssignment
-    common.management.commands.seed  UserProfile
-    notifications.notify             RoleAssignment
+A role is a RoleAssignment row, one per person, not a column on the user.
+Posts point into `org`, never the other way round.
 """
 
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 
-# Imported, not restated: clean() here and the write serializer read the same
-# dict, so neither can drift from the other.
-from apps.accounts.scope import SCOPE_FIELD_BY_ROLE, SCOPE_FIELDS, role_of
+from apps.accounts.scope import SCOPE_FIELD_BY_ROLE, role_of
 
 
 class CustomUser(AbstractUser):
-    """The login. Role is derived from the RoleAssignment, not stored here."""
+    """The login: a phone number, and where the person works.
+
+    `campus` is where they are based, which routes the tickets they raise. It
+    is not what their role oversees — that is the RoleAssignment's scope, and a
+    manager's two answers differ.
+    """
 
     phone_number = models.CharField(max_length=15, blank=True)
+    campus = models.ForeignKey(
+        "org.Campus",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
 
     class Meta:
         app_label = "accounts"
@@ -47,40 +38,20 @@ class CustomUser(AbstractUser):
 
     @property
     def role(self):
+        """Return the one role this user holds, or None."""
+        # Admin and shell convenience. Gate access through `roles.resolve_role`.
         return role_of(self)
 
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(
-        CustomUser,
-        on_delete=models.CASCADE,
-        related_name="profile",
-    )
-    campus = models.ForeignKey(
-        "org.Campus",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="user_profiles",
-    )
-
-    class Meta:
-        app_label = "accounts"
-
-    def __str__(self):
-        campus_code = self.campus.code if self.campus else "NO-CAMPUS"
-        return f"{self.user.username} @ {campus_code}"
-
-
 class RoleAssignment(models.Model):
-    """A user's one role, with the org object it is scoped to.
+    """A user's one role, and the campus it is scoped to.
 
-    One row per user, held for as long as they hold the post. Which scope each
-    role carries is declared in `accounts.scope.SCOPE_FIELD_BY_ROLE`. Only
-    `accounts.posts.assign_role` writes these rows: the org FKs that
-    `accounts.scope` reads have to move in step with this one.
+    One row per user, held for as long as they hold the post. Which roles carry
+    a campus is declared in `accounts.scope.SCOPE_FIELD_BY_ROLE`; an admin and
+    a manager carry none because they see every campus.
     """
 
+    # Only `accounts.posts.assign_role` writes these rows, and the trade links with them.
     ROLE_CHOICES = [
         ("user", "User"),
         ("technician", "Technician"),
@@ -96,28 +67,12 @@ class RoleAssignment(models.Model):
         related_name="role_assignment",
     )
     role = models.CharField(max_length=12, choices=ROLE_CHOICES)
-
-    # Scope FKs — nullable; which one is set depends on the role.
-    section = models.ForeignKey(
-        "org.Section",
+    campus = models.ForeignKey(
+        "org.Campus",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name="+",
-    )
-    campus_department = models.ForeignKey(
-        "org.CampusDepartment",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
-    department = models.ForeignKey(
-        "org.Department",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="+",
+        related_name="role_assignments",
     )
 
     assigned_by = models.ForeignKey(
@@ -133,36 +88,78 @@ class RoleAssignment(models.Model):
         app_label = "accounts"
 
     def clean(self):
-        """The role's rule names the one scope FK it must carry; every other must
-        be null. Errors are keyed by field name so a form or serializer shows
-        each one beside its own input.
+        """Reject a scope that does not match the role.
+
+        A campus-scoped role must name one; every other role must not, or an
+        admin would appear to belong to a single campus.
         """
         if self.role not in SCOPE_FIELD_BY_ROLE:
-            # Unknown role: clean_fields() already recorded the choices error.
+            # clean_fields() already recorded the choices error.
             return
 
-        required = SCOPE_FIELD_BY_ROLE[self.role]
-        errors = {}
-        for field in SCOPE_FIELDS:
-            present = bool(getattr(self, f"{field}_id"))
-            if field == required and not present:
-                errors[field] = f"A {self.role} assignment requires a {field}."
-            elif field != required and present:
-                errors[field] = f"A {self.role} assignment must not carry a {field}."
-        if errors:
-            raise ValidationError(errors)
+        needs_campus = SCOPE_FIELD_BY_ROLE[self.role] == "campus"
+        if needs_campus and not self.campus_id:
+            raise ValidationError(
+                {"campus": f"A {self.role} assignment requires a campus."}
+            )
+        if not needs_campus and self.campus_id:
+            raise ValidationError(
+                {"campus": f"A {self.role} assignment must not carry a campus."}
+            )
 
     def save(self, *args, **kwargs):
-        """validate_unique=False skips the uniqueness query: the OneToOne on `user`
-        already enforces one role per user in the database.
-        """
+        """Validate on every write, whatever the caller."""
+        # The OneToOne on `user` already enforces one role per user.
         self.full_clean(validate_unique=False)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        scope = [
-            f"{field}={getattr(self, f'{field}_id')}"
-            for field in SCOPE_FIELDS
-            if getattr(self, f"{field}_id")
+        """Return "<user id> / <role> > <campus>", for admin dropdowns."""
+        scope = f" > campus={self.campus_id}" if self.campus_id else ""
+        return f"{self.user_id} / {self.role}{scope}"
+
+
+class TechnicianTrade(models.Model):
+    """Links a technician to one trade at one campus.
+
+    One row is one (campus, trade) pair. A technician's scope is the set of
+    those pairs, never the cross product of the campuses and trades they appear
+    in: someone who is Carpentry@Nairobi and Plumbing@Mombasa must not thereby
+    reach Plumbing@Nairobi.
+    """
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="technician_trades",
+    )
+    campus = models.ForeignKey(
+        "org.Campus",
+        on_delete=models.CASCADE,
+        related_name="technician_trades",
+    )
+    sub_section = models.ForeignKey(
+        "org.SubSection",
+        on_delete=models.CASCADE,
+        related_name="technician_trades",
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "accounts"
+        ordering = ["campus", "sub_section", "user"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "campus", "sub_section"],
+                name="unique_technician_campus_sub_section",
+            )
         ]
-        return f"{self.user_id} / {' > '.join([self.role, *scope])}"
+        indexes = [
+            models.Index(
+                fields=["campus", "sub_section"],
+                name="techtrade_campus_sub_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} → {self.campus.code}/{self.sub_section.code}"

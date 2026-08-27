@@ -1,51 +1,15 @@
-"""Auth and user-management endpoints, and the token claims they issue.
+"""
+Auth and user-management endpoints, and the token claims they issue.
 
-Thin on purpose. Identity rules live in `identity.py`, authority in `scope.py`,
-writing a post in `posts.py`, and the payload shapes in `serializers.py`. A view
-here reads the request, calls one of those, and renders the result.
-
-Beyond SimpleJWT's own, both tokens of a pair carry: role, campus_id,
-department_id, campus_department_id, section_id, role_assignment_id, email.
-`campus_id` is the user's *home* campus, which routes tickets they raise, not
-what their role oversees. Every claim is re-read from the database at issue
-time, never copied from the token being replaced, so a role change lands on the
-next silent refresh rather than at expiry.
-
-Contents:
-    get_assignment               purpose: the RoleAssignment with its scope
-                                 graph. Why: the select_related list is what
-                                 RoleAssignmentSerializer walks, so serializing
-                                 costs no further queries.
-    build_tokens_for_assignment  purpose: a (refresh, access) pair carrying the
-                                 scope claims.
-    serialize_auth_user          purpose: the signed-in user, in the shape
-                                 `/api/v1/users/` returns, plus `active_role`.
-    _set_refresh_cookie          purpose: write the httponly refresh cookie.
-    _session_response            purpose: the one shape a successful sign-in
-                                 returns, from login and register both.
-    _get_user                    purpose: fetch a user by pk or 404.
-    _authenticate_by_email       purpose: sign in on the email. Why: Django
-                                 authenticates on the username.
-    jwt_login                    POST /auth/login/
-    jwt_register                 POST /auth/register/
-    jwt_refresh                  POST /auth/refresh/
-    jwt_logout                   POST /auth/logout/
-    _user_id_claim               purpose: SimpleJWT's user-id claim name.
-    MeView                       GET /auth/me/
-    public_campus_list           GET /auth/campuses/ — public, for registration.
-    UserRoleAssignmentView       GET + POST /users/{pk}/role-assignments/
-    UserListCreateView           GET + POST /api/v1/users/
-    UserDetailView               PATCH + DELETE /api/v1/users/{pk}/
-
-Used by:
-    accounts.urls  MeView, UserRoleAssignmentView, UserListCreateView, UserDetailView, …
+Every claim is re-read from the database at issue time rather than copied from
+the token being replaced, so a role change lands on the next silent refresh.
 """
 
 import logging
 
 from django.contrib.auth import authenticate, get_user_model
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -54,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.identity import display_name
 from apps.accounts.models import RoleAssignment
-from apps.accounts.scope import department_for, home_campus
+from apps.accounts.scope import home_campus
 from apps.accounts.serializers import (
     RoleAssignmentSerializer,
     RoleAssignmentWriteSerializer,
@@ -62,46 +26,38 @@ from apps.accounts.serializers import (
     UserCreateSerializer,
     UserUpdateSerializer,
 )
+from apps.common.pagination import ConfigListPagination
 from apps.common.roles import IsAdminGroup
 
 _logger = logging.getLogger(__name__)
 User = get_user_model()
 
 REFRESH_COOKIE = "resolver_refresh"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
+COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
 def get_assignment(user):
+    """Return the user's RoleAssignment with its whole scope graph, or None."""
+    # Exactly what RoleAssignmentSerializer walks, so serializing costs no queries.
     return (
         RoleAssignment.objects.filter(user=user)
-        .select_related(
-            "section__campus_department__campus",
-            "section__campus_department__department",
-            "section__section_type",
-            "campus_department__campus",
-            "campus_department__department",
-            "department",
-            "assigned_by",
-        )
+        .select_related("campus", "assigned_by")
         .first()
     )
 
 
 def build_tokens_for_assignment(user, role_assignment):
+    """Return a (refresh, access) pair carrying the scope claims."""
     refresh = RefreshToken.for_user(user)
 
-    department = department_for(role_assignment)
+    # Their *home* campus, not what their role oversees.
     campus = home_campus(user)
 
     claims = {
         "email": user.email,
         "role": role_assignment.role if role_assignment else None,
         "campus_id": campus.pk if campus else None,
-        "department_id": department.pk if department else None,
-        "campus_department_id": (
-            role_assignment.campus_department_id if role_assignment else None
-        ),
-        "section_id": role_assignment.section_id if role_assignment else None,
+        "scope_campus_id": role_assignment.campus_id if role_assignment else None,
         "role_assignment_id": role_assignment.pk if role_assignment else None,
     }
     for key, value in claims.items():
@@ -111,7 +67,7 @@ def build_tokens_for_assignment(user, role_assignment):
 
 
 def serialize_auth_user(user, assignment):
-    """`active_role` keeps its name because every frontend reader spells it that way."""
+    """Return the signed-in user, as `/api/v1/users/` renders one, plus their role."""
     data = UserAdminSerializer(user).data
     data["phone"] = user.phone_number or None
     data["is_active"] = user.is_active
@@ -122,6 +78,7 @@ def serialize_auth_user(user, assignment):
 
 
 def _set_refresh_cookie(response, refresh_token):
+    """Write the httponly refresh cookie."""
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=str(refresh_token),
@@ -133,6 +90,7 @@ def _set_refresh_cookie(response, refresh_token):
 
 
 def _session_response(user, http_status=status.HTTP_200_OK):
+    """Return the one shape a successful sign-in produces, for login and register."""
     assignment = get_assignment(user)
     refresh, access = build_tokens_for_assignment(user, assignment)
     response = Response(
@@ -147,13 +105,13 @@ def _session_response(user, http_status=status.HTTP_200_OK):
 
 
 def _get_user(pk):
+    """Fetch a user by primary key, or 404."""
     return get_object_or_404(User, pk=pk)
 
 
 def _authenticate_by_email(email, password):
-    """Email is not unique at the database level (a blank one from
-    `createsuperuser` collides), so every match is tried rather than assuming one.
-    """
+    """Sign in on the email address, since Django authenticates on the username."""
+    # Email is not unique at the database level: `createsuperuser` leaves blanks.
     for candidate in User.objects.filter(email__iexact=email).order_by("pk"):
         user = authenticate(username=candidate.username, password=password)
         if user:
@@ -164,7 +122,7 @@ def _authenticate_by_email(email, password):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_login(request):
-    """POST /auth/login/ — {email, password} → access token + refresh cookie."""
+    """POST /auth/login/ — {email, password} to an access token and refresh cookie."""
     email = (request.data.get("email") or "").strip()
     password = request.data.get("password") or ""
 
@@ -186,9 +144,7 @@ def jwt_login(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_register(request):
-    """Uses the same serializer as the admin create endpoint, so the two cannot
-    disagree about what an account is.
-    """
+    """POST /auth/register/ — create an account and sign in."""
     serializer = UserCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
@@ -198,10 +154,7 @@ def jwt_register(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_refresh(request):
-    """The new pair is built from the user's *current* assignment, never from the
-    old token's claims, so a promotion or demotion is picked up on the next
-    silent refresh instead of persisting stale scope until the token expires.
-    """
+    """POST /auth/refresh/ — a new token pair built from the current assignment."""
     raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
     if not raw_refresh:
         return Response(
@@ -224,9 +177,7 @@ def jwt_refresh(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    # roleChanged tells the frontend its cached user object (role, sidebar,
-    # dashboard choice — all set at sign-in and never touched by a silent
-    # refresh) is stale, so it should force a clean re-login.
+    # roleChanged tells the frontend its cached user object is stale.
     response = Response(
         {"accessToken": str(new_access), "roleChanged": old_role != new_role},
         status=status.HTTP_200_OK,
@@ -238,6 +189,7 @@ def jwt_refresh(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def jwt_logout(request):
+    """POST /auth/logout/ — blacklist the refresh token and clear the cookie."""
     raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
     if raw_refresh:
         try:
@@ -250,6 +202,7 @@ def jwt_logout(request):
 
 
 def _user_id_claim():
+    """Return SimpleJWT's user-id claim name."""
     try:
         from rest_framework_simplejwt.settings import api_settings
 
@@ -259,42 +212,38 @@ def _user_id_claim():
 
 
 class MeView(APIView):
-    """Re-reads the assignment rather than trusting the token's claims, so a role
-    change lands on the next call instead of at token expiry.
-    """
+    """GET /auth/me/ — the signed-in user and their current role."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(
-            serialize_auth_user(request.user, get_assignment(request.user))
-        )
+        # Re-read, not from the token's claims: a role change lands on this call.
+        return Response(serialize_auth_user(request.user, get_assignment(request.user)))
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def public_campus_list(request):
-    """Public on purpose, unlike /api/v1/campuses/: a new registrant has no token
-    yet and has to pick their campus before an account exists.
-    """
+    """GET /auth/campuses/ — the campus list, public."""
+    # Public, unlike /api/v1/campuses/: a registrant picks a campus with no token.
     from apps.org.models import Campus
 
     return Response(list(Campus.objects.order_by("name").values("id", "name", "code")))
 
 
 class UserRoleAssignmentView(APIView):
-    """GET returns the one role as a single-element list, because the frontend
-    reads a list here; POST replaces it. Only an admin may assign: a single
-    Maintenance HOS per campus is an org-level decision, not a departmental one.
-    """
+    """GET and POST /users/{pk}/role-assignments/ — read the one role, or replace it."""
 
+    # Admin only: one Maintenance HOS per campus is an org-level decision.
     permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def get(self, request, user_pk):
+        """Return the one role as a single-element list, because the frontend reads a list."""
         ra = get_assignment(_get_user(user_pk))
         return Response([RoleAssignmentSerializer(ra).data] if ra else [])
 
     def post(self, request, user_pk):
+        """Replace the user's role, reporting anyone it displaced."""
         target = _get_user(user_pk)
         serializer = RoleAssignmentWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -302,9 +251,6 @@ class UserRoleAssignmentView(APIView):
 
         body = RoleAssignmentSerializer(get_assignment(target)).data
         if displaced is not None:
-            # Surfaced, not buried in an audit log: the admin filling a post
-            # rarely knows who was in it, and the demotion is a bigger change
-            # than the one they asked for.
             name = display_name(displaced)
             body["displaced"] = {
                 "id": displaced.id,
@@ -318,33 +264,27 @@ class UserRoleAssignmentView(APIView):
         return Response(body, status=status.HTTP_201_CREATED)
 
 
-class UserListCreateView(APIView):
+class UserListCreateView(generics.ListCreateAPIView):
+    """GET and POST /api/v1/users/ — the admin user list, and account creation.
+
+    Paginated by `ConfigListPagination`, like every other admin config list.
+    """
+
     permission_classes = [IsAuthenticated, IsAdminGroup]
+    pagination_class = ConfigListPagination
+    queryset = User.objects.select_related(
+        "campus", "role_assignment__campus"
+    ).order_by("-date_joined")
 
-    def get(self, request):
-        # role_assignment is a OneToOne, so the whole scope graph joins in one
-        # query — no prefetch, no N+1.
-        qs = User.objects.select_related(
-            "profile__campus",
-            "role_assignment__section__campus_department__campus",
-            "role_assignment__section__campus_department__department",
-            "role_assignment__section__section_type",
-            "role_assignment__campus_department__campus",
-            "role_assignment__campus_department__department",
-            "role_assignment__department",
-        ).order_by("-date_joined")
+    def get_serializer_class(self):
+        """The write shape for a create, the read shape for a list."""
+        if self.request.method == "POST":
+            return UserCreateSerializer
+        return UserAdminSerializer
 
-        return Response(
-            {
-                "count": qs.count(),
-                "next": None,
-                "previous": None,
-                "results": UserAdminSerializer(qs, many=True).data,
-            }
-        )
-
-    def post(self, request):
-        serializer = UserCreateSerializer(data=request.data)
+    def create(self, request, *args, **kwargs):
+        """Create an account and return it in the read shape."""
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(
             UserAdminSerializer(serializer.save()).data,
@@ -353,14 +293,20 @@ class UserListCreateView(APIView):
 
 
 class UserDetailView(APIView):
+    """PATCH and DELETE /api/v1/users/{pk}/."""
+
     permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def patch(self, request, pk):
-        serializer = UserUpdateSerializer(_get_user(pk), data=request.data, partial=True)
+        """Edit the account's email or campus."""
+        serializer = UserUpdateSerializer(
+            _get_user(pk), data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         return Response(UserAdminSerializer(serializer.save()).data)
 
     def delete(self, request, pk):
+        """Delete the account, unless it is the caller's own."""
         user = _get_user(pk)
         if user == request.user:
             return Response(

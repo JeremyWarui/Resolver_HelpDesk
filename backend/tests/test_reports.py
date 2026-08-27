@@ -1,11 +1,7 @@
-"""Excel report generation — the sheets actually build, and they respect scope.
+"""The Excel export — it builds, it respects scope, and it agrees with the screen.
 
-653 lines of openpyxl had no test at all. Nothing here checks formatting; the
-point is that every report type still produces a workbook, that its rows come
-from the caller's own scope, and that the numbers agree with the analytics the
-same user sees on screen — a report that quietly exports another campus's
-tickets is the failure that matters, and it looks identical to a working one
-from the outside.
+Nothing here checks formatting. A report that quietly exports another campus's
+tickets looks identical to a working one from the outside.
 """
 
 from io import BytesIO
@@ -18,14 +14,6 @@ from apps.tickets.lifecycle import transition_status
 
 pytestmark = pytest.mark.django_db
 
-REPORT_IDS = [
-    "ticket-lifecycle",
-    "technician-performance",
-    "facility-health",
-    "pending-analysis",
-    "comprehensive",
-]
-
 
 def _workbook(response):
     assert response.status_code == 200, response.content[:400]
@@ -35,8 +23,8 @@ def _workbook(response):
     return openpyxl.load_workbook(BytesIO(response.content))
 
 
-def _generate(api, report_type):
-    return api.get(reverse("analytics:report-generate"), {"report_type": report_type})
+def _generate(api):
+    return api.get(reverse("analytics:report-generate"))
 
 
 @pytest.fixture
@@ -48,65 +36,60 @@ def worked_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos):
     t.save(update_fields=["assigned_to"])
     transition_status(t, "assigned", nrb_hos)
     transition_status(t, "in_progress", nrb_electrician)
-    transition_status(t, "pending", nrb_electrician, pending_reason="awaiting_materials")
+    transition_status(
+        t, "pending", nrb_electrician, pending_reason="material_not_in_store"
+    )
     transition_status(t, "in_progress", nrb_electrician)
     transition_status(t, "resolved", nrb_electrician)
     return t
 
 
-@pytest.mark.parametrize("report_type", REPORT_IDS)
-def test_every_report_type_builds_a_workbook(api, nrb_hos, worked_ticket, report_type):
+def test_the_export_builds_a_workbook(api, nrb_hos, worked_ticket):
     api.force_authenticate(nrb_hos)
-    wb = _workbook(_generate(api, report_type))
-    assert "Summary" in wb.sheetnames
-    # Summary plus at least one data sheet; comprehensive carries all four.
-    assert len(wb.sheetnames) >= 2
-    if report_type == "comprehensive":
-        assert len(wb.sheetnames) == 5
+    wb = _workbook(_generate(api))
+    assert wb.sheetnames == ["Summary", "Tickets"]
 
 
-def test_the_lifecycle_sheet_lists_the_ticket(api, nrb_hos, worked_ticket):
+def test_the_tickets_sheet_lists_the_ticket(api, nrb_hos, worked_ticket):
     api.force_authenticate(nrb_hos)
-    wb = _workbook(_generate(api, "ticket-lifecycle"))
-    ws = wb[[n for n in wb.sheetnames if n != "Summary"][0]]
+    ws = _workbook(_generate(api))["Tickets"]
     values = {str(c.value) for row in ws.iter_rows() for c in row}
     assert worked_ticket.ticket_no in values
 
 
-def test_a_report_never_exports_another_campus(
-    api, msa_hos, worked_ticket, msa_electrical_ticket
+def test_an_export_never_carries_another_campus(
+    api,
+    msa_hos,
+    worked_ticket,
+    msa_electrical_ticket,
 ):
-    """The negative that makes the rest worth having. A HOS at Mombasa exports
+    """The negative that makes the rest worth having. An HOS at Mombasa exports
     their own section; the Nairobi ticket must be absent, not merely unlabelled."""
     api.force_authenticate(msa_hos)
-    wb = _workbook(_generate(api, "ticket-lifecycle"))
-    ws = wb[[n for n in wb.sheetnames if n != "Summary"][0]]
+    ws = _workbook(_generate(api))["Tickets"]
     values = {str(c.value) for row in ws.iter_rows() for c in row}
     assert msa_electrical_ticket.ticket_no in values
     assert worked_ticket.ticket_no not in values
 
 
-def test_report_type_is_required_and_validated(api, nrb_hos):
-    api.force_authenticate(nrb_hos)
-    assert api.get(reverse("analytics:report-generate")).status_code == 400
-    assert _generate(api, "not-a-report").status_code == 400
-
-
 def test_the_summary_sheet_agrees_with_the_analytics_endpoint(
-    api, nrb_hos, worked_ticket, nrb_plumbing_ticket
+    api,
+    nrb_hos,
+    worked_ticket,
+    nrb_plumbing_ticket,
 ):
-    """The docstring on report_views promises the Summary mirrors the overview
-    cards. If the two ever compute their own answer, this is what notices."""
+    """The Summary is `aggregate()` over the same scope and window as the
+    dashboard. If the two ever compute their own answer, this is what notices."""
     api.force_authenticate(nrb_hos)
-    wb = _workbook(_generate(api, "ticket-lifecycle"))
-    summary = wb["Summary"]
-    cells = {}
-    for row in summary.iter_rows(values_only=True):
-        if row and row[0] is not None and len(row) > 1:
-            cells[str(row[0]).strip().lower()] = row[1]
+    summary = _workbook(_generate(api))["Summary"]
+    cells = {
+        str(row[0]).strip().lower(): row[1]
+        for row in summary.iter_rows(values_only=True)
+        if row and row[0] is not None and len(row) > 1
+    }
 
     headline = api.get(reverse("analytics:analytics")).json()["headline"]
-    assert cells["open backlog (live)"] == headline["open_backlog"]
-    assert cells["created in window"] == headline["created"]
-    assert cells["resolved in window"] == headline["resolved"]
-    assert cells["net flow (created \u2212 resolved)"] == headline["net_flow"]
+    assert cells["open backlog"] == headline["open_backlog"]
+    assert cells["tickets raised"] == headline["created"]
+    assert cells["tickets resolved"] == headline["resolved"]
+    assert cells["overdue now"] == headline["breached"]

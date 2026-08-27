@@ -1,54 +1,16 @@
 """How accounts renders a person, a role, and the two together.
 
-Neither create nor update takes a name. The email is the identity: username,
-first and last name are derived from its local part and never accepted from a
-client, so an account's display name and its login cannot drift apart.
-
-Contents:
-    UserMinSerializer            purpose: a person, as any payload refers to one.
-                                 Why: one shape everywhere — importers take it
-                                 from here rather than assembling their own.
-    RoleAssignmentSerializer     purpose: a role as every reader sees it, for
-                                 `/users/{id}/role-assignments/` and the
-                                 `active_role` of `/auth/me/`.
-    RoleAssignmentWriteSerializer  purpose: validate campus/department/section
-                                 ids and apply the assignment. Why: POSTing it
-                                 replaces the one role a user holds.
-    UserAdminSerializer          purpose: the admin user list and the technician
-                                 roster's person half. Why: spells out both
-                                 campuses, which are different facts.
-    _campus_must_exist           purpose: reject an unknown campus id.
-    _email_must_be_free          purpose: reject an email another account holds.
-    _email_must_carry_a_name     purpose: reject an email with nothing before
-                                 the '@'. Why: it would render as a username
-                                 forever.
-    UserCreateSerializer         purpose: admin account creation, and register.
-    UserUpdateSerializer         purpose: admin account edit — email and campus.
-    create_account               purpose: build the account, its home campus and
-                                 the floor role. Why: one definition of what an
-                                 account is, for both API paths.
-
-Used by:
-    accounts.views       RoleAssignmentSerializer, RoleAssignmentWriteSerializer, UserAdminSerializer, UserCreateSerializer, …
-    org.serializers      UserMinSerializer
-    org.views            UserAdminSerializer, UserMinSerializer
-    tickets.serializers  UserMinSerializer
-    tickets.views        UserMinSerializer
+Neither create nor update takes a name: the email is the identity.
 """
 
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.accounts.identity import display_name, identity_from_email
-from apps.accounts.models import RoleAssignment, UserProfile
-from apps.accounts.posts import assign_role, scope_kwargs_from_ids
-from apps.accounts.scope import (
-    SCOPE_FIELD_BY_ROLE,
-    assignment_of,
-    campus_for,
-    department_for,
-    home_campus,
-)
+from apps.accounts.models import RoleAssignment, TechnicianTrade
+from apps.accounts.posts import assign_role, ensure_requester, scope_kwargs_from_ids
+from apps.accounts.scope import assignment_of, campus_for
+from apps.org.models import Campus, SubSection
 
 User = get_user_model()
 
@@ -69,18 +31,16 @@ class UserMinSerializer(serializers.Serializer):
 
 
 class RoleAssignmentSerializer(serializers.ModelSerializer):
-    """`campus_id` and `department_id` come from `scope.campus_for` and
-    `scope.department_for`, never from the direct FK, because a technician or an
-    HOS reaches their department through their section.
+    """A held post: the role, the campus it covers, and a technician's trades.
+
+    `campus_id` is null for an admin and a manager, whose remit is every campus.
     """
 
-    section_id = serializers.IntegerField(read_only=True)
-    section_name = serializers.SerializerMethodField()
-    campus_id = serializers.SerializerMethodField()
-    campus_name = serializers.SerializerMethodField()
-    department_id = serializers.SerializerMethodField()
-    department_name = serializers.SerializerMethodField()
-    assigned_by_username = serializers.SerializerMethodField()
+    campus_id = serializers.IntegerField(read_only=True)
+    campus_name = serializers.CharField(source="campus.name", read_only=True)
+    assigned_by_username = serializers.CharField(
+        source="assigned_by.username", read_only=True
+    )
     sub_section_ids = serializers.SerializerMethodField()
 
     class Meta:
@@ -90,63 +50,33 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
             "role",
             "campus_id",
             "campus_name",
-            "department_id",
-            "department_name",
-            "section_id",
-            "section_name",
             "sub_section_ids",
             "assigned_by_username",
             "assigned_at",
         ]
         read_only_fields = fields
 
-    def get_section_name(self, obj):
-        return str(obj.section) if obj.section_id else None
-
-    def get_campus_id(self, obj):
-        campus = campus_for(obj)
-        return campus.pk if campus else None
-
-    def get_campus_name(self, obj):
-        campus = campus_for(obj)
-        return campus.name if campus else None
-
-    def get_department_id(self, obj):
-        department = department_for(obj)
-        return department.pk if department else None
-
-    def get_department_name(self, obj):
-        department = department_for(obj)
-        return department.name if department else None
-
-    def get_assigned_by_username(self, obj):
-        return obj.assigned_by.username if obj.assigned_by_id else None
-
     def get_sub_section_ids(self, obj):
-        """Empty for every other role. They live in SectionTechnician because one
+        """Empty for every other role. Trades live in TechnicianTrade because one
         role row cannot express "Carpentry and Plumbing at Nairobi".
         """
-        if obj.role != "technician" or not obj.section_id:
+        if obj.role != "technician":
             return []
-        from apps.org.models import SectionTechnician
-
         return list(
-            SectionTechnician.objects.filter(
-                user_id=obj.user_id, section_id=obj.section_id
-            ).values_list("sub_section_id", flat=True)
+            TechnicianTrade.objects.filter(user_id=obj.user_id).values_list(
+                "sub_section_id", flat=True
+            )
         )
 
 
 class RoleAssignmentWriteSerializer(serializers.Serializer):
-    """Which scope each role needs is not decided here — `posts.scope_kwargs_from_ids`
+    """Which roles carry a campus is not decided here — `posts.scope_kwargs_from_ids`
     reads it from `SCOPE_FIELD_BY_ROLE`, so this cannot drift from the rule
     `RoleAssignment.clean()` enforces on save.
     """
 
     role = serializers.ChoiceField(choices=RoleAssignment.ROLE_CHOICES)
     campus_id = serializers.IntegerField(required=False, allow_null=True)
-    department_id = serializers.IntegerField(required=False, allow_null=True)
-    section_id = serializers.IntegerField(required=False, allow_null=True)
     sub_section_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, default=list
     )
@@ -155,28 +85,23 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
         role = attrs["role"]
         try:
             attrs["scope"] = scope_kwargs_from_ids(
-                role,
-                campus_id=attrs.get("campus_id"),
-                department_id=attrs.get("department_id"),
-                section_id=attrs.get("section_id"),
+                role, campus_id=attrs.get("campus_id")
             )
         except LookupError as exc:
             field, message = exc.args[0]
             raise serializers.ValidationError({field: message}) from exc
 
         attrs["sub_sections"] = self._validate_trades(
-            role, attrs.get("sub_section_ids") or [], attrs["scope"].get("section")
+            role, attrs.get("sub_section_ids") or []
         )
         return attrs
 
-    def _validate_trades(self, role, sub_section_ids, section):
-        """Trades are technician-only, and must belong to the section's type."""
-        from apps.org.models import SubSection
-
+    def _validate_trades(self, role, sub_section_ids):
+        """Trades are technician-only, and every id must name a real one."""
         if role != "technician":
             if sub_section_ids:
                 raise serializers.ValidationError(
-                    {"sub_section_ids": "Only technician assignments carry sub-sections."}
+                    {"sub_section_ids": "Only technician assignments carry trades."}
                 )
             return []
 
@@ -184,20 +109,13 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {
                     "sub_section_ids": "A technician assignment requires at least one "
-                    "sub-section, or they would see no tickets."
+                    "trade, or they would see no tickets."
                 }
             )
-        found = list(
-            SubSection.objects.filter(
-                pk__in=sub_section_ids, section_type_id=section.section_type_id
-            )
-        )
+        found = list(SubSection.objects.filter(pk__in=sub_section_ids))
         if len(found) != len(set(sub_section_ids)):
             raise serializers.ValidationError(
-                {
-                    "sub_section_ids": "Every sub-section must belong to the section's "
-                    "section_type."
-                }
+                {"sub_section_ids": "Every id must name a real trade."}
             )
         return found
 
@@ -213,7 +131,9 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
 
 
 class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
-    """Two campuses appear here and they are different facts. `home_campus_*` is
+    """The admin user row.
+
+    Two campuses appear here and they are different facts. `home_campus_*` is
     where the person works and routes the tickets they raise. `primary_campus_*`
     is what their role oversees, and is null for a manager, an admin and a plain
     requester. Never collapse the two: the ticket wizard routes off
@@ -221,14 +141,11 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
     """
 
     role = serializers.SerializerMethodField()
-    section_id = serializers.SerializerMethodField()
-    section_name = serializers.SerializerMethodField()
     primary_campus_id = serializers.SerializerMethodField()
     primary_campus_name = serializers.SerializerMethodField()
-    primary_department_id = serializers.SerializerMethodField()
-    primary_department_name = serializers.SerializerMethodField()
-    home_campus_id = serializers.SerializerMethodField()
-    home_campus_name = serializers.SerializerMethodField()
+    # Plain fields: home campus is a column now, not a joined profile row.
+    home_campus_id = serializers.IntegerField(source="campus_id", read_only=True)
+    home_campus_name = serializers.CharField(source="campus.name", read_only=True)
 
     class Meta:
         model = User
@@ -241,12 +158,8 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
             "email",
             "date_joined",
             "role",
-            "section_id",
-            "section_name",
             "primary_campus_id",
             "primary_campus_name",
-            "primary_department_id",
-            "primary_department_name",
             "home_campus_id",
             "home_campus_name",
         ]
@@ -256,14 +169,6 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
         ra = assignment_of(obj)
         return ra.role if ra else "user"
 
-    def get_section_id(self, obj):
-        ra = assignment_of(obj)
-        return ra.section_id if ra else None
-
-    def get_section_name(self, obj):
-        ra = assignment_of(obj)
-        return str(ra.section) if ra and ra.section_id else None
-
     def get_primary_campus_id(self, obj):
         campus = campus_for(assignment_of(obj))
         return campus.pk if campus else None
@@ -272,27 +177,9 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
         campus = campus_for(assignment_of(obj))
         return campus.name if campus else None
 
-    def get_primary_department_id(self, obj):
-        department = department_for(assignment_of(obj))
-        return department.pk if department else None
-
-    def get_primary_department_name(self, obj):
-        department = department_for(assignment_of(obj))
-        return department.name if department else None
-
-    def get_home_campus_id(self, obj):
-        campus = home_campus(obj)
-        return campus.pk if campus else None
-
-    def get_home_campus_name(self, obj):
-        campus = home_campus(obj)
-        return campus.name if campus else None
-
 
 def _campus_must_exist(value):
-    """None passes — an update uses it to clear the profile campus."""
-    from apps.org.models import Campus
-
+    """None passes — an update uses it to clear the user's campus."""
     if value is not None and not Campus.objects.filter(pk=value).exists():
         raise serializers.ValidationError("Campus not found.")
     return value
@@ -368,9 +255,8 @@ class UserUpdateSerializer(serializers.Serializer):
                 update_fields=["email", "username", "first_name", "last_name"]
             )
         if campus_id is not serializers.empty:
-            UserProfile.objects.update_or_create(
-                user=instance, defaults={"campus_id": campus_id}
-            )
+            instance.campus_id = campus_id
+            instance.save(update_fields=["campus"])
         return instance
 
 
@@ -380,8 +266,6 @@ def create_account(*, email, password, campus_id):
     `common.seed` builds its own identity to stay idempotent, and
     `tests.factories` calls `create_user` directly.
     """
-    from apps.accounts.posts import ensure_requester
-
     username, first_name, last_name = identity_from_email(email)
     user = User.objects.create_user(
         username=username,
@@ -389,21 +273,7 @@ def create_account(*, email, password, campus_id):
         password=password,
         first_name=first_name,
         last_name=last_name,
+        campus_id=campus_id,
     )
     ensure_requester(user)
-    UserProfile.objects.create(user=user, campus_id=campus_id)
     return user
-
-
-# `SCOPE_FIELD_BY_ROLE` is re-exported for the admin form, which builds its
-# scope inputs from the same declaration the API validates against.
-__all__ = [
-    "SCOPE_FIELD_BY_ROLE",
-    "RoleAssignmentSerializer",
-    "RoleAssignmentWriteSerializer",
-    "UserAdminSerializer",
-    "UserCreateSerializer",
-    "UserMinSerializer",
-    "UserUpdateSerializer",
-    "create_account",
-]

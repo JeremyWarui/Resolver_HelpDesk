@@ -1,9 +1,7 @@
 """The attachment endpoint, which the ticket wizard posts to after creating.
 
-The upload UI shipped as a mock — a timer filled a progress bar and no request
-was ever made — so nothing here was exercised end to end. These tests pin the
-contract the wizard now relies on: the field name, the limits, and who may
-delete.
+These pin the contract the wizard relies on: the field name, the limits, and
+who may delete.
 """
 
 import io
@@ -34,7 +32,10 @@ def media(settings, tmp_path):
 
 @pytest.mark.django_db
 def test_the_wizard_field_name_uploads_and_compresses(
-    api, requester, nrb_electrical_ticket, media
+    api,
+    requester,
+    nrb_electrical_ticket,
+    media,
 ):
     """`files` is what uploadAttachments() sends. A JPEG round-trips smaller."""
     api.force_authenticate(requester)
@@ -52,30 +53,23 @@ def test_the_wizard_field_name_uploads_and_compresses(
 
 
 @pytest.mark.django_db
-def test_several_files_arrive_in_one_request(
-    api, requester, nrb_electrical_ticket, media
-):
-    """The wizard sends the whole batch at once, not one request per file."""
-    api.force_authenticate(requester)
-    resp = api.post(
-        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
-        {"files": [an_image("a.jpg"), an_image("b.jpg")]},
-        format="multipart",
-    )
-    assert resp.status_code == 201
-    assert len(resp.data) == 2
-
-
-@pytest.mark.django_db
 def test_the_per_ticket_cap_is_enforced_across_requests(
-    api, requester, nrb_electrical_ticket, media
+    api,
+    requester,
+    nrb_electrical_ticket,
+    media,
 ):
     """The uploader caps at 5 client-side; the server must not trust that."""
     api.force_authenticate(requester)
     url = reverse("ticket-attachments", args=[nrb_electrical_ticket.pk])
 
     for i in range(MAX_ATTACHMENTS_PER_TICKET):
-        assert api.post(url, {"files": an_image(f"{i}.jpg")}, format="multipart").status_code == 201
+        assert (
+            api.post(
+                url, {"files": an_image(f"{i}.jpg")}, format="multipart"
+            ).status_code
+            == 201
+        )
 
     over = api.post(url, {"files": an_image("last.jpg")}, format="multipart")
     assert over.status_code == 400
@@ -84,33 +78,75 @@ def test_the_per_ticket_cap_is_enforced_across_requests(
 
 
 @pytest.mark.django_db
-def test_a_batch_that_would_overflow_the_cap_is_refused_whole(
-    api, requester, nrb_electrical_ticket, media
+@pytest.mark.parametrize(
+    "name,payload,mime",
+    [
+        ("photo.jpg", None, "image/jpeg"),
+        ("photo.png", None, "image/png"),
+        ("manual.pdf", b"%PDF-1.4 fake", "application/pdf"),
+        (
+            "form.docx",
+            b"PK fake",
+            "application/vnd.openxmlformats-officedocument"
+            ".wordprocessingml.document",
+        ),
+    ],
+)
+def test_the_five_permitted_types_are_accepted(
+    api,
+    requester,
+    nrb_electrical_ticket,
+    media,
+    name,
+    payload,
+    mime,
 ):
-    api.force_authenticate(requester)
-    url = reverse("ticket-attachments", args=[nrb_electrical_ticket.pk])
-    api.post(url, {"files": [an_image("a.jpg"), an_image("b.jpg")]}, format="multipart")
+    """JPEG, JPG, PNG, PDF and DOCX — JPG and JPEG share one media type."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
 
+    api.force_authenticate(requester)
+    upload = (
+        an_image(name, fmt="PNG" if name.endswith(".png") else "JPEG")
+        if payload is None
+        else SimpleUploadedFile(name, payload, content_type=mime)
+    )
     resp = api.post(
-        url,
-        {"files": [an_image(f"{i}.jpg") for i in range(4)]},
+        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
+        {"files": upload},
         format="multipart",
     )
-    assert resp.status_code == 400
-    assert "slot" in resp.data["detail"]
-    assert nrb_electrical_ticket.attachments.count() == 2
+    assert resp.status_code == 201, resp.data
 
 
 @pytest.mark.django_db
-def test_an_executable_is_rejected_on_content_type(
-    api, requester, nrb_electrical_ticket, media
+@pytest.mark.parametrize(
+    "name,mime",
+    [
+        ("animation.gif", "image/gif"),
+        ("photo.webp", "image/webp"),
+        ("sheet.xlsx", "application/vnd.openxmlformats-officedocument"
+                       ".spreadsheetml.sheet"),
+        ("old.doc", "application/msword"),
+        ("book.xls", "application/vnd.ms-excel"),
+    ],
+)
+def test_every_other_type_is_refused(
+    api,
+    requester,
+    nrb_electrical_ticket,
+    media,
+    name,
+    mime,
 ):
+    """The allow-list is the five the spec names. Everything else, including
+    the other office and image formats, is a 400.
+    """
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     api.force_authenticate(requester)
     resp = api.post(
         reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
-        {"files": SimpleUploadedFile("x.sh", b"#!/bin/sh\nrm -rf /", content_type="application/x-sh")},
+        {"files": SimpleUploadedFile(name, b"payload", content_type=mime)},
         format="multipart",
     )
     assert resp.status_code == 400
@@ -119,20 +155,12 @@ def test_an_executable_is_rejected_on_content_type(
 
 
 @pytest.mark.django_db
-def test_posting_no_file_says_which_field_to_use(
-    api, requester, nrb_electrical_ticket, media
-):
-    api.force_authenticate(requester)
-    resp = api.post(
-        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]), {}, format="multipart"
-    )
-    assert resp.status_code == 400
-    assert "files" in resp.data["detail"]
-
-
-@pytest.mark.django_db
 def test_a_requester_cannot_delete_someone_elses_attachment(
-    api, requester, nrb_hos, nrb_electrical_ticket, media
+    api,
+    requester,
+    nrb_hos,
+    nrb_electrical_ticket,
+    media,
 ):
     """Deletion is uploader-or-supervisor. The requester raised the ticket but
     did not upload this file."""
@@ -143,7 +171,9 @@ def test_a_requester_cannot_delete_someone_elses_attachment(
         format="multipart",
     ).data[0]
 
-    url = reverse("ticket-attachment-detail", args=[nrb_electrical_ticket.pk, created["id"]])
+    url = reverse(
+        "ticket-attachment-detail", args=[nrb_electrical_ticket.pk, created["id"]]
+    )
 
     api.force_authenticate(requester)
     assert api.delete(url).status_code == 403

@@ -1,16 +1,8 @@
-"""Management command: record SLA resolution breaches.
-
-Run every 5 minutes from cron or a process supervisor:
+"""Management command: record SLA resolution breaches. Run every 5 minutes:
     */5 * * * * /path/to/venv/bin/python manage.py check_sla
 
-A ticket is breached when `apps.sla.clock.q_overdue` says so — that module is the
-one place the predicate is written. Breaches are recorded once as an immutable
-`TicketLog(event_type="sla_breach")`, so the pass is idempotent (a ticket already
-logged is skipped) and the breach becomes auditable + available to the analytics
-`sla_leak` insight.
-
-`at_risk` (approaching deadline) is surfaced live by analytics `aggregate()` and is
-intentionally not persisted here.
+Idempotent: a breach is one immutable TicketLog row, and a ticket already
+logged is skipped.
 """
 
 from django.core.management.base import BaseCommand
@@ -41,11 +33,9 @@ class Command(BaseCommand):
         verbose = options["verbose"]
         now = timezone.now()
 
-        # `now` is passed rather than left to default so every ticket in a pass
-        # is judged against the same instant.
+        # Passed, not defaulted, so every ticket in a pass shares one instant.
         qs = Ticket.objects.filter(q_overdue(now)).select_related(
-            "section__campus_department__campus",
-            "section__campus_department__department",
+            "requester_campus",
         )
 
         # Idempotency: skip tickets already logged as breached.

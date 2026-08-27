@@ -1,74 +1,55 @@
-"""Username and display name, both derived from the email address.
-
-`jeremy.mwangi@ksg.ac.ke` becomes username `jeremy.mwangi`, shown as
-"Jeremy Mwangi". Nothing else invents a username.
-
-Contents:
-    local_part           purpose: the part before the '@', lower-cased; '' when
-                         there isn't one.
-    identity_from_email  purpose: (username, first_name, last_name). Why: the
-                         only place any of the three is decided, so a display
-                         name and a login cannot drift apart.
-    display_name_parts   purpose: how a person's name is rendered, from columns.
-                         Why: a `.values()` row can call it without re-fetching.
-    display_name         purpose: the same, for a user object; '' if no user.
-
-Used by:
-    accounts.serializers             display_name, identity_from_email
-    accounts.views                   display_name
-    analytics.report_views           display_name, display_name_parts
-    analytics.services               display_name_parts
-    common.management.commands.seed  local_part
-    notifications.notify             display_name
-    org.serializers                  display_name
-    tickets.lifecycle                display_name
-    tickets.views                    display_name, display_name_parts
+"""
+Username and display name, derived from the local part of an email address:
+`john.doe@ksg.ac.ke` gives username `john.doe` and display name `John Doe`.
 """
 
 from django.contrib.auth import get_user_model
 
-USERNAME_MAX_LENGTH = 150  # AbstractUser.username
+USERNAME_MAX_LENGTH = 150
 
 
 def local_part(email):
-    return (email or "").strip().split("@")[0].strip().lower()
+    """Return the normalized part of an email address before '@'."""
+    return (email or "").strip().split("@", 1)[0].lower()
 
 
 def identity_from_email(email, exclude_pk=None):
-    """Dots separate the names; a dotless local part has no surname to give, and a
-    third part folds into the last name rather than being dropped. Local parts
-    are not unique the way emails are, so a taken username gets a numeric
-    suffix. `exclude_pk` is the account being re-derived after an email change,
-    which would otherwise collide with its own old username.
-    """
+    """Return a unique username, first name, and last name derived from email."""
     base = local_part(email)
-    parts = [p for p in base.split(".") if p]
+    parts = [part for part in base.split(".") if part]
+
     first_name = parts[0].title() if parts else ""
-    last_name = " ".join(p.title() for p in parts[1:])
+    last_name = " ".join(part.title() for part in parts[1:])
 
     User = get_user_model()
-    taken = User.objects.all()
+    users = User.objects.all()
+
+    # Regenerating after an email change must not collide with the old username.
     if exclude_pk is not None:
-        taken = taken.exclude(pk=exclude_pk)
+        users = users.exclude(pk=exclude_pk)
+
     base = base[:USERNAME_MAX_LENGTH]
     username = base
-    n = 1
-    while taken.filter(username__iexact=username).exists():
-        suffix = str(n)
+    # Emails are unique but local parts are not, so two people can derive one.
+    number = 1
+
+    while users.filter(username__iexact=username).exists():
+        suffix = str(number)
         username = f"{base[:USERNAME_MAX_LENGTH - len(suffix)]}{suffix}"
-        n += 1
+        number += 1
 
     return username, first_name, last_name
 
 
 def display_name_parts(first_name, last_name, username):
-    """Never blank: a name is not guaranteed — dotless emails have no surname and
-    `createsuperuser` skips the email rule — so the username is the fallback.
-    """
-    return f"{first_name or ''} {last_name or ''}".strip() or (username or "")
+    """Return a display name, falling back to the username."""
+    name = f"{first_name or ''} {last_name or ''}".strip()
+    return name or (username or "")
 
 
 def display_name(user):
+    """Return a user's display name, or an empty string if no user is provided."""
     if user is None:
         return ""
+
     return display_name_parts(user.first_name, user.last_name, user.username)

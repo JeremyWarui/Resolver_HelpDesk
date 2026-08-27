@@ -1,8 +1,4 @@
-"""The notification feed, and marking rows read. Polled, never pushed.
-
-Used by:
-    notifications.urls  NotificationListView, NotificationMarkAllReadView, NotificationMarkReadView
-"""
+"""The notification feed, and marking rows read. Polled, never pushed."""
 
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import IsAuthenticated

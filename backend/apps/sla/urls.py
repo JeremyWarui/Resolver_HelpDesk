@@ -1,27 +1,10 @@
-from django.urls import path
-from rest_framework.routers import DefaultRouter
+"""Priority routes, included by resolver/api_urls.py under /api/v1/."""
 
-from apps.sla.views import EscalationRuleViewSet, PriorityViewSet
+from rest_framework.routers import SimpleRouter
 
-router = DefaultRouter()
+from apps.sla.views import PriorityViewSet
+
+router = SimpleRouter()
 router.register("priorities", PriorityViewSet, basename="priority")
 
-urlpatterns = router.urls + [
-    path(
-        "priorities/<int:priority_pk>/escalation-rules/",
-        EscalationRuleViewSet.as_view({"get": "list", "post": "create"}),
-        name="escalation-rules-list",
-    ),
-    path(
-        "priorities/<int:priority_pk>/escalation-rules/<int:pk>/",
-        EscalationRuleViewSet.as_view(
-            {
-                "get": "retrieve",
-                "put": "update",
-                "patch": "partial_update",
-                "delete": "destroy",
-            }
-        ),
-        name="escalation-rules-detail",
-    ),
-]
+urlpatterns = router.urls

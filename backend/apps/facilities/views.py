@@ -1,8 +1,4 @@
-"""Facility and facility-type endpoints, with per-facility ticket counts.
-
-Used by:
-    facilities.urls  FacilityTypeViewSet, FacilityViewSet
-"""
+"""Facility and facility-type endpoints, with per-facility ticket counts."""
 
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
@@ -14,18 +10,17 @@ from apps.common.pagination import ConfigListPagination
 from apps.common.roles import IsAdminOrReadOnly
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
-
 from apps.tickets.constants import ACTIVE_STATUSES
+from apps.tickets.models import TicketLocation
 
 
 def _ticket_count_subq(status_filter: Q):
-    """Subquery counting TicketLocation rows for a given ticket status filter.
+    """Count this facility's TicketLocation rows matching a ticket status.
 
-    Uses a subquery rather than a reverse annotation because
-    TicketLocation.facility uses related_name="+".
+    A subquery rather than a reverse annotation, because
+    `TicketLocation.facility` carries related_name="+" — and because three
+    joined counts on one row would multiply each other.
     """
-    from apps.tickets.models import TicketLocation
-
     return Coalesce(
         Subquery(
             TicketLocation.objects.filter(facility=OuterRef("pk"))
@@ -40,8 +35,13 @@ def _ticket_count_subq(status_filter: Q):
 
 
 class FacilityTypeViewSet(ReadOnlyModelViewSet):
-    """FacilityType is a fixed seeded set (D9) — read-only via API.
-    Any authenticated user can read (needed for location form setup)."""
+    """The six types, read only.
+
+    Each code has a matching entry in `facilities.validators.TYPE_SPECS` and a
+    form in the ticket wizard, so adding a seventh is a code change, not a row
+    an admin can insert. Readable by anyone signed in — the wizard needs it to
+    pick a location form.
+    """
 
     queryset = FacilityType.objects.all().order_by("name")
     serializer_class = FacilityTypeSerializer
@@ -50,9 +50,12 @@ class FacilityTypeViewSet(ReadOnlyModelViewSet):
 
 
 class FacilityViewSet(viewsets.ModelViewSet):
-    """Admin CRUD for the Facility registry (buildings per campus).
-    GET /facilities/?campus=&facility_type= is open to any authenticated user
-    for the ticket creation location dropdown."""
+    """The facility registry: admin CRUD, readable by anyone signed in.
+
+    `?campus=` and `?facility_type=` narrow it, which is what the ticket
+    wizard's location dropdown sends. Reads are open because every requester
+    has to pick a facility to raise a ticket at all.
+    """
 
     serializer_class = FacilitySerializer
     permission_classes = [IsAdminOrReadOnly]

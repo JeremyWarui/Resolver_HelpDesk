@@ -1,17 +1,7 @@
 """The SLA clock: when a ticket is due, and whether it made its target.
 
-Every "is this late?" predicate in the codebase comes from here. A second
-module writing one by hand is how a ticket's own badge starts contradicting
-the dashboard it appears on.
-
-Used by:
-    analytics.insights                 q_overdue
-    analytics.services                 q_at_risk, q_met, q_overdue, q_settled_with_due
-    common.management.commands.seed    compute_due_dates
-    sla.management.commands.check_sla  q_overdue
-    tickets.lifecycle                  compute_due_dates
-    tickets.serializers                compute_due_dates, is_overdue
-    tickets.views                      q_overdue
+Every "is this late?" predicate comes from here, so a ticket's own badge
+cannot contradict the dashboard it appears on.
 """
 
 from datetime import timedelta
@@ -20,9 +10,6 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.tickets.constants import RUNNING_STATUSES, TERMINAL_STATUSES
-
-# How close to the deadline counts as "about to go".
-AT_RISK_WINDOW = timedelta(hours=4)
 
 
 def compute_due_dates(priority, start):
@@ -41,10 +28,8 @@ def _now(now=None):
     return now if now is not None else timezone.now()
 
 
-# ── Live work ─────────────────────────────────────────────────────────────────
-# Both gate on RUNNING_STATUSES, not ACTIVE_STATUSES: `pending` freezes the
-# timer, so a ticket waiting on parts must not turn red for a delay the section
-# was told to take.
+# RUNNING_STATUSES, not ACTIVE_STATUSES: `pending` freezes the timer, so a
+# ticket waiting on parts must not turn red.
 
 
 def q_overdue(now=None):
@@ -53,17 +38,6 @@ def q_overdue(now=None):
         status__in=RUNNING_STATUSES,
         resolution_due_at__isnull=False,
         resolution_due_at__lt=_now(now),
-    )
-
-
-def q_at_risk(now=None, window=AT_RISK_WINDOW):
-    """Running, has a target, not yet past it, and inside `window` of it."""
-    moment = _now(now)
-    return Q(
-        status__in=RUNNING_STATUSES,
-        resolution_due_at__isnull=False,
-        resolution_due_at__gt=moment,
-        resolution_due_at__lte=moment + window,
     )
 
 
@@ -79,10 +53,8 @@ def is_overdue(ticket, now=None):
     return _now(now) > ticket.resolution_due_at
 
 
-# ── Settled work ──────────────────────────────────────────────────────────────
-# A finished ticket is judged against `resolved_at`, never against the clock:
-# comparing a closed ticket's due date to "now" marks every ticket ever closed
-# as late once that date passes.
+# Judged against `resolved_at`, never the clock: comparing a closed ticket's
+# due date to "now" marks every ticket ever closed as late.
 
 
 def q_settled_with_due():

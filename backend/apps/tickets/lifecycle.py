@@ -1,10 +1,9 @@
-"""How a ticket is routed at creation, then moved through its states.
+"""
+Where a ticket goes, and how it is allowed to move once it is there.
 
-Views never mutate a Ticket directly; they call one of the functions here.
-
-Used by:
-    tickets.serializers  ServiceNotAvailableError, resolve_routing
-    tickets.views        assign_ticket, claim_ticket, transition_status, TransitionError
+A view never writes `ticket.status`; it calls a function here, which carries
+what must move with a status: the SLA clock, the hold reason, the audit row,
+the notification.
 """
 
 from datetime import timedelta
@@ -17,20 +16,17 @@ from apps.notifications.notify import (
     emit_ticket_resolved,
     emit_ticket_status_changed,
 )
-from apps.org.models import Section
 from apps.sla.clock import compute_due_dates
 from apps.tickets.constants import (
     PENDING_REASON_CODES,
     PENDING_REASON_LABELS,
-    REASON_REQUIRING_NOTE,
     TERMINAL_STATUSES,
 )
 from apps.tickets.models import TicketLog
 
-# Reopen (resolved/closed → open) restarts the lifecycle: `open` is the
-# unassigned state, so reopen clears the assignee and the SLA clock restarts.
-# Mirrored in frontend/src/features/technician/StatusUpdateModal.tsx
-# (VALID_NEXT); the two must change together.
+# `open` is by definition unassigned and claim relies on that, so reopen clears
+# the assignee and restarts the clock. Mirrored by VALID_NEXT_STATUS in
+# frontend/src/constants/tickets.ts; change both copies together.
 ALLOWED = {
     "open": {"assigned"},
     "assigned": {"in_progress"},
@@ -42,7 +38,7 @@ ALLOWED = {
 
 
 class TransitionError(Exception):
-    pass
+    """A status change that is not allowed from where the ticket is now."""
 
 
 def transition_status(
@@ -56,9 +52,8 @@ def transition_status(
     """Validate and apply a status transition, handling SLA pause/resume and logging.
 
     `reason` is the free-text audit note kept for every transition.
-    `pending_reason` is the structured code, required on the way into `pending`
-    and cleared on the way out — it is what makes "why is work stopped"
-    answerable by a GROUP BY instead of by reading prose.
+    `pending_reason` is one of the six codes, required on the way into `pending`
+    and cleared on the way out.
     """
 
     if new_status not in ALLOWED.get(ticket.status, set()):
@@ -74,19 +69,13 @@ def transition_status(
             raise TransitionError("A reason is required when moving to pending.")
         if pending_reason not in PENDING_REASON_CODES:
             raise TransitionError(f"Unknown pending reason: '{pending_reason}'.")
-        # `other` carries no meaning on its own, so the note is the whole
-        # content and cannot be skipped. Every other code stands by itself.
-        if pending_reason == REASON_REQUIRING_NOTE and not pending_reason_note:
-            raise TransitionError(
-                "Describe the reason when choosing 'Other'."
-            )
 
     old_status = ticket.status
     now = timezone.now()
     is_reopen = old_status in TERMINAL_STATUSES and new_status == "open"
 
-    # SLA pause/resume — the hold reason moves with the pause, so that
-    # `status == 'pending'` and `pending_reason != ''` can never disagree.
+    # The hold reason moves with the pause, so `status` and `pending_reason` can
+    # never disagree.
     if new_status == "pending":
         ticket.paused_at = now
         ticket.pending_reason = pending_reason
@@ -103,16 +92,16 @@ def transition_status(
                 ticket.resolution_due_at += pause
             ticket.paused_at = None
 
-    # Timestamps
+    # `resolved_at` is what SLA outcome is judged against, so a settled ticket
+    # keeps its verdict instead of being re-measured against a moved clock.
     if new_status == "resolved":
         ticket.resolved_at = now
     elif new_status == "closed":
         ticket.closed_at = now
 
     if is_reopen:
-        # Restart the lifecycle: unassigned, fresh SLA window, no stale
-        # resolution timestamps (they'd corrupt is_breaching and resolved-time
-        # analytics on a live ticket). Breach history stays in TicketLog.
+        # Stale resolution timestamps would corrupt is_breaching and resolved-time
+        # analytics on a live ticket. Breach history stays in TicketLog.
         ticket.assigned_to = None
         ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
             ticket.priority, now
@@ -141,7 +130,6 @@ def transition_status(
         ]
     )
 
-    # Determine event type
     if new_status == "resolved":
         event_type = "resolved"
     elif new_status == "closed":
@@ -151,15 +139,12 @@ def transition_status(
     else:
         event_type = "status_changed"
 
-    # The log keeps prose, because the timeline is read by people. Composing the
-    # label into it here means the existing timeline renders holds correctly
-    # with no frontend change, while analytics reads the code off the ticket.
+    # The timeline is read by people, so the label is composed into the prose here;
+    # analytics reads the code off the ticket.
     log_reason = reason
     if new_status == "pending":
         log_reason = " — ".join(
-            p
-            for p in (PENDING_REASON_LABELS[pending_reason], pending_reason_note)
-            if p
+            p for p in (PENDING_REASON_LABELS[pending_reason], pending_reason_note) if p
         )
 
     TicketLog.objects.create(
@@ -174,7 +159,7 @@ def transition_status(
     if new_status == "resolved":
         emit_ticket_resolved(ticket)
     else:
-        emit_ticket_status_changed(ticket, old_status)
+        emit_ticket_status_changed(ticket)
 
     return ticket
 
@@ -182,11 +167,12 @@ def transition_status(
 def claim_ticket(ticket, technician):
     """Self-assign an unassigned open ticket to `technician`.
 
-    Caller must hold the row lock (select_for_update) inside an atomic block —
-    the guard here is the post-lock re-check that makes a double claim lose.
-    Writes the `assigned` TicketLog with the technician as actor, then drives
-    open → assigned → in_progress through transition_status so both status
-    logs and the existing WS events fire.
+    The caller must already hold the row lock (`select_for_update`, inside an
+    atomic block); the check here is the post-lock re-read that makes the second
+    of two simultaneous claims lose.
+
+    Drives open → assigned → in_progress through `transition_status`, so a claim
+    leaves the same log rows and notifications as the two moves made by hand.
     """
     if ticket.status != "open" or ticket.assigned_to_id is not None:
         raise TransitionError("Ticket has already been claimed or assigned.")
@@ -210,10 +196,8 @@ def claim_ticket(ticket, technician):
 def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     """Hand a ticket to `assignee`, optionally setting its real priority.
 
-    The HOS does both in one action: a ticket opens at Low and gets its true
-    priority when someone decides who works it. Reassignment is
-    the same call — `previous_assignee` is what tells the two apart in the log,
-    so the caller must pass a ticket whose `assigned_to` is still the old one.
+    Reassignment is the same call: `previous_assignee` tells the two apart in the
+    log, so the caller must pass a ticket whose `assigned_to` is still the old one.
     """
     previous_assignee = ticket.assigned_to
     old_status = ticket.status
@@ -227,9 +211,8 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     priority_changed = priority is not None and priority.pk != old_priority.pk
     if priority_changed:
         ticket.priority = priority
-        # Recompute the SLA window from created_at, not from now: the clock
-        # has been running since the requester raised it, and re-basing here
-        # would hand back time the ticket has already spent waiting.
+        # From created_at, not now: re-basing would hand back time the ticket has
+        # already spent waiting.
         ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
             priority, ticket.created_at
         )
@@ -258,45 +241,3 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     )
     emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
     return ticket
-
-
-# ── Routing ───────────────────────────────────────────────────────────────────
-
-
-class ServiceNotAvailableError(Exception):
-    pass
-
-
-def resolve_routing(requester_campus_id, service_item):
-    """Return the Section that handles `service_item` at `requester_campus_id`.
-
-    The service item names a sub-section, the sub-section names a section type,
-    and the section is that type's instance at the requester's campus. Routing
-    is therefore fully determined by the one choice the requester makes.
-
-    Raises ServiceNotAvailableError if no active section handles the service at
-    the campus, e.g. a campus that runs no Maintenance section at all.
-    """
-    section = (
-        Section.objects.filter(
-            campus_department__campus_id=requester_campus_id,
-            section_type_id=service_item.sub_section.section_type_id,
-            is_active=True,
-        )
-        .select_related(
-            "campus_department__head_of_department",
-            "campus_department__campus",
-            "hos",
-            "section_type",
-        )
-        # (campus_department, section_type) is unique and a campus has one
-        # Administration department, so this matches at most one row. Ordered
-        # anyway so the result can never depend on insertion order.
-        .order_by("pk")
-        .first()
-    )
-    if section is None:
-        raise ServiceNotAvailableError(
-            "No active section handles this service at the requester's campus."
-        )
-    return section

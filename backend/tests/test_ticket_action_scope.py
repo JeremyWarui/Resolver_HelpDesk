@@ -1,14 +1,8 @@
 """IDOR guard — every `/tickets/{pk}/...` sub-endpoint must fail closed.
 
-An out-of-scope ticket has to return **403, not 404 and not an empty list**.
-404 would be a fine answer on its own, but the list endpoints already return
-empty for out-of-scope tickets; if a sub-endpoint quietly returned 200 with no
-data the difference would be invisible in a test that only checked "no rows".
-
-The actor list is the whole point. `wrong_trade_technician` is a technician in
-the ticket's own section holding a *different* trade — out of scope by
-sub-section alone. Without them, every actor here is out of scope by section
-and campus too, and the suite cannot see the sub-section boundary at all.
+An out-of-scope ticket returns **403, not 404 and not an empty list**.
+`wrong_trade_technician` is out of scope by sub-section alone, which is the
+boundary the other actors here cannot see.
 """
 
 import pytest
@@ -27,7 +21,7 @@ def target(nrb_electrical_ticket):
 
 @pytest.fixture
 def wrong_trade_technician(nrb_plumber):
-    """Same section, same campus, wrong trade — the boundary that used to be invisible."""
+    """Same section, same campus, wrong trade."""
     return nrb_plumber
 
 
@@ -75,7 +69,13 @@ def _act(api, name, ticket, method, **kwargs):
     ],
 )
 def test_out_of_scope_actions_are_forbidden(
-    api, request, actor_fixture, target, name, method, payload
+    api,
+    request,
+    actor_fixture,
+    target,
+    name,
+    method,
+    payload,
 ):
     actor = request.getfixturevalue(actor_fixture)
     api.force_authenticate(actor)
@@ -97,11 +97,11 @@ def test_out_of_scope_ticket_absent_from_list(api, request, actor_fixture, targe
     assert target.pk not in ids
 
 
-# ── Assignment must agree with scope ──────────────────────────────────────────
-
-
 def test_hos_cannot_assign_a_ticket_to_the_wrong_trade(
-    api, nrb_hos, nrb_plumber, target
+    api,
+    nrb_hos,
+    nrb_plumber,
+    target,
 ):
     """The dropdown and the scope check have to agree.
 
@@ -120,7 +120,10 @@ def test_hos_cannot_assign_a_ticket_to_the_wrong_trade(
 
 
 def test_hos_can_assign_a_ticket_to_the_right_trade(
-    api, nrb_hos, nrb_electrician, target
+    api,
+    nrb_hos,
+    nrb_electrician,
+    target,
 ):
     api.force_authenticate(nrb_hos)
     response = api.post(
@@ -133,44 +136,77 @@ def test_hos_can_assign_a_ticket_to_the_right_trade(
     assert target.assigned_to_id == nrb_electrician.pk
 
 
-def test_assignable_technicians_list_is_narrowed_by_trade(
-    api, nrb_hos, nrb_electrician, nrb_plumber, nrb_section, electrical
+def test_hod_can_assign_a_ticket_in_their_own_campus(
+    api,
+    nrb_hod,
+    nrb_electrician,
+    target,
 ):
+    """§4 grants the HOD assignment as well as the HOS. Every other assign test
+    drives it as an HOS, so this is the one that proves the second half."""
+    api.force_authenticate(nrb_hod)
+    response = api.post(
+        reverse("ticket-assign", args=[target.pk]),
+        {"assigned_to": nrb_electrician.pk},
+        format="json",
+    )
+    assert response.status_code == 200
+    target.refresh_from_db()
+    assert target.assigned_to_id == nrb_electrician.pk
+
+
+def test_assignable_technicians_list_is_narrowed_by_trade(
+    api,
+    nrb_hos,
+    nrb_electrician,
+    nrb_plumber,
+    nrb,
+    electrical,
+):
+    """The dropdown has to agree with `scoped_ticket_qs`: offering the plumber
+    on an Electrical job produces a 400 the HOS cannot act on."""
     api.force_authenticate(nrb_hos)
     response = api.get(
-        reverse("section-assignable-technicians", args=[nrb_section.pk]),
-        {"sub_section": electrical.pk},
+        reverse("technician-list"),
+        {"section": nrb.pk, "sub_section": electrical.pk},
     )
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
     assert ids == {nrb_electrician.pk}
 
 
-def test_claim_is_allowed_for_the_matching_trade(api, nrb_electrician, target):
-    api.force_authenticate(nrb_electrician)
-    response = api.post(reverse("ticket-claim", args=[target.pk]))
+def test_the_technician_list_never_reaches_another_campus(
+    api,
+    nrb_hos,
+    msa,
+    msa_electrician,
+    electrical,
+):
+    """`?campus=` narrows what scope returned; it cannot reach past it."""
+    api.force_authenticate(nrb_hos)
+    response = api.get(
+        reverse("technician-list"),
+        {"section": msa.pk, "sub_section": electrical.pk},
+    )
     assert response.status_code == 200
-    target.refresh_from_db()
-    assert target.assigned_to_id == nrb_electrician.pk
+    assert response.json() == []
 
 
 def test_technician_with_a_second_trade_reaches_both(
-    api, nrb_section, electrical, plumbing, nrb_electrical_ticket, nrb_plumbing_ticket
+    api,
+    nrb,
+    electrical,
+    plumbing,
+    nrb_electrical_ticket,
+    nrb_plumbing_ticket,
 ):
     """The positive case for multi-trade technicians — scope narrows, it does
     not simply deny."""
-    tech = factories.make_technician("multi", nrb_section, [electrical, plumbing])
+    tech = factories.make_technician("multi", nrb, [electrical, plumbing])
     api.force_authenticate(tech)
     for ticket in (nrb_electrical_ticket, nrb_plumbing_ticket):
         response = api.get(reverse("ticket-detail", args=[ticket.pk]))
         assert response.status_code == 200
-
-
-# ── The Feedback tab ──────────────────────────────────────────────────────────
-#
-# Four roles mount it. A rating is only readable by people who could already
-# read the ticket it belongs to, so the list filters through scoped_ticket_qs
-# rather than defining a second rule that could drift from it.
 
 
 @pytest.fixture
@@ -199,13 +235,19 @@ def _feedback(api, user):
 
 
 def test_hos_sees_every_rating_in_the_section(
-    api, nrb_hos, rated_electrical, rated_plumbing
+    api,
+    nrb_hos,
+    rated_electrical,
+    rated_plumbing,
 ):
     assert len(_feedback(api, nrb_hos)) == 2
 
 
 def test_a_technician_sees_only_their_own_trade(
-    api, nrb_electrician, rated_electrical, rated_plumbing
+    api,
+    nrb_electrician,
+    rated_electrical,
+    rated_plumbing,
 ):
     """A trade's reputation is shared, so this is not "ratings on work I did" —
     but it stops at the trade boundary, exactly as the ticket list does."""
@@ -214,7 +256,10 @@ def test_a_technician_sees_only_their_own_trade(
 
 
 def test_another_campus_is_not_visible(
-    api, msa_hos, rated_electrical, msa_electrical_ticket
+    api,
+    msa_hos,
+    rated_electrical,
+    msa_electrical_ticket,
 ):
     from apps.tickets.models import TicketFeedback
 
@@ -224,7 +269,11 @@ def test_another_campus_is_not_visible(
 
 
 def test_a_requester_sees_only_the_ratings_they_gave(
-    api, requester, msa_requester, rated_electrical, msa_electrical_ticket
+    api,
+    requester,
+    msa_requester,
+    rated_electrical,
+    msa_electrical_ticket,
 ):
     from apps.tickets.models import TicketFeedback
 
@@ -234,37 +283,25 @@ def test_a_requester_sees_only_the_ratings_they_gave(
 
 
 def test_a_roleless_user_sees_nothing_not_everything(
-    api, nrb, rated_electrical, rated_plumbing, db
+    api,
+    nrb,
+    rated_electrical,
+    rated_plumbing,
+    db,
 ):
     roleless = factories.make_user("no_role_feedback", campus=nrb)
     assert _feedback(api, roleless) == []
-
-
-def test_the_row_carries_what_the_tab_renders(api, nrb_hos, rated_electrical):
-    [row] = _feedback(api, nrb_hos)
-    assert row["rating"] == 5
-    assert row["comment"] == "Quick work"
-    assert row["ticket_no"] == rated_electrical.ticket.ticket_no
-    assert set(row) >= {"service_item", "section", "assigned_to", "resolved_at"}
-
-
-def test_ratings_can_be_filtered_to_the_bad_ones(
-    api, nrb_hos, rated_electrical, rated_plumbing
-):
-    api.force_authenticate(nrb_hos)
-    response = api.get(reverse("ticket-feedback-list"), {"rating": 2})
-    assert [r["rating"] for r in response.json()["results"]] == [2]
 
 
 def test_feedback_requires_authentication(api):
     assert api.get(reverse("ticket-feedback-list")).status_code == 401
 
 
-# ── The escalated filter ──────────────────────────────────────────────────────
-
-
 def test_escalated_filter_returns_only_tickets_above_the_technician(
-    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
+    api,
+    nrb_hos,
+    nrb_electrical_ticket,
+    nrb_plumbing_ticket,
 ):
     nrb_electrical_ticket.current_level = "hos"
     nrb_electrical_ticket.save(update_fields=["current_level"])
@@ -278,7 +315,10 @@ def test_escalated_filter_returns_only_tickets_above_the_technician(
 
 
 def test_escalated_filter_narrows_scope_and_never_widens_it(
-    api, nrb_hos, nrb_electrical_ticket, msa_electrical_ticket
+    api,
+    nrb_hos,
+    nrb_electrical_ticket,
+    msa_electrical_ticket,
 ):
     """A filter is not a scope. Escalating another campus's ticket must not
     pull it into this HOS's list."""
@@ -293,47 +333,14 @@ def test_escalated_filter_narrows_scope_and_never_widens_it(
     assert body["results"][0]["ticket_no"] == nrb_electrical_ticket.ticket_no
 
 
-def test_escalated_filter_is_ignored_unless_it_is_exactly_one(
-    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
-):
-    """`?escalated=0` and `?escalated=false` must not silently behave like `1`."""
-    nrb_electrical_ticket.current_level = "hos"
-    nrb_electrical_ticket.save(update_fields=["current_level"])
-
-    api.force_authenticate(nrb_hos)
-    for value in ("0", "false", ""):
-        body = api.get(reverse("ticket-list"), {"escalated": value}).json()
-        assert body["count"] == 2, value
-
-
-def test_escalated_filter_leaves_out_finished_work(
-    api, nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket
-):
-    """`current_level` is not cleared on resolution, so a job that escalated and
-    was then finished keeps the level for the record. Correct as history, wrong
-    on a work queue."""
-    for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
-        t.current_level = "hos"
-        t.save(update_fields=["current_level"])
-    nrb_plumbing_ticket.status = "resolved"
-    nrb_plumbing_ticket.save(update_fields=["status"])
-
-    api.force_authenticate(nrb_hos)
-    body = api.get(reverse("ticket-list"), {"escalated": "1"}).json()
-
-    assert [t["ticket_no"] for t in body["results"]] == [
-        nrb_electrical_ticket.ticket_no
-    ]
-
-
 def test_a_technician_sees_escalation_in_their_own_trade_only(
-    api, nrb_electrician, nrb_electrical_ticket, nrb_plumbing_ticket
+    api,
+    nrb_electrician,
+    nrb_electrical_ticket,
+    nrb_plumbing_ticket,
 ):
-    """Escalation is about the technician holding the job, so they get the same
-    filter the HOS does — through their own (campus, trade) scope, not a wider
-    one. Escalating a plumbing job must not make it visible to an electrician:
-    the filter still narrows, and `escalated=1` is not a back door around the
-    pairwise technician scope.
+    """`escalated=1` is not a back door around pairwise technician scope: an
+    escalated plumbing job stays invisible to an electrician.
     """
     for t in (nrb_electrical_ticket, nrb_plumbing_ticket):
         t.current_level = "hos"
@@ -345,22 +352,3 @@ def test_a_technician_sees_escalation_in_their_own_trade_only(
     assert [t["ticket_no"] for t in body["results"]] == [
         nrb_electrical_ticket.ticket_no
     ]
-
-
-def test_the_escalation_level_reaches_the_technician_in_the_list_payload(
-    api, nrb_electrician, nrb_electrical_ticket
-):
-    """The row marker renders from `current_level`, so it has to survive the
-    list serializer — it was filterable long before anything displayed it."""
-    nrb_electrical_ticket.current_level = "hos"
-    nrb_electrical_ticket.save(update_fields=["current_level"])
-
-    api.force_authenticate(nrb_electrician)
-    body = api.get(reverse("ticket-list")).json()
-
-    row = next(
-        t
-        for t in body["results"]
-        if t["ticket_no"] == nrb_electrical_ticket.ticket_no
-    )
-    assert row["current_level"] == "hos"

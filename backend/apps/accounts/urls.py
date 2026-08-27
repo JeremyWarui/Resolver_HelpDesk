@@ -1,9 +1,4 @@
-"""Account routes, included by resolver/api_urls.py under /api/v1/.
-
-Auth (public except me and logout): login, register, campuses, refresh, logout,
-me. Admin only: /users/ (list, create), /users/<pk>/ (edit, delete), and
-/users/<pk>/role-assignments/ — GET reads the one role, POST replaces it.
-"""
+"""Account routes, included by resolver/api_urls.py under /api/v1/."""
 
 from django.urls import path
 

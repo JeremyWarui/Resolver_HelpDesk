@@ -1,22 +1,7 @@
-"""In-app notification emitters.
+"""In-app notification emitters, one per domain event.
 
-One function per domain event, called from the ticket services. Each persists
-`Notification` rows for the users who should hear about it; the frontend polls
-`/notifications/` on a one-minute interval and on window focus.
-
-Every emitter is wrapped in `@_never_fails` (see its docstring). These rows are
-the courtesy; the ticket is the work.
-
-WebSockets are deferred, not removed: a maintenance helpdesk runs on a
-minutes-to-hours cadence, and live delivery would force ASGI plus Redis into
-the deploy for a low-volume single-department app. Re-adding it means giving
-these functions a second sink, not restructuring them.
-
-Used by:
-    sla.escalation                     emit_ticket_escalated
-    sla.management.commands.check_sla  emit_sla_breach
-    tickets.lifecycle                  emit_ticket_assigned, emit_ticket_resolved, emit_ticket_status_changed
-    tickets.views                      emit_ticket_created, emit_comment_added
+Every emitter is wrapped in `@_never_fails`: these rows are the courtesy, the
+ticket is the work. The frontend polls `/notifications/`; nothing is pushed.
 """
 
 import functools
@@ -45,19 +30,9 @@ def _never_fails(emit):
     return guarded
 
 
-# ── Scope helpers ─────────────────────────────────────────────────────────────
-
-
-def _campus_department_id(ticket) -> int | None:
-    """Return the campus_department_id for a ticket's section — one targeted query."""
-    try:
-        from apps.org.models import Section
-
-        return Section.objects.values_list("campus_department_id", flat=True).get(
-            pk=ticket.section_id
-        )
-    except Exception:
-        return None
+def _campus_id(ticket) -> int | None:
+    """Return the campus a ticket belongs to. Already a column on the row."""
+    return ticket.requester_campus_id
 
 
 def _role_holder_ids(role, **scope) -> list[int]:
@@ -83,12 +58,10 @@ def _role_holder_ids(role, **scope) -> list[int]:
 def _supervisor_ids(ticket) -> list[int]:
     """The HOS and HOD who should hear about this ticket. Order is immaterial —
     `_notify_users` de-duplicates."""
-    return _role_holder_ids("hos", section_id=ticket.section_id) + _role_holder_ids(
-        "hod", campus_department_id=_campus_department_id(ticket)
+    campus_id = _campus_id(ticket)
+    return _role_holder_ids("hos", campus_id=campus_id) + _role_holder_ids(
+        "hod", campus_id=campus_id
     )
-
-
-# ── DB notification helper ────────────────────────────────────────────────────
 
 
 def _notify_users(
@@ -121,9 +94,6 @@ def _notify_users(
         logger.warning("_notify_users failed: %s", exc)
 
 
-# ── Public emit functions ─────────────────────────────────────────────────────
-
-
 @_never_fails
 def emit_ticket_created(ticket) -> None:
     recipients = _supervisor_ids(ticket)
@@ -139,9 +109,7 @@ def emit_ticket_created(ticket) -> None:
 @_never_fails
 def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
     assignee = ticket.assigned_to
-    assignee_name = (
-        display_name(assignee) if assignee else None
-    )
+    assignee_name = display_name(assignee) if assignee else None
     is_reassignment = previous_assignee is not None
     if assignee:
         title = (
@@ -181,7 +149,7 @@ def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
 
 
 @_never_fails
-def emit_ticket_status_changed(ticket, from_status: str) -> None:
+def emit_ticket_status_changed(ticket) -> None:
     _notify_users(
         [ticket.raised_by_id],
         "ticket_status_changed",
@@ -242,12 +210,10 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
     `holder` is the post the ticket escalated TO, resolved structurally by
     `sla.services.escalation.resolve_active_holder` — the same user the
     TicketLog records as `level_user`. It is passed in rather than looked up
-    again here because the structural FK and RoleAssignment can disagree, and
-    notifying a different person than the one the ticket was handed to is how
-    an escalation goes unanswered.
+    again, because notifying someone other than the person the ticket was
+    handed to is how an escalation goes unanswered.
 
-    The assignee is told separately: the ticket is leaving their level, and
-    they are the one who has to act on that.
+    The assignee is told separately: the ticket is leaving their level.
     """
     level = ticket.current_level.upper()
 
@@ -260,8 +226,7 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
             ticket,
         )
 
-    # Never notify the assignee twice — a technician who also holds the post
-    # the ticket escalated to has already had the message above.
+    # A technician who also holds the post has already had the message above.
     if ticket.assigned_to_id and (holder is None or ticket.assigned_to_id != holder.pk):
         _notify_users(
             [ticket.assigned_to_id],
@@ -270,4 +235,3 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
             f"Ticket #{ticket.ticket_no}, assigned to you, has been escalated to {level}.",
             ticket,
         )
-

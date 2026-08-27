@@ -1,11 +1,5 @@
 """Page-size policies. Config lists and ticket feeds page by number; the
 append-only feeds use a cursor, which is stable while rows are inserted.
-
-Used by:
-    facilities.views  ConfigListPagination
-    org.views         ConfigListPagination
-    sla.views         ConfigListPagination
-    tickets.views     AppendOnlyFeedPagination, TicketFeedPagination
 """
 
 from rest_framework.pagination import PageNumberPagination, CursorPagination
@@ -52,19 +46,3 @@ class AppendOnlyFeedPagination(CursorPagination):
                 },
             }
         )
-
-    def get_paginated_response_schema(self, schema):
-        return {
-            "type": "object",
-            "properties": {
-                "results": schema,
-                "meta": {
-                    "type": "object",
-                    "properties": {
-                        "nextCursor": {"type": "string", "nullable": True},
-                        "prevCursor": {"type": "string", "nullable": True},
-                        "total": {"type": "integer", "nullable": True},
-                    },
-                },
-            },
-        }

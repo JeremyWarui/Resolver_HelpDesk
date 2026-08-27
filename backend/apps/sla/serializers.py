@@ -1,23 +1,11 @@
-"""Read and write shapes for priorities and escalation rules.
-
-Used by:
-    sla.views  EscalationRuleSerializer, PrioritySerializer
-"""
+"""Read and write shape for priorities."""
 
 from rest_framework import serializers
 
-from apps.sla.models import EscalationRule, Priority
-
-
-class EscalationRuleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EscalationRule
-        fields = ["id", "priority", "to_level", "threshold_minutes", "order"]
+from apps.sla.models import Priority
 
 
 class PrioritySerializer(serializers.ModelSerializer):
-    escalation_rules = EscalationRuleSerializer(many=True, read_only=True)
-
     class Meta:
         model = Priority
         fields = [
@@ -26,6 +14,6 @@ class PrioritySerializer(serializers.ModelSerializer):
             "rank",
             "response_minutes",
             "resolution_minutes",
-            "escalation_rules",
+            "escalate_to_hos_minutes",
+            "escalate_to_hod_minutes",
         ]
-        read_only_fields = ["escalation_rules"]

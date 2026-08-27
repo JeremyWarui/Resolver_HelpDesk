@@ -1,72 +1,27 @@
-"""The ticket vocabulary: statuses, escalation levels, and hold reasons.
+"""The ticket vocabulary: statuses, escalation levels, and hold reasons."""
 
-Defined here because `tickets` owns the model that has the fields. Every other
-app is a consumer.
-
-Used by:
-    analytics.report_views           ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
-    analytics.services               PENDING_REASON_LABELS, ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
-    common.admin                     ACTIVE_STATUSES
-    common.management.commands.seed  PENDING_REASON_LABELS, TERMINAL_STATUSES
-    facilities.views                 ACTIVE_STATUSES
-    sla.clock                        RUNNING_STATUSES, TERMINAL_STATUSES
-    sla.escalation                   ACTIVE_STATUSES, TERMINAL_STATUSES
-    tickets.lifecycle                PENDING_REASON_CODES, PENDING_REASON_LABELS, REASON_REQUIRING_NOTE, TERMINAL_STATUSES
-    tickets.models                   PENDING_REASONS
-    tickets.serializers              ALL_STATUSES, PENDING_REASON_CODES
-    tickets.views                    PENDING_REASONS, ACTIVE_STATUSES, ESCALATED_LEVELS, TERMINAL_STATUSES
-"""
-
-# ── Statuses ──────────────────────────────────────────────────────────────────
-
-# Everything not finished. `pending` is in here: a ticket waiting on parts is
-# still open work somebody has to come back to.
+# Everything not finished. `pending` is in here: it is still open work.
 ACTIVE_STATUSES = ("open", "assigned", "in_progress", "pending")
 
-# Active *and* the SLA clock is moving. `pending` freezes the timer, so
-# anything asking "is this late?" uses this, not ACTIVE_STATUSES.
+# Active *and* the SLA clock is moving. "Is this late?" uses this, not the above.
 RUNNING_STATUSES = ("open", "assigned", "in_progress")
 
-# Settled. No SLA, no escalation, no further transitions except reopen.
 TERMINAL_STATUSES = ("resolved", "closed")
 
-# Every status, in lifecycle order. The choices on `Ticket.status`.
 ALL_STATUSES = ACTIVE_STATUSES + TERMINAL_STATUSES
 
-# Escalation levels above the technician. A ticket is escalated iff its
-# current_level is one of these.
 ESCALATED_LEVELS = ("hos", "hod")
 
 
-# ── Hold reasons ──────────────────────────────────────────────────────────────
-
-# (code, label). Labels are what the technician and the HOD read, so they are
-# phrased as the reason, not as a category name.
-#
-# `awaiting_materials` and `awaiting_procurement` split on who can fix it: a
-# stores stock-out is the storekeeper's problem, an undelivered order is
-# procurement's. Not on "do we have it" vs "are we buying it", which is the
-# same event twice and which two technicians would code differently.
-#
-# `awaiting_requester` is the one delay that is not the section's fault.
-# Without it that time hides inside `other` and inflates the section's
-# apparent failure rate.
 PENDING_REASONS = (
-    ("awaiting_materials", "Materials not in store"),
-    ("awaiting_procurement", "Order placed, not yet delivered"),
-    ("awaiting_approval", "Awaiting approval"),
-    ("awaiting_labour", "No technician available"),
-    ("awaiting_contractor", "Awaiting contractor"),
-    ("awaiting_requester", "Waiting on the requester"),
-    ("access_unavailable", "Cannot access the area"),
-    ("scope_clarification", "Scope needs clarification"),
-    ("other", "Other"),
+    ("material_not_in_store", "Material not in store"),
+    ("awaiting_material_requested", "Awaiting material — request placed"),
+    ("requester_unavailable", "Requestor was not available"),
+    ("location_inaccessible", "Location/Room was not accessible"),
+    ("additional_labour_required", "Additional labour required"),
+    ("technical_assistance_required", "Technical assistance required"),
 )
 
 PENDING_REASON_CODES = tuple(code for code, _ in PENDING_REASONS)
 
 PENDING_REASON_LABELS = dict(PENDING_REASONS)
-
-# `other` says nothing on its own, so its note carries the whole meaning and is
-# required. Every other code already reads as the reason.
-REASON_REQUIRING_NOTE = "other"

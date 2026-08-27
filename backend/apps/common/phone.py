@@ -1,24 +1,16 @@
 """Kenyan phone numbers — one definition, used wherever a number is accepted.
 
-Stored in E.164 (`+254712345678`) so a number is unambiguous and dialable
-as-is. People write the same number half a dozen ways — `0712 345 678`,
-`+254 712 345678`, `254712345678`, `0712-345-678` — and all of them mean one
-number that a technician needs to be able to tap and call.
+Stored in E.164 (`+254712345678`), so a number is dialable as written.
 
 Kenyan numbering plan, national significant number (what follows +254):
   mobile    9 digits beginning 7 or 1   → 0712 345 678, 0110 123 456
   landline  8-9 digits beginning 2-6    → 020 271 1000 (Nairobi), 041 …
-
-Used by:
-    tickets.serializers  CONTACT_PHONE_HELP, InvalidPhoneNumber, normalise_phone
 """
 
 import re
 
 COUNTRY_CODE = "254"
 
-# Shown beside the field in the ticket wizard. Lives here so the API's
-# help_text and the UI copy cannot drift apart.
 CONTACT_PHONE_HELP = "Optional — just in case the technician needs to call you."
 
 MOBILE_PREFIXES = ("7", "1")
@@ -41,10 +33,7 @@ def normalise_phone(value):
     """Return `value` as an E.164 Kenyan number, or "" if it is blank.
 
     Permissive about how the number is written and strict about what it is:
-    punctuation and spacing are stripped rather than rejected, because turning
-    away a real number for being typed with spaces helps nobody. Length and
-    prefix are enforced, because a number that cannot be dialled is worse than
-    no number at all — the technician would waste a trip discovering it.
+    punctuation and spacing are stripped, while length and prefix are enforced.
 
     Raises InvalidPhoneNumber for anything that is not a Kenyan number.
     """
@@ -53,17 +42,13 @@ def normalise_phone(value):
 
     cleaned = re.sub(r"[^\d+]", "", value)
     if not cleaned:
-        # Something was typed, but none of it was a number. Treating this as
-        # "left blank" would silently fall back to the requester's own number,
-        # so a mistyped caretaker's number would send the technician to the
-        # wrong person with nobody any the wiser.
+        # Not blank, so it must not fall back to the requester's own number.
         raise InvalidPhoneNumber()
 
     if cleaned.startswith("+"):
         digits = cleaned[1:]
         if not digits.startswith(COUNTRY_CODE):
-            # A foreign number is almost always a typo here, and silently
-            # keeping one would strand the technician mid-callout.
+            # A foreign number here is almost always a typo.
             raise InvalidPhoneNumber(
                 "Only Kenyan numbers are supported — start with 0 or +254."
             )
@@ -73,7 +58,7 @@ def normalise_phone(value):
     else:
         national = cleaned
 
-    # Drop the trunk prefix: 0712… and +254 (0) 712… both mean 712….
+    # Trunk prefix: 0712… and +254 (0) 712… both mean 712….
     national = national.lstrip("0")
 
     if not national.isdigit():

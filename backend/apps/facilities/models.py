@@ -1,13 +1,4 @@
-"""The facility registry: a type, and the named places of that type at a campus.
-
-Used by:
-    analytics.services               FacilityType
-    common.admin                     FacilityType, Facility
-    common.management.commands.seed  Facility, FacilityType
-    facilities.serializers           Facility, FacilityType
-    facilities.views                 Facility, FacilityType
-    tickets.serializers              Facility, FacilityType
-"""
+"""The facility registry: a type, and the named places of that type at a campus."""
 
 from django.db import models
 
@@ -53,8 +44,8 @@ class Facility(models.Model):
         ordering = ["campus", "name"]
         verbose_name_plural = "Facilities"
         constraints = [
-            # (campus, name) is the natural key — every campus has exactly one
-            # "Administration Block", and several campuses each have one.
+            # (campus, name) is the natural key: every campus has an
+            # "Administration Block".
             models.UniqueConstraint(
                 fields=["campus", "name"], name="unique_facility_per_campus"
             ),

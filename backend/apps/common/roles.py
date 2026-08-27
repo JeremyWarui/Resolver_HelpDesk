@@ -1,42 +1,15 @@
 """Which role the caller holds, and what that role is allowed to do.
 
-The role tiers below and `resolve_role` are the single answer to "who is this
-request"; the two permission classes are the DRF wrappers around it.
-
-Used by:
-    accounts.views          IsAdminGroup
-    analytics.report_views  resolve_role
-    analytics.views         ANALYTICS_ROLES, resolve_role
-    facilities.views        IsAdminOrReadOnly
-    org.views               IsAdminGroup, IsAdminOrReadOnly, resolve_role
-    sla.views               IsAdminGroup
-    tickets.views           STAFF_ROLES, TICKET_SUPERVISOR_ROLES, resolve_role
+Reporting is not gated by a role set: every role reads the same figures over
+its own scope, and `scoped_ticket_qs` is what narrows them.
 """
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-# Roles that may act on someone else's ticket: assign it, change its status,
-# delete an attachment they did not upload.
-#
-# `manager` is deliberately absent. A manager oversees all five campuses and
-# has estate-wide read scope, but never touches ticket lifecycle: the work is
-# held and moved by the HOS who staffs it. Adding them here would make every
-# campus's queue editable by one person with no trade knowledge of it.
+# May act on someone else's ticket. `manager` is absent: read scope, never
+# lifecycle.
 TICKET_SUPERVISOR_ROLES = ("admin", "hod", "hos")
 
-# Oversight without ticket authority, which is the manager's whole remit.
-OVERSIGHT_ROLES = ("manager",)
-
-# Who may read the supervising analytics endpoints: anyone who oversees other
-# people's work, at any level. A technician is absent, and `role_config` also
-# refuses them `technician` as a group_by, so they are never ranked against
-# peers by either route.
-ANALYTICS_ROLES = TICKET_SUPERVISOR_ROLES + OVERSIGHT_ROLES
-
-# Everyone who works tickets, as opposed to raising them. Staff actions
-# (assign, claim, change status) are gated on this. `user` is absent even
-# though a requester can see their own ticket, and so is `manager`, for the
-# reason given on TICKET_SUPERVISOR_ROLES.
 STAFF_ROLES = TICKET_SUPERVISOR_ROLES + ("technician",)
 
 

@@ -1,10 +1,8 @@
 """Management command: process automatic ticket escalations.
 
-Delegates to apps.sla.escalation. Run periodically (e.g., hourly) via a cron job or task scheduler:
+Delegates to apps.sla.escalation. Run hourly from cron:
     python manage.py process_auto_escalations
-
-Options:
-    --dry-run   Report what would change without writing to the database.
+    python manage.py process_auto_escalations --dry-run   # report, write nothing
 """
 
 from django.core.management.base import BaseCommand
@@ -14,7 +12,7 @@ from apps.sla.escalation import run_escalations
 
 
 class Command(BaseCommand):
-    help = "Process automatic ticket escalations per EscalationRule thresholds."
+    help = "Process automatic ticket escalations per the priority's thresholds."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -25,10 +23,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["dry_run"]:
-            # Run the real thing and roll it back, rather than reimplementing
-            # the threshold logic to preview it. A second copy of that rule is
-            # how a dry run starts disagreeing with the run it predicts — and
-            # the previous version dodged that by reporting nothing at all.
+            # Run the real thing and roll it back, so a dry run cannot disagree with the
+            # run it predicts.
             with transaction.atomic():
                 count = run_escalations()
                 transaction.set_rollback(True)

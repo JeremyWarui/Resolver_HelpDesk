@@ -1,9 +1,4 @@
-"""One row per thing a user should be told about.
-
-Used by:
-    notifications.notify  Notification
-    notifications.views   Notification
-"""
+"""One row per thing a user should be told about."""
 
 from django.conf import settings
 from django.db import models
@@ -17,7 +12,6 @@ class Notification(models.Model):
         ("ticket_escalated", "Ticket Escalated"),
         ("ticket_resolved", "Ticket Resolved"),
         ("comment_added", "Comment Added"),
-        ("sla_warning", "SLA Warning"),
         ("sla_breach", "SLA Breach"),
     ]
 

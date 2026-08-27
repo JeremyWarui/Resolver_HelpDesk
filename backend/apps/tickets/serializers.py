@@ -1,21 +1,23 @@
-"""Read and write shapes for a ticket and its nested reference data.
+"""
+What a ticket looks like coming out, and what a client is allowed to put in.
 
-Used by:
-    tickets.views  TicketCreateSerializer, TicketReadSerializer, TicketDetailReadSerializer, TicketStatusUpdateSerializer, …
+The write shapes are narrow: a client supplies the service, the location and a
+description, while campus, trade and priority are derived here.
 """
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.org.models import SectionTechnician, ServiceItem
+from apps.accounts.models import TechnicianTrade
+from apps.org.models import ServiceItem
 from apps.common.phone import (
     CONTACT_PHONE_HELP,
     InvalidPhoneNumber,
     normalise_phone,
 )
 from apps.sla.models import Priority
-from apps.sla.clock import compute_due_dates
+from apps.sla.clock import compute_due_dates, is_overdue
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import validate_location
 from apps.tickets.models import (
@@ -26,18 +28,11 @@ from apps.tickets.models import (
     TicketLocation,
     TicketLog,
 )
-from apps.tickets.lifecycle import ServiceNotAvailableError, resolve_routing
-from apps.tickets.constants import ALL_STATUSES
-from apps.tickets.constants import PENDING_REASON_CODES
+from apps.tickets.constants import ALL_STATUSES, PENDING_REASON_CODES
+from apps.accounts.identity import display_name
 from apps.accounts.serializers import UserMinSerializer
-from apps.sla.clock import is_overdue
 
 User = get_user_model()
-
-
-# ---------------------------------------------------------------------------
-# Read serializers (Phase 6 — role-scoped list + detail)
-# ---------------------------------------------------------------------------
 
 
 class _PriorityMinSerializer(serializers.Serializer):
@@ -55,19 +50,6 @@ class _SubSectionMinSerializer(serializers.Serializer):
 class _ServiceItemMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
-
-
-class _SectionMinSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    section_type_id = serializers.IntegerField()
-    # section_type / campus_department are in select_related on ticket queryset (no N+1)
-    name = serializers.CharField(source="section_type.name", read_only=True)
-    campus_code = serializers.CharField(
-        source="campus_department.campus.code", read_only=True
-    )
-    department_code = serializers.CharField(
-        source="campus_department.department.code", read_only=True
-    )
 
 
 class _CampusMinSerializer(serializers.Serializer):
@@ -88,17 +70,22 @@ class _FacilityMinSerializer(serializers.Serializer):
 
 
 class _TicketLocationSerializer(serializers.Serializer):
-    facility_type = _FacilityTypeMinSerializer(read_only=True)
-    facility = _FacilityMinSerializer(read_only=True, allow_null=True)
+    # Read through the facility: the ticket no longer stores the type twice.
+    facility_type = _FacilityTypeMinSerializer(
+        source="facility.facility_type", read_only=True
+    )
+    facility = _FacilityMinSerializer(read_only=True)
     values = serializers.JSONField()
 
 
 class TicketReadSerializer(serializers.ModelSerializer):
-    """Role-aware read serializer for list and detail views."""
+    """A ticket as a list row: everything the table shows, nothing it does not.
+
+    The base for the detail shape too, so a field added here appears in both.
+    """
 
     service_item = _ServiceItemMinSerializer(read_only=True)
     sub_section = _SubSectionMinSerializer(read_only=True)
-    section = _SectionMinSerializer(read_only=True)
     priority = _PriorityMinSerializer(read_only=True)
     assigned_to = UserMinSerializer(read_only=True, allow_null=True)
     raised_by = UserMinSerializer(read_only=True)
@@ -107,8 +94,6 @@ class TicketReadSerializer(serializers.ModelSerializer):
     location = _TicketLocationSerializer(read_only=True, allow_null=True)
     is_breaching = serializers.SerializerMethodField()
     has_feedback = serializers.SerializerMethodField()
-    # The label, resolved server-side, so no client ever holds a second copy of
-    # the vocabulary to fall out of step with this one.
     pending_reason_display = serializers.CharField(
         source="get_pending_reason_display", read_only=True
     )
@@ -123,7 +108,6 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "requester_campus",
             "service_item",
             "sub_section",
-            "section",
             "priority",
             "assigned_to",
             "description",
@@ -153,11 +137,8 @@ class TicketReadSerializer(serializers.ModelSerializer):
     def get_has_feedback(self, ticket):
         """Whether the requester has rated this yet — a flag, not the rating.
 
-        The dashboard needs to find resolved tickets still waiting on their
-        requester, which it cannot do from the detail-only `feedback` object.
         Reads the `has_feedback` annotation the queryset supplies; the
-        attribute fallback is for the odd unannotated instance (e.g. a
-        serializer called on a freshly saved object).
+        attribute fallback is for the odd unannotated instance.
         """
         annotated = getattr(ticket, "has_feedback", None)
         if annotated is not None:
@@ -180,6 +161,7 @@ class TicketDetailReadSerializer(TicketReadSerializer):
         read_only_fields = fields
 
     def get_feedback(self, ticket):
+        """The submitted rating, or None when the requester has not rated it."""
         try:
             feedback = ticket.feedback
         except TicketFeedback.DoesNotExist:
@@ -188,13 +170,18 @@ class TicketDetailReadSerializer(TicketReadSerializer):
 
 
 class LocationInputSerializer(serializers.Serializer):
-    facility_type = serializers.PrimaryKeyRelatedField(
-        queryset=FacilityType.objects.all()
-    )
+    """The location half of a create request, before it is checked.
+
+    Only the shape is validated here. Whether these values make sense for this
+    facility type is `facilities.validators.validate_location`'s decision, and
+    `TYPE_SPECS` there is the contract.
+
+    The facility is required and is the only id needed: every location is a
+    registered facility at the requester's campus, and it names its own type.
+    """
+
     facility = serializers.PrimaryKeyRelatedField(
-        queryset=Facility.objects.select_related("facility_type", "campus"),
-        required=False,
-        allow_null=True,
+        queryset=Facility.objects.select_related("facility_type", "campus")
     )
     values = serializers.DictField(
         child=serializers.CharField(allow_blank=True),
@@ -204,14 +191,18 @@ class LocationInputSerializer(serializers.Serializer):
 
 
 class TicketCreateSerializer(serializers.Serializer):
+    """Raising a ticket. Anyone may; the routing is not theirs to choose.
+
+    The requester picks a service, a place and a description. Campus, trade,
+    priority and both SLA due dates are derived, so two people raising the
+    same fault cannot land in different queues.
+    """
+
     service_item = serializers.PrimaryKeyRelatedField(
-        queryset=ServiceItem.objects.select_related("sub_section__section_type")
+        queryset=ServiceItem.objects.select_related("sub_section")
     )
-    location = LocationInputSerializer(required=False, allow_null=True)
+    location = LocationInputSerializer()
     description = serializers.CharField(required=False, allow_blank=True, default="")
-    # Optional. Omit it and the requester's own number is used, so the common
-    # case costs nothing; supplying one lets whoever raises a ticket for a
-    # hostel wing give the caretaker's number instead of their own.
     contact_phone = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -221,18 +212,20 @@ class TicketCreateSerializer(serializers.Serializer):
     )
 
     def validate_contact_phone(self, value):
+        """Normalise to E.164, rejecting anything that is not a Kenyan number."""
         try:
             return normalise_phone(value)
         except InvalidPhoneNumber as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
+        """Derive everything the requester did not supply: campus, trade, priority."""
         request = self.context["request"]
         user = request.user
 
-        # 1. Resolve the requester's campus from their profile.
+        # Their *home* campus: a client-supplied one would be client-supplied routing.
         try:
-            campus = user.profile.campus
+            campus = user.campus
         except Exception:
             campus = None
         if campus is None:
@@ -240,48 +233,25 @@ class TicketCreateSerializer(serializers.Serializer):
 
         service_item = attrs["service_item"]
 
-        # 1b. A number for the technician to call, if there is one. Optional
-        #     throughout: a missing phone number is not a reason to refuse
-        #     someone a repair, and the ticket itself carries the detail.
         contact_phone = attrs.get("contact_phone")
         if not contact_phone:
-            # Fall back to the profile, tolerating whatever is stored there —
-            # an unusable profile number must not block raising a ticket.
+            # An unusable profile number must not block raising a ticket.
             try:
                 contact_phone = normalise_phone(getattr(user, "phone_number", ""))
             except InvalidPhoneNumber:
                 contact_phone = ""
         attrs["contact_phone"] = contact_phone
 
-        # 2. Resolve the routing section.
-        try:
-            section = resolve_routing(campus.id, service_item)
-        except ServiceNotAvailableError as exc:
-            raise serializers.ValidationError({"service_item": str(exc)}) from exc
-
-        # 3. Every ticket opens at the default (lowest) priority. The HOS sets
-        #    the real one when they assign it — they have seen the ticket; the
-        #    catalogue has not.
         priority = Priority.default()
 
-        # 4. Where it is. Always required: maintenance work happens somewhere,
-        #    and a ticket a technician cannot find is not a ticket. The facility
-        #    type decides what "somewhere" means — a room for a hostel, an asset
-        #    name for a generator, a zone for a field.
-        location_input = attrs.get("location")
-        if not location_input:
-            raise serializers.ValidationError(
-                {"location": "Location is required — the technician has to find it."}
-            )
+        location_input = attrs["location"]
         location_data = validate_location(
-            location_input["facility_type"],
-            location_input.get("facility"),
+            location_input["facility"],
             location_input.get("values", {}),
             campus.id,
         )
 
-        # Store private attrs for use in create().
-        attrs["_section"] = section
+        # Underscored so DRF leaves them alone; create() pops each one.
         attrs["_sub_section"] = service_item.sub_section
         attrs["_priority"] = priority
         attrs["_requester_campus"] = campus
@@ -290,17 +260,17 @@ class TicketCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        """Write the ticket, its location and its `created` log row."""
         request = self.context["request"]
 
-        section = validated_data.pop("_section")
         sub_section = validated_data.pop("_sub_section")
         priority = validated_data.pop("_priority")
         requester_campus = validated_data.pop("_requester_campus")
         location_data = validated_data.pop("_location_data")
 
-        # Remove the location input (not a model field).
         validated_data.pop("location", None)
 
+        # The clock starts at creation: time spent unassigned is what the SLA measures.
         now = timezone.now()
         response_due_at, resolution_due_at = compute_due_dates(priority, now)
 
@@ -308,7 +278,6 @@ class TicketCreateSerializer(serializers.Serializer):
             raised_by=request.user,
             requester_campus=requester_campus,
             service_item=validated_data["service_item"],
-            section=section,
             sub_section=sub_section,
             priority=priority,
             description=validated_data.get("description", ""),
@@ -317,13 +286,11 @@ class TicketCreateSerializer(serializers.Serializer):
             resolution_due_at=resolution_due_at,
         )
 
-        if location_data is not None:
-            TicketLocation.objects.create(
-                ticket=ticket,
-                facility_type=location_data["facility_type"],
-                facility=location_data["facility"],
-                values=location_data["values"],
-            )
+        TicketLocation.objects.create(
+            ticket=ticket,
+            facility=location_data["facility"],
+            values=location_data["values"],
+        )
 
         TicketLog.objects.create(
             ticket=ticket,
@@ -336,13 +303,10 @@ class TicketCreateSerializer(serializers.Serializer):
 
 
 class TicketStatusUpdateSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(
-        choices=list(ALL_STATUSES)
-    )
+    """A requested status change. Whether it is legal is `lifecycle`'s call, not this one."""
+
+    status = serializers.ChoiceField(choices=list(ALL_STATUSES))
     reason = serializers.CharField(required=False, allow_blank=True, default="")
-    # Required on the way into `pending`, but enforced in the lifecycle service
-    # rather than here: that is the only door into the state, so a caller that
-    # bypasses this serializer still cannot leave a hold uncategorised.
     pending_reason = serializers.ChoiceField(
         choices=list(PENDING_REASON_CODES),
         required=False,
@@ -357,54 +321,49 @@ class TicketStatusUpdateSerializer(serializers.Serializer):
 class TicketAssignSerializer(serializers.Serializer):
     """Assignment is where priority is decided.
 
-    A ticket opens at the default (lowest) priority because the requester
-    should not be grading their own urgency. The HOS has read it and knows the
-    section's workload, so they set the real priority as they hand it out.
-    Optional — omitting it leaves whatever the ticket already carries.
+    A ticket opens at the default (lowest) priority and the HOS sets the real one
+    as they hand it out. Omitting it leaves whatever the ticket already carries.
     """
 
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
     priority = serializers.PrimaryKeyRelatedField(
         queryset=Priority.objects.all(), required=False
     )
-    # Handing the job over is the one moment the HOS has context the ticket
-    # does not — which cupboard the stopcock is behind, that this is the third
-    # failure this month. It lands on the `assigned` log row's `reason`, not on
-    # the Ticket: it describes the handover, not the ticket's own state
-    #, and a reassignment must not overwrite what the last one
-    # said.
-    note = serializers.CharField(
-        required=False, allow_blank=True, trim_whitespace=True
-    )
+    # Lands on the `assigned` log row's `reason`, not on the Ticket.
+    note = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True)
 
     def validate(self, attrs):
+        """Refuse an assignee who does not work this ticket's (campus, trade) pair."""
         ticket = self.context["ticket"]
-        if not SectionTechnician.objects.filter(
-            section=ticket.section,
+        if not TechnicianTrade.objects.filter(
+            campus=ticket.requester_campus,
             sub_section=ticket.sub_section,
             user=attrs["assigned_to"],
         ).exists():
             raise serializers.ValidationError(
                 {
                     "assigned_to": "User is not a technician for this ticket's "
-                    "section and sub-section."
+                    "campus and trade."
                 }
             )
         return attrs
 
 
 class TicketCommentSerializer(serializers.ModelSerializer):
-    # Nested author — the comment header renders name + timestamp,
-    # matching the timeline's actor attribution.
+    """A comment on a ticket. Staff-facing throughout: the requester never
+    reaches this endpoint, so there is nothing to mark as internal."""
+
     author = UserMinSerializer(read_only=True)
 
     class Meta:
         model = TicketComment
-        fields = ["id", "author", "body", "visibility", "created_at", "updated_at"]
+        fields = ["id", "author", "body", "created_at", "updated_at"]
         read_only_fields = ["id", "author", "created_at", "updated_at"]
 
 
 class TicketFeedbackSerializer(serializers.ModelSerializer):
+    """A rating, as the requester submits it and as the detail view returns it."""
+
     class Meta:
         model = TicketFeedback
         fields = ["id", "rating", "comment", "created_at"]
@@ -412,13 +371,21 @@ class TicketFeedbackSerializer(serializers.ModelSerializer):
 
 
 class TicketFeedbackRowSerializer(serializers.ModelSerializer):
-    """A rating as the Feedback tab lists it — flattened, with enough of the
-    ticket to know what is being rated and who did the work."""
+    """A rating as the Feedback tab lists it.
+
+    Flattened, carrying just enough of the ticket to say what was rated and
+    who did the work — the tab is a list of ratings, not of tickets.
+    """
 
     ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
     service_item = serializers.SerializerMethodField()
-    section = serializers.SerializerMethodField()
-    assigned_to = UserMinSerializer(source="ticket.assigned_to", read_only=True, allow_null=True)
+    campus = serializers.CharField(
+        source="ticket.requester_campus.name", read_only=True
+    )
+    trade = serializers.CharField(source="ticket.sub_section.name", read_only=True)
+    assigned_to = UserMinSerializer(
+        source="ticket.assigned_to", read_only=True, allow_null=True
+    )
     resolved_at = serializers.DateTimeField(source="ticket.resolved_at", read_only=True)
 
     class Meta:
@@ -427,7 +394,8 @@ class TicketFeedbackRowSerializer(serializers.ModelSerializer):
             "id",
             "ticket_no",
             "service_item",
-            "section",
+            "campus",
+            "trade",
             "assigned_to",
             "resolved_at",
             "rating",
@@ -440,19 +408,11 @@ class TicketFeedbackRowSerializer(serializers.ModelSerializer):
         item = obj.ticket.service_item
         return item.name if item else ""
 
-    def get_section(self, obj):
-        section = obj.ticket.section
-        if section is None:
-            return ""
-        campus = section.campus_department.campus.code
-        name = section.section_type.name if section.section_type_id else ""
-        return f"{campus} - {name}".strip(" -")
-
-
 class TicketAttachmentSerializer(serializers.ModelSerializer):
+    """An attachment, with an absolute URL and the size of the stored file."""
+
     uploaded_by = UserMinSerializer(read_only=True)
     url = serializers.SerializerMethodField()
-    size_saved_pct = serializers.SerializerMethodField()
 
     class Meta:
         model = TicketAttachment
@@ -460,9 +420,7 @@ class TicketAttachmentSerializer(serializers.ModelSerializer):
             "id",
             "original_name",
             "mime_type",
-            "original_size",
             "stored_size",
-            "size_saved_pct",
             "url",
             "uploaded_by",
             "created_at",
@@ -475,7 +433,69 @@ class TicketAttachmentSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url
 
-    def get_size_saved_pct(self, obj):
-        if not obj.original_size:
-            return 0
-        return round((1 - obj.stored_size / obj.original_size) * 100, 1)
+
+class TicketLogSerializer(serializers.ModelSerializer):
+    """One row of a ticket's timeline, as the detail page renders it."""
+
+    actor = UserMinSerializer(read_only=True, allow_null=True)
+    level_user = UserMinSerializer(read_only=True, allow_null=True)
+
+    class Meta:
+        model = TicketLog
+        fields = [
+            "id",
+            "event_type",
+            "from_value",
+            "to_value",
+            "reason",
+            "actor",
+            "level_user",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class AuditLogRowSerializer(serializers.ModelSerializer):
+    """A TicketLog row as the admin audit table lists it.
+
+    Wider than the per-ticket timeline in one respect only — the ticket number,
+    because the admin is reading across every ticket.
+    """
+
+    actor = serializers.SerializerMethodField()
+    actor_username = serializers.CharField(
+        source="actor.username", read_only=True, allow_null=True
+    )
+    action = serializers.CharField(source="event_type", read_only=True)
+    ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
+    detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketLog
+        fields = [
+            "id",
+            "actor",
+            "actor_username",
+            "action",
+            "ticket_no",
+            "detail",
+            "reason",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor(self, obj):
+        """The person, by name — an audit log is read by humans looking for who.
+
+        The username travels beside it: two people can share a name, and it is the
+        stable handle.
+        """
+        return display_name(obj.actor) or None
+
+    def get_detail(self, obj):
+        parts = []
+        if obj.from_value:
+            parts.append(f"from: {obj.from_value}")
+        if obj.to_value:
+            parts.append(f"to: {obj.to_value}")
+        return " | ".join(parts)

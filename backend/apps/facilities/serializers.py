@@ -1,8 +1,4 @@
-"""Read and write shapes for the facility registry.
-
-Used by:
-    facilities.views  FacilitySerializer, FacilityTypeSerializer
-"""
+"""Read and write shapes for the facility registry."""
 
 from rest_framework import serializers
 
@@ -10,24 +6,46 @@ from apps.facilities.models import Facility, FacilityType
 
 
 class FacilityTypeSerializer(serializers.ModelSerializer):
-    """D9: FacilityType is a fixed set — exposes name and code only (no field_schema)."""
+    """A facility type: the code picks the location form, the name labels it."""
 
     class Meta:
         model = FacilityType
         fields = ["id", "name", "code"]
 
 
+class _TicketCountField(serializers.IntegerField):
+    """One of the ticket counts `FacilityViewSet` annotates onto a row.
+
+    Zero when the annotation is absent, which is the case on the instance a
+    POST hands back: it was just created, so it has no tickets anyway.
+    """
+
+    def __init__(self, annotation, **kwargs):
+        self.annotation = annotation
+        super().__init__(read_only=True, **kwargs)
+
+    def get_attribute(self, instance):
+        return getattr(instance, self.annotation, 0) or 0
+
+
 class FacilitySerializer(serializers.ModelSerializer):
-    type = serializers.SerializerMethodField()
-    # Carrying the type's name means one `?campus=` call gives the ticket
-    # wizard everything it needs to draw both the type tiles and the facility
-    # dropdown — it never has to fetch the type list separately.
-    facility_type_name = serializers.SerializerMethodField()
-    status = serializers.SerializerMethodField()
-    campus_name = serializers.SerializerMethodField()
-    openTickets = serializers.SerializerMethodField()
-    resolvedTickets = serializers.SerializerMethodField()
-    closedTickets = serializers.SerializerMethodField()
+    """A registered place, with the ticket counts against it.
+
+    Carrying the type's code and name means one `?campus=` call gives the
+    ticket wizard both the type tiles and the facility dropdown, with no second
+    fetch of the type list.
+    """
+
+    campus_name = serializers.CharField(source="campus.name", read_only=True)
+    facility_type_code = serializers.CharField(
+        source="facility_type.code", read_only=True
+    )
+    facility_type_name = serializers.CharField(
+        source="facility_type.name", read_only=True
+    )
+    open_tickets = _TicketCountField("open_ticket_count")
+    resolved_tickets = _TicketCountField("resolved_ticket_count")
+    closed_tickets = _TicketCountField("closed_ticket_count")
 
     class Meta:
         model = Facility
@@ -38,33 +56,9 @@ class FacilitySerializer(serializers.ModelSerializer):
             "campus",
             "campus_name",
             "facility_type",
+            "facility_type_code",
             "facility_type_name",
-            "type",
-            "status",
-            "openTickets",
-            "resolvedTickets",
-            "closedTickets",
+            "open_tickets",
+            "resolved_tickets",
+            "closed_tickets",
         ]
-
-    def get_type(self, obj):
-        return obj.facility_type.code if obj.facility_type_id else None
-
-    def get_facility_type_name(self, obj):
-        return obj.facility_type.name if obj.facility_type_id else None
-
-    def get_status(self, obj):
-        # Derive status from open ticket count if annotated; default to operational
-        open_count = getattr(obj, "open_ticket_count", 0) or 0
-        return "maintenance" if open_count > 0 else "operational"
-
-    def get_campus_name(self, obj):
-        return obj.campus.name if obj.campus_id else None
-
-    def get_openTickets(self, obj):
-        return getattr(obj, "open_ticket_count", 0) or 0
-
-    def get_resolvedTickets(self, obj):
-        return getattr(obj, "resolved_ticket_count", 0) or 0
-
-    def get_closedTickets(self, obj):
-        return getattr(obj, "closed_ticket_count", 0) or 0

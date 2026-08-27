@@ -1,20 +1,8 @@
-"""The ticket and everything hung off it: location, log, comment, feedback, attachment.
+"""
+What a ticket is, as rows.
 
-Used by:
-    analytics.insights                 TicketFeedback
-    analytics.report_views             Ticket
-    analytics.services                 TicketLog, TicketFeedback, TicketLocation
-    analytics.views                    Ticket
-    common.admin                       Ticket, TicketLocation, TicketComment, TicketFeedback
-    common.management.commands.seed    Ticket, TicketComment, TicketFeedback, TicketLocation, …
-    facilities.views                   TicketLocation
-    sla.escalation                     TicketLog, Ticket
-    sla.management.commands.check_sla  Ticket, TicketLog
-    sla.views                          Ticket
-    tickets.lifecycle                  TicketLog
-    tickets.scope                      Ticket, TicketFeedback
-    tickets.serializers                Ticket, TicketAttachment, TicketComment, TicketFeedback, …
-    tickets.views                      Ticket, TicketAttachment, TicketLog, TicketComment, …
+The Ticket row carries intrinsic current state only — what happened to it is a
+TicketLog row. No status is ever changed here; that is `tickets.lifecycle`'s.
 """
 
 import os
@@ -29,10 +17,10 @@ from apps.tickets.constants import PENDING_REASONS
 
 
 class Ticket(models.Model):
-    """A service request — intrinsic current state only.
+    """A service request. Intrinsic current state only.
 
-    No derived values, no history, no child data on this row.
-    Business logic lives in apps/tickets/services/.
+    Nothing derived, no history, no child data on this row. Every change of
+    state goes through `tickets.lifecycle`, never a direct write from a view.
     """
 
     STATUS = [
@@ -65,16 +53,8 @@ class Ticket(models.Model):
         on_delete=models.PROTECT,
         related_name="tickets",
     )
-    section = models.ForeignKey(
-        "org.Section",
-        on_delete=models.PROTECT,
-        related_name="tickets",
-    )
-    # Denormalised from service_item.sub_section, and non-nullable on purpose.
-    # Technician scope matches on (section, sub_section) pairs, so a null here
-    # would make the technician queryset silently empty; and analytics.aggregate()
-    # may only touch direct Ticket columns, while per-trade breakdown is the
-    # headline dimension of this system.
+    # Denormalised from service_item.sub_section: technician scope matches on the
+    # (campus, sub_section) pair, so a null here empties their queryset.
     sub_section = models.ForeignKey(
         "org.SubSection",
         on_delete=models.PROTECT,
@@ -93,11 +73,6 @@ class Ticket(models.Model):
         related_name="assigned_tickets",
     )
     description = models.TextField(blank=True)
-    # Who the technician calls about *this* job. Optional, and captured per
-    # ticket rather than read from the requester's profile: the useful number
-    # is often not theirs (a caretaker, a departmental extension, whoever is
-    # actually on site), and a profile edit months later must not rewrite the
-    # history of a closed job.
     contact_phone = models.CharField(
         max_length=32,
         blank=True,
@@ -109,17 +84,8 @@ class Ticket(models.Model):
     resolution_due_at = models.DateTimeField(null=True, blank=True)
     paused_at = models.DateTimeField(null=True, blank=True)
     accumulated_pause = models.DurationField(default=timedelta)
-    # Why the ticket is on hold. Intrinsic current state, so it belongs here and
-    # not in TicketLog: "what is blocking this right now" is a property of the
-    # ticket, and the question management asks — how much work is stopped, and
-    # by what — is a GROUP BY, not a log scan. The history of holds still lands
-    # in TicketLog like every other transition.
-    #
-    # Empty string, not null, for both: Django's own advice for character
-    # fields, and it keeps `GROUP BY pending_reason` free of a NULL bucket that
-    # means the same thing as ''.
     pending_reason = models.CharField(
-        max_length=24,
+        max_length=32,
         choices=PENDING_REASONS,
         blank=True,
         default="",
@@ -127,7 +93,7 @@ class Ticket(models.Model):
     )
     pending_reason_note = models.TextField(
         blank=True,
-        help_text="Free text alongside the code — required when the reason is 'other'.",
+        help_text="Optional free text alongside the code.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -139,8 +105,8 @@ class Ticket(models.Model):
         ordering = ["-updated_at"]
         indexes = [
             models.Index(
-                fields=["status", "section", "-updated_at"],
-                name="ticket_section_status_idx",
+                fields=["status", "requester_campus", "-updated_at"],
+                name="ticket_campus_status_idx",
             ),
             models.Index(
                 fields=["assigned_to", "status"],
@@ -154,7 +120,6 @@ class Ticket(models.Model):
                 fields=["raised_by", "-updated_at"],
                 name="ticket_raised_by_idx",
             ),
-            # Analytics group-by indexes (Phase 7)
             models.Index(
                 fields=["status", "created_at"],
                 name="ticket_status_created_idx",
@@ -168,44 +133,41 @@ class Ticket(models.Model):
                 name="ticket_resolution_due_idx",
             ),
             models.Index(
-                fields=["section", "created_at"],
-                name="ticket_section_created_idx",
+                fields=["requester_campus", "created_at"],
+                name="ticket_campus_created_idx",
             ),
-            # Technician scope and the per-trade breakdown both key on this pair.
             models.Index(
-                fields=["section", "sub_section", "-updated_at"],
-                name="ticket_section_sub_idx",
+                fields=["requester_campus", "sub_section", "-updated_at"],
+                name="ticket_campus_sub_idx",
             ),
         ]
 
     def save(self, *args, **kwargs):
+        """Allocate the ticket number on the first save."""
         if not self.ticket_no:
             self.ticket_no = self._generate_ticket_no()
         super().save(*args, **kwargs)
 
     def _generate_ticket_no(self):
-        campus_department = self.section.campus_department
-        campus_code = campus_department.campus.code.upper()
-        department_code = campus_department.department.code.upper()
-        seq = TicketSequence.allocate(campus_department)
-        return f"TKT-{campus_code}-{department_code}-{seq:04d}"
+        """Build "TKT-<campus>-<0000>" from the requester's campus."""
+        campus = self.requester_campus
+        seq = TicketSequence.allocate(campus)
+        return f"TKT-{campus.code.upper()}-{seq:04d}"
 
     def __str__(self):
         return f"{self.ticket_no} ({self.status})"
 
 
 class TicketSequence(models.Model):
-    """Per campus-department counter backing ticket_no allocation.
+    """The per-campus counter that ticket numbers come from.
 
-    Numbers are handed out under a row lock (``select_for_update``) so
-    concurrent creates in the same campus department cannot collide — they
-    queue for the lock instead. Different campus departments never block each
-    other. A gap can occur if the ticket insert fails after allocation; the
-    counter only ever moves forward.
+    Never parse `ticket_no` to work out the next one: string order puts
+    `-0010` below `-0009`, and two simultaneous creates would read the same
+    maximum and collide on the unique index.
     """
 
-    campus_department = models.OneToOneField(
-        "org.CampusDepartment",
+    campus = models.OneToOneField(
+        "org.Campus",
         on_delete=models.CASCADE,
         related_name="ticket_sequence",
     )
@@ -215,24 +177,21 @@ class TicketSequence(models.Model):
         app_label = "tickets"
 
     @classmethod
-    def allocate(cls, campus_department):
-        """Return the next ticket number for this campus department (atomic)."""
+    def allocate(cls, campus):
+        """Return the next number for this campus. Never reuses one."""
         with transaction.atomic():
-            row, created = cls.objects.select_for_update().get_or_create(
-                campus_department=campus_department
-            )
+            row, created = cls.objects.select_for_update().get_or_create(campus=campus)
             if created:
-                # First allocation for this campus department — seed the
-                # counter from tickets that predate the sequence table.
-                row.last_number = cls._max_existing_number(campus_department)
+                row.last_number = cls._max_existing_number(campus)
             row.last_number += 1
             row.save(update_fields=["last_number"])
             return row.last_number
 
     @staticmethod
-    def _max_existing_number(campus_department):
+    def _max_existing_number(campus):
+        """Return the highest number already issued here, or 0."""
         ticket_nos = Ticket.objects.filter(
-            section__campus_department=campus_department
+            requester_campus=campus
         ).values_list("ticket_no", flat=True)
         numbers = [0]
         for ticket_no in ticket_nos:
@@ -243,26 +202,24 @@ class TicketSequence(models.Model):
         return max(numbers)
 
     def __str__(self):
-        return f"Sequence {self.campus_department_id} at {self.last_number}"
+        return f"Sequence {self.campus_id} at {self.last_number}"
 
 
 class TicketLocation(models.Model):
-    """Where the ticket is. Every ticket has one — see TicketCreateSerializer."""
+    """Where the ticket is. Every ticket has one.
+
+    What counts as a location depends on the facility's type, and the shape
+    is checked by `facilities.validators.validate_location` before this is
+    written. The type is not stored again here; `facility.facility_type` is it.
+    """
 
     ticket = models.OneToOneField(
         Ticket,
         on_delete=models.CASCADE,
         related_name="location",
     )
-    facility_type = models.ForeignKey(
-        "facilities.FacilityType",
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
     facility = models.ForeignKey(
         "facilities.Facility",
-        null=True,
-        blank=True,
         on_delete=models.PROTECT,
         related_name="+",
     )
@@ -276,10 +233,11 @@ class TicketLocation(models.Model):
 
 
 class TicketLog(models.Model):
-    """Append-only/immutable audit log (R11).
+    """The ticket's history. Append-only, and never edited or deleted.
 
-    Snapshots the acting user and, for escalations, the level owner.
-    Business logic (status service, escalation engine) writes entries here.
+    Everything the Ticket row does not keep lives here: who acted, what
+    changed, and why. Snapshots the acting user, and for an escalation the
+    person the ticket climbed to.
     """
 
     EVENT_TYPES = [
@@ -333,11 +291,13 @@ class TicketLog(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        """Allow the insert, refuse the update."""
         if self.pk:
             raise ValueError("TicketLog records are immutable.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
+        """Never. A deleted audit row is indistinguishable from one that never happened."""
         raise ValueError("TicketLog records cannot be deleted.")
 
     def __str__(self):
@@ -345,12 +305,12 @@ class TicketLog(models.Model):
 
 
 class TicketComment(models.Model):
-    """Mutable comment on a ticket. Internal comments are hidden from requesters."""
+    """A comment on a ticket: the staff working log, not a conversation.
 
-    VISIBILITY = [
-        ("public", "Public"),
-        ("internal", "Internal"),
-    ]
+    The requester neither writes nor reads these, which is why there is no
+    visibility flag — every row is staff-facing. Who may post is decided in
+    `tickets.views.TicketCommentListCreateView`.
+    """
 
     ticket = models.ForeignKey(
         Ticket,
@@ -363,7 +323,6 @@ class TicketComment(models.Model):
         related_name="ticket_comments",
     )
     body = models.TextField()
-    visibility = models.CharField(max_length=10, choices=VISIBILITY, default="public")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -376,16 +335,18 @@ class TicketComment(models.Model):
 
 
 class TicketFeedback(models.Model):
-    """One-per-ticket feedback from the requester, at or after resolved (R11)."""
+    """The requester's rating of the finished job. One per ticket, and only theirs.
+
+    Submitted once the ticket is resolved. `Ticket.has_feedback` is the
+    annotation that answers "has this been rated yet" without loading it.
+    """
 
     ticket = models.OneToOneField(
         Ticket,
         on_delete=models.CASCADE,
         related_name="feedback",
     )
-    # 1..5 stated once, on the column, plus a DB constraint below. A validator
-    # alone would not hold: nothing calls `full_clean()` outside the admin form,
-    # so `objects.create(rating=9)` would otherwise be accepted.
+    # The constraint below is the real guard: nothing calls `full_clean()` here.
     rating = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)]
     )
@@ -406,12 +367,14 @@ class TicketFeedback(models.Model):
 
 
 def _attachment_upload_to(instance, filename):
+    """Return the storage path: a random name under the ticket's own folder."""
+    # A user-supplied name is a path-traversal surface; `original_name` keeps it.
     ext = os.path.splitext(filename)[1].lower()
     return f"tickets/{instance.ticket_id}/attachments/{uuid.uuid4().hex}{ext}"
 
 
 class TicketAttachment(models.Model):
-    """File or image attached to a ticket. Stored after server-side compression."""
+    """A file attached to a ticket, stored after `tickets.attachments` has shrunk it."""
 
     ticket = models.ForeignKey(
         Ticket,
@@ -421,7 +384,6 @@ class TicketAttachment(models.Model):
     file = models.FileField(upload_to=_attachment_upload_to)
     original_name = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=128)
-    original_size = models.PositiveIntegerField()
     stored_size = models.PositiveIntegerField()
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

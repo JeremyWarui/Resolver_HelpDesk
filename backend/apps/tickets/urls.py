@@ -1,3 +1,10 @@
+"""
+Ticket routes, included by resolver/api_urls.py under /api/v1/.
+
+Every `/tickets/<pk>/` route re-checks scope through
+`views.get_ticket_for_request_or_403`. Adding one is adding an IDOR surface.
+"""
+
 from django.urls import path
 
 from .views import (
@@ -12,6 +19,7 @@ from .views import (
     TicketFeedbackListView,
     TicketLogListView,
     TicketAttachmentView,
+    TicketAttachmentDetailView,
     AdminAuditLogView,
 )
 
@@ -49,7 +57,7 @@ urlpatterns = [
     ),
     path(
         "tickets/<int:pk>/attachments/<int:att_id>/",
-        TicketAttachmentView.as_view(),
+        TicketAttachmentDetailView.as_view(),
         name="ticket-attachment-detail",
     ),
     path("admin/audit-log/", AdminAuditLogView.as_view(), name="admin-audit-log"),
