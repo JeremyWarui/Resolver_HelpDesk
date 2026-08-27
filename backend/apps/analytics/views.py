@@ -1,8 +1,11 @@
 """
-The analytics endpoints. Two of them, both thin.
+The two reporting endpoints: the figures as JSON, and the same figures as a
+workbook.
 
-A view reads the role from the JWT, gets the scoped queryset, calls into
-`services` and returns the result. Scope is never re-derived here.
+Both start from `scoped_for`, which is the only place either of them decides
+whose tickets they are looking at. Scope derives from the role on the JWT and
+is never taken from a query param: a supervisor does not tell the server which
+campus they run.
 """
 
 from rest_framework.permissions import IsAuthenticated
@@ -14,88 +17,68 @@ from apps.common.roles import resolve_role
 from apps.tickets.models import Ticket
 from apps.tickets.scope import scoped_ticket_qs
 
+from .metrics import bottlenecks, group, resolve_window, totals, trend
 from .role_config import resolve_group_by
-from .services import aggregate, breakdown, resolve_date_range, technician_load
+from .workbook import build_workbook, workbook_response, workbook_window
 
 
-class BaseAnalyticsView(APIView):
-    """The preamble every analytics endpoint runs: role, scope, window."""
+def scoped_for(request):
+    """The caller's role, and every ticket they may be reported on.
 
+    No role means a plain requester: their own tickets and nothing else.
+    """
+    role = resolve_role(request)
+    if role:
+        return role, scoped_ticket_qs(request.user, role)
+    return role, Ticket.objects.filter(raised_by=request.user)
+
+
+class ReportingView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def scope_and_range(self, request):
-        """Return (role, scoped_qs, date_range)."""
-        role = resolve_role(request)
-        # No role means a plain requester: their own tickets and nothing else.
-        qs = (
-            scoped_ticket_qs(request.user, role)
-            if role
-            else Ticket.objects.filter(raised_by=request.user)
-        )
-        return role, qs, resolve_date_range(request.query_params)
 
+class AnalyticsView(ReportingView):
+    """GET /analytics/ — every reported figure, in one call, for every role.
 
-def _range_meta(date_range):
-    """The window, echoed back so a chart can label its own axis."""
-    return {
-        "from": date_range["date_from"].isoformat(),
-        "to": date_range["date_to"].isoformat(),
-    }
-
-
-class AnalyticsView(BaseAnalyticsView):
-    """GET /analytics/ — the whole figure set, in one call, for every role.
-
-    One endpoint because the aggregate is the expensive part and everything a
-    dashboard renders comes out of a single run of it. `group_by` is the one
-    thing a client may steer, and it is checked against the role's list first.
+    One endpoint because a dashboard renders all of it at once. `group_by` is
+    the one thing a client may steer, and `resolve_group_by` checks it against
+    the role's list before it reaches the engine.
     """
 
     def get(self, request):
-        role, scoped_qs, date_range = self.scope_and_range(request)
-        group_by = resolve_group_by(role, request.query_params.get("group_by"))
-        data = aggregate(scoped_qs, date_range, group_by)
+        role, qs = scoped_for(request)
+        window = resolve_window(request.query_params)
+        dimensions = resolve_group_by(role, request.query_params.get("group_by"))
 
         return Response(
             {
-                "scope": {"role": role, "group_by": group_by},
-                "range": _range_meta(date_range),
-                "headline": {
-                    key: data[key]
-                    for key in (
-                        "open_backlog",
-                        "created",
-                        "resolved",
-                        "response_sla_pct",
-                        "resolution_sla_pct",
-                        "response_time_avg_seconds",
-                        "resolution_time_avg_seconds",
-                        "breached",
-                        "escalated_count",
-                        "csat",
-                        "feedback_count",
-                    )
+                "scope": {"role": role, "group_by": dimensions},
+                "range": {
+                    "from": window["from"].isoformat(),
+                    "to": window["to"].isoformat(),
+                    "bucket": window["bucket"],
                 },
-                "status_distribution": data["status_distribution"],
-                "breakdown": {"dimension": group_by, "rows": data["breakdown"]},
-                "demand": data["demand"],
-                # Live, not windowed: a supervisor asks who is carrying what now.
-                "technician_load": technician_load(scoped_qs),
+                "totals": totals(qs, window),
+                "breakdown": group(qs, window, dimensions),
+                "bottlenecks": bottlenecks(qs),
+                "trend": trend(qs, window, window["bucket"]),
             }
         )
 
 
-class BreakdownView(BaseAnalyticsView):
-    """GET /analytics/breakdown/?group_by= — one dimension's rows, no figures."""
+class GenerateReportView(ReportingView):
+    """GET /reports/generate/ — the same figures as an Excel download."""
 
     def get(self, request):
-        role, scoped_qs, date_range = self.scope_and_range(request)
-        group_by = resolve_group_by(role, request.query_params.get("group_by"))
-        return Response(
-            {
-                "range": _range_meta(date_range),
-                "dimension": group_by,
-                "rows": breakdown(scoped_qs, date_range, group_by),
-            }
-        )
+        _, qs = scoped_for(request)
+        # Filters narrow, never widen. Applied after scoping, so an id the
+        # caller may not see matches nothing rather than reaching past them.
+        # A non-numeric id is ignored rather than raised: it came off a query
+        # string, and it can only ever have narrowed the export.
+        technician_id = request.query_params.get("technician_id")
+        if technician_id and technician_id.isdigit():
+            qs = qs.filter(assigned_to_id=int(technician_id))
+
+        window = workbook_window(request.query_params, qs)
+        return workbook_response(build_workbook(qs, window))

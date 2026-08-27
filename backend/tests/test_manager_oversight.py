@@ -107,4 +107,4 @@ def test_a_manager_reads_the_reporting_for_every_campus(
     body = api.get(reverse("analytics:analytics"))
 
     assert body.status_code == 200
-    assert body.data["headline"]["open_backlog"] == 2
+    assert body.data["totals"]["open_backlog"] == 2

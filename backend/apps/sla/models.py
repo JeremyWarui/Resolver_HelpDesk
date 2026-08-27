@@ -14,10 +14,10 @@ from django.db import models
 # `facilities.validators.TYPE_SPECS` is: the set is fixed, the code owns it, and
 # both `seed` and the test factories create their rows from this one table.
 PRIORITY_LEVELS = [
-    ("Low", 1, 480, 4320, 2880, 5760),    # 8h response, 3d resolution
+    ("Low", 1, 480, 4320, 2880, 5760),  # 8h response, 3d resolution
     ("Medium", 2, 240, 1440, 720, 1440),  # 4h response, 1d resolution
-    ("High", 3, 60, 480, 240, 480),       # 1h response, 8h resolution
-    ("Critical", 4, 30, 120, 60, 120),    # 30m response, 2h resolution
+    ("High", 3, 60, 480, 240, 480),  # 1h response, 8h resolution
+    ("Critical", 4, 30, 120, 60, 120),  # 30m response, 2h resolution
 ]
 
 
