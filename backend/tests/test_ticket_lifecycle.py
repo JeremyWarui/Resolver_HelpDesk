@@ -235,6 +235,17 @@ def test_comments_open_once_assigned(api, assigned_ticket, nrb_electrician):
     assert _post_comment(api, assigned_ticket).status_code == 201
 
 
+def test_comments_are_closed_until_a_technician_is_assigned(
+    api, nrb_electrical_ticket, nrb_hos
+):
+    """The thread is the working log of a job in hand. Before anyone holds the
+    job there is no work to log, and the HOS is the caller who could otherwise
+    open it: they may comment on any ticket at their campus."""
+    api.force_authenticate(nrb_hos)
+    assert _post_comment(api, nrb_electrical_ticket).status_code == 400
+    assert nrb_electrical_ticket.comments.count() == 0
+
+
 def test_comments_close_permanently_when_the_ticket_closes(
     api,
     assigned_ticket,

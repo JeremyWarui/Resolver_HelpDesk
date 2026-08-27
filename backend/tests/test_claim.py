@@ -3,6 +3,11 @@
 The interesting case is two technicians tapping "Claim" at the same moment.
 `claim_ticket` re-checks the ticket's state *after* the caller has taken the
 row lock, so the loser is rejected rather than silently overwriting the winner.
+
+Claiming out of scope is refused by the IDOR matrix in
+`test_ticket_action_scope.py`, which walks every sub-endpoint against every
+kind of outsider. Only the role refusal is here: a requester is fully in scope
+for their own ticket and still may not pick it up.
 """
 
 import pytest
@@ -52,21 +57,6 @@ def test_claim_rejects_an_already_assigned_ticket(
     nrb_electrical_ticket.save(update_fields=["assigned_to"])
     with pytest.raises(TransitionError):
         claim_ticket(nrb_electrical_ticket, nrb_electrician)
-
-
-def test_technician_cannot_claim_another_trade(api, nrb_plumber, nrb_electrical_ticket):
-    """Scope is enforced before the claim logic ever runs."""
-    api.force_authenticate(nrb_plumber)
-    assert claim(api, nrb_electrical_ticket).status_code == 403
-
-
-def test_technician_cannot_claim_the_same_trade_at_another_campus(
-    api,
-    msa_electrician,
-    nrb_electrical_ticket,
-):
-    api.force_authenticate(msa_electrician)
-    assert claim(api, nrb_electrical_ticket).status_code == 403
 
 
 def test_requester_cannot_claim(api, requester, nrb_electrical_ticket):

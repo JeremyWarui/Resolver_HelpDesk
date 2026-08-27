@@ -28,7 +28,7 @@ def test_technician_does_not_see_same_trade_at_another_campus(
     nrb_electrical_ticket,
     msa_electrical_ticket,
 ):
-    """Right trade, wrong campus. The link row carries the campus, so it
+    """Right trade, wrong campus. The link row carries the campus, so the one
     for Electrical@Nairobi must not match a ticket in Electrical@Mombasa."""
     assert msa_electrical_ticket.id not in visible(nrb_electrician, "technician")
 

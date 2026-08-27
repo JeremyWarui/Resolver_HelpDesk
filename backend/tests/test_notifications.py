@@ -108,3 +108,130 @@ def test_a_comment_never_reaches_the_requester(
     assert not _for(requester, "comment_added").exists()
     # The assignee is who a comment on their job concerns.
     assert _for(nrb_electrician, "comment_added").count() == 1
+
+
+def test_a_status_change_tells_the_requester(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, requester
+):
+    """The requester never reaches the comment thread, so a status change is
+    how they learn the work moved."""
+    from apps.tickets.lifecycle import assign_ticket, transition_status
+
+    assign_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos)
+    transition_status(nrb_electrical_ticket, "in_progress", nrb_electrician)
+
+    assert _for(requester, "ticket_status_changed").count() == 1
+
+
+def test_resolving_tells_the_requester_and_asks_for_a_rating(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, requester
+):
+    """Resolved is its own event, not another status change: it is the one that
+    asks for the rating, and the rating only exists after resolution."""
+    from apps.tickets.lifecycle import assign_ticket, transition_status
+
+    assign_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos)
+    transition_status(nrb_electrical_ticket, "in_progress", nrb_electrician)
+    transition_status(nrb_electrical_ticket, "resolved", nrb_electrician)
+
+    assert _for(requester, "ticket_resolved").count() == 1
+    # Resolution is not also announced as a plain status change.
+    assert _for(requester, "ticket_status_changed").count() == 1
+
+
+def test_reassignment_tells_the_technician_who_lost_the_job(
+    nrb, electrical, nrb_electrical_ticket, nrb_hos, requester
+):
+    """The outgoing technician has the job on their queue and has to be told it
+    is gone, or they keep working a ticket that is no longer theirs."""
+    from apps.tickets.lifecycle import assign_ticket
+
+    first = factories.make_technician("elec_first", nrb, [electrical])
+    second = factories.make_technician("elec_second", nrb, [electrical])
+
+    assign_ticket(nrb_electrical_ticket, first, nrb_hos)
+    assert _for(first, "ticket_assigned").count() == 1
+
+    assign_ticket(nrb_electrical_ticket, second, nrb_hos)
+
+    assert _for(second, "ticket_assigned").count() == 1
+    assert _for(first, "ticket_assigned").count() == 2
+    assert _for(requester, "ticket_assigned").count() == 2
+
+
+def test_an_sla_breach_tells_the_supervisors_not_the_technician(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, nrb_hod, requester
+):
+    """By the time this fires the deadline is gone and the decision — reassign,
+    chase, reprioritise — belongs to the supervisors. Driven through the
+    command, because cron is the only thing that ever calls the emitter."""
+    from datetime import timedelta
+
+    from django.core.management import call_command
+    from django.utils import timezone
+
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(hours=1)
+    nrb_electrical_ticket.save(
+        update_fields=["assigned_to", "status", "resolution_due_at"]
+    )
+
+    call_command("check_sla")
+
+    assert _for(nrb_hos, "sla_breach").count() == 1
+    assert _for(nrb_hod, "sla_breach").count() == 1
+    assert not _for(nrb_electrician, "sla_breach").exists()
+    assert not _for(requester, "sla_breach").exists()
+
+    # The command is idempotent, so a second pass must not notify twice.
+    call_command("check_sla")
+    assert _for(nrb_hos, "sla_breach").count() == 1
+
+
+def test_an_escalation_tells_the_post_it_reached_and_the_assignee(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, nrb_hod
+):
+    """Both halves matter: the HOS has to know it landed on them, and the
+    technician has to know the job left their level."""
+    from django.utils import timezone
+
+    from apps.tickets.escalation import run_escalation_for_ticket
+
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.status = "in_progress"
+    nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
+    factories.age_ticket(
+        nrb_electrical_ticket,
+        minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1,
+    )
+
+    assert run_escalation_for_ticket(nrb_electrical_ticket, timezone.now()) is True
+
+    assert _for(nrb_hos, "ticket_escalated").count() == 1
+    assert _for(nrb_electrician, "ticket_escalated").count() == 1
+    # It reached the HOS, not the HOD — the level above has not been passed.
+    assert not _for(nrb_hod, "ticket_escalated").exists()
+
+
+def test_a_failing_notification_never_breaks_the_action(
+    monkeypatch, nrb_electrical_ticket, nrb_electrician, nrb_hos
+):
+    """The row is the courtesy, the ticket is the work. The guard sits at the
+    emitter boundary, so it has to hold for an error raised before the insert
+    as well as inside it."""
+    from apps.notifications import notify
+    from apps.tickets.lifecycle import assign_ticket, transition_status
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("the feed is down")
+
+    monkeypatch.setattr(notify, "_notify_users", explode)
+
+    assign_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos)
+    transition_status(nrb_electrical_ticket, "in_progress", nrb_electrician)
+
+    nrb_electrical_ticket.refresh_from_db()
+    assert nrb_electrical_ticket.status == "in_progress"
+    assert nrb_electrical_ticket.assigned_to_id == nrb_electrician.pk
+    assert Notification.objects.count() == 0
