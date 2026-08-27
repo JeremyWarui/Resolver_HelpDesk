@@ -22,7 +22,6 @@ class Migration(migrations.Migration):
                 ('event_type', models.CharField(choices=[('ticket_created', 'Ticket Created'), ('ticket_assigned', 'Ticket Assigned'), ('ticket_status_changed', 'Ticket Status Changed'), ('ticket_escalated', 'Ticket Escalated'), ('ticket_resolved', 'Ticket Resolved'), ('comment_added', 'Comment Added'), ('sla_breach', 'SLA Breach')], max_length=32)),
                 ('title', models.CharField(max_length=128)),
                 ('body', models.CharField(max_length=256)),
-                ('ticket_no', models.CharField(blank=True, max_length=24)),
                 ('read', models.BooleanField(default=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('ticket', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='tickets.ticket')),

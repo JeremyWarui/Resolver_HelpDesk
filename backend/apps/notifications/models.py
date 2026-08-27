@@ -30,7 +30,6 @@ class Notification(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    ticket_no = models.CharField(max_length=24, blank=True)
     read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

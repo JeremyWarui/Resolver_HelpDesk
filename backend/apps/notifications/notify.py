@@ -85,7 +85,6 @@ def _notify_users(
                     title=title,
                     body=body,
                     ticket=ticket,
-                    ticket_no=ticket.ticket_no if ticket else "",
                 )
                 for uid in set(user_ids)
             ]
@@ -219,7 +218,7 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
     """Tell the two people an escalation actually concerns.
 
     `holder` is the post the ticket escalated TO, resolved structurally by
-    `sla.services.escalation.resolve_active_holder` — the same user the
+    `tickets.escalation.resolve_active_holder` — the same user the
     TicketLog records as `level_user`. It is passed in rather than looked up
     again, because notifying someone other than the person the ticket was
     handed to is how an escalation goes unanswered.
