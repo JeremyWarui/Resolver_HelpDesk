@@ -94,7 +94,7 @@ def test_a_facility_from_another_campus_is_rejected(wamalwa, msa, facility_types
         validate_location(wamalwa, {"room_number": "B-1"}, msa.id)
 
 
-def test_a_facility_row_carries_its_type_and_its_ticket_counts(
+def test_a_facility_row_carries_its_type(
     api,
     requester,
     nrb,
@@ -102,9 +102,7 @@ def test_a_facility_row_carries_its_type_and_its_ticket_counts(
     admin_block,
 ):
     """One `?campus=` call has to give the wizard the type tiles and the
-    dropdown at once, and the Facilities screen the volume per building — §5's
-    facility figure.
-    """
+    dropdown at once."""
     api.force_authenticate(requester)
     rows = api.get(reverse("facility-list"), {"campus": nrb.pk}).json()["results"]
 
@@ -112,38 +110,6 @@ def test_a_facility_row_carries_its_type_and_its_ticket_counts(
     assert row["facility_type_code"] == "office_block"
     assert row["facility_type_name"] == facility_types["office_block"].name
     assert row["campus_name"] == nrb.name
-    assert (row["open_tickets"], row["resolved_tickets"], row["closed_tickets"]) == (
-        0,
-        0,
-        0,
-    )
-
-
-def test_a_facility_counts_the_tickets_raised_against_it(
-    api,
-    admin_user,
-    requester,
-    nrb,
-    electrical,
-    admin_block,
-    priorities,
-):
-    """The count is what makes the registry a report rather than a list."""
-    from apps.tickets.models import TicketLocation
-    from tests import factories
-
-    ticket = factories.make_ticket(requester, nrb, electrical)
-    TicketLocation.objects.create(
-        ticket=ticket,
-        facility=admin_block,
-        values={"floor": "1", "room": "104"},
-    )
-
-    api.force_authenticate(admin_user)
-    rows = api.get(reverse("facility-list"), {"campus": nrb.pk}).json()["results"]
-
-    row = next(r for r in rows if r["id"] == admin_block.pk)
-    assert row["open_tickets"] == 1
 
 
 def test_the_facility_registry_is_readable_by_everyone_and_writable_by_admins(

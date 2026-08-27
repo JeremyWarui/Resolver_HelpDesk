@@ -1,42 +1,51 @@
 """What a location of each facility type must state.
 
-`TYPE_SPECS` is the contract. It is mirrored in the frontend by
-`TicketCreationWizard.tsx::FACILITY_FORMS`; change both together.
+`TYPE_SPECS` is the contract: it declares every facility type there is, its
+display name, and the location fields that type accepts. `seed` creates the
+FacilityType rows from it, so adding a type is one edit here. It is mirrored in
+the frontend by `TicketCreationWizard.tsx::FACILITY_FORMS`; change both together.
 """
 
 from rest_framework import serializers
 
-# Fields offered on top of the facility itself; `known` refuses anything else.
-# There is no free-text location: a typed building name cannot be reported on.
+# `label` names the FacilityType row seed creates. The rest are the fields
+# offered on top of the facility itself; `known` refuses anything else. There
+# is no free-text location: a typed building name cannot be reported on.
 TYPE_SPECS = {
     "office_block": {
+        "label": "Office Block",
         "required": {"floor", "room"},
         "optional": {"area"},
         "known": {"floor", "room", "area"},
     },
     "hostel": {
+        "label": "Hostel",
         # Occupants rotate per course, so the room identifies the fault.
         "required": {"room_number"},
         "optional": {"area"},
         "known": {"room_number", "area"},
     },
     "building": {
+        "label": "Building",
         "required": set(),
         "optional": {"room", "area"},
         "known": {"room", "area"},
     },
     "residential": {
+        "label": "Staff Quarters",
         # The tenant is who the technician arranges access with.
         "required": {"tenant_name"},
         "optional": {"unit_number"},
         "known": {"tenant_name", "unit_number"},
     },
     "equipment": {
+        "label": "Equipment",
         "required": set(),
         "optional": set(),
         "known": set(),
     },
     "grounds": {
+        "label": "Grounds / Field",
         "required": set(),
         "optional": {"landmark"},
         "known": {"landmark"},

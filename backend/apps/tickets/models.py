@@ -3,6 +3,8 @@ What a ticket is, as rows.
 
 The Ticket row carries intrinsic current state only — what happened to it is a
 TicketLog row. No status is ever changed here; that is `tickets.lifecycle`'s.
+A ticket's location and its rating are columns rather than side tables: both
+are exactly one per ticket, so a second table could only ever be a join.
 """
 
 import os
@@ -13,31 +15,20 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 
-from apps.tickets.constants import PENDING_REASONS
+from apps.tickets.constants import LEVELS, PENDING_REASONS, STATUSES
 
 
 class Ticket(models.Model):
-    """A service request. Intrinsic current state only.
+    """A service request Model
 
-    Nothing derived, no history, no child data on this row. Every change of
-    state goes through `tickets.lifecycle`, never a direct write from a view.
+    No history and no derived figures on this row. Every change of state goes
+    through `tickets.lifecycle`, never a direct write from a view.
     """
 
-    STATUS = [
-        ("open", "Open"),
-        ("assigned", "Assigned"),
-        ("in_progress", "In progress"),
-        ("pending", "Pending"),
-        ("resolved", "Resolved"),
-        ("closed", "Closed"),
-    ]
-    LEVEL = [
-        ("technician", "Technician"),
-        ("hos", "HOS"),
-        ("hod", "HOD"),
-    ]
-
-    ticket_no = models.CharField(max_length=24, unique=True)
+    # Null only between the insert and the update that follows it: the number
+    # is built from the pk, and an empty string would collide on the unique
+    # index the moment two tickets were raised at once.
+    ticket_no = models.CharField(max_length=24, unique=True, null=True, blank=True)
     raised_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -53,17 +44,17 @@ class Ticket(models.Model):
         on_delete=models.PROTECT,
         related_name="tickets",
     )
-    # Denormalised from service_item.sub_section: technician scope matches on the
-    # (campus, sub_section) pair, so a null here empties their queryset.
-    sub_section = models.ForeignKey(
-        "org.SubSection",
+    # Denormalised from service_item.trade: technician scope matches on the
+    # (campus, trade) pair, so a null here empties their queryset.
+    trade = models.ForeignKey(
+        "org.Trade",
         on_delete=models.PROTECT,
         related_name="tickets",
     )
     priority = models.ForeignKey(
         "sla.Priority",
         on_delete=models.PROTECT,
-        related_name="+",
+        related_name="tickets",
     )
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -72,14 +63,28 @@ class Ticket(models.Model):
         on_delete=models.SET_NULL,
         related_name="assigned_tickets",
     )
+
+    # Where the job is. What `location_values` must contain depends on the
+    # facility's type and is checked by `facilities.validators.validate_location`
+    # before either column is written. The type is not stored again here;
+    # `facility.facility_type` is it.
+    facility = models.ForeignKey(
+        "facilities.Facility",
+        on_delete=models.PROTECT,
+        related_name="tickets",
+    )
+    location_values = models.JSONField(default=dict, blank=True)
+
     description = models.TextField(blank=True)
     contact_phone = models.CharField(
         max_length=32,
         blank=True,
         help_text="Optional — just in case the technician needs to call.",
     )
-    status = models.CharField(max_length=16, choices=STATUS, default="open")
-    current_level = models.CharField(max_length=12, choices=LEVEL, default="technician")
+    status = models.CharField(max_length=16, choices=STATUSES, default="open")
+    current_level = models.CharField(
+        max_length=12, choices=LEVELS, default="technician"
+    )
     response_due_at = models.DateTimeField(null=True, blank=True)
     resolution_due_at = models.DateTimeField(null=True, blank=True)
     paused_at = models.DateTimeField(null=True, blank=True)
@@ -95,6 +100,17 @@ class Ticket(models.Model):
         blank=True,
         help_text="Optional free text alongside the code.",
     )
+
+    # The requester's verdict on the finished job, submitted once the ticket is
+    # settled. `rated_at` is the flag: a rating is never removed or revised.
+    rating = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    rating_comment = models.TextField(blank=True)
+    rated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -103,133 +119,55 @@ class Ticket(models.Model):
     class Meta:
         app_label = "tickets"
         ordering = ["-updated_at"]
+        constraints = [
+            # The validators above only run under full_clean(), which nothing
+            # calls here. This is the guard that actually holds.
+            models.CheckConstraint(
+                condition=models.Q(rating__isnull=True)
+                | models.Q(rating__gte=1, rating__lte=5),
+                name="ticket_rating_between_1_and_5",
+            )
+        ]
         indexes = [
+            # The supervisor list, and the campus filter under it.
             models.Index(
-                fields=["status", "requester_campus", "-updated_at"],
+                fields=["requester_campus", "status", "-updated_at"],
                 name="ticket_campus_status_idx",
             ),
+            # A technician's own queue.
             models.Index(
                 fields=["assigned_to", "status"],
                 name="ticket_assignment_idx",
             ),
-            models.Index(
-                fields=["current_level", "status"],
-                name="ticket_level_status_idx",
-            ),
+            # ?mine=1, and the requester's dashboard.
             models.Index(
                 fields=["raised_by", "-updated_at"],
                 name="ticket_raised_by_idx",
             ),
+            # The technician scope pair, correlated against TechnicianTrade.
             models.Index(
-                fields=["status", "created_at"],
-                name="ticket_status_created_idx",
+                fields=["requester_campus", "trade"],
+                name="ticket_campus_trade_idx",
             ),
+            # q_overdue, and the SLA sweep behind it.
             models.Index(
-                fields=["resolved_at", "status"],
-                name="ticket_resolved_status_idx",
-            ),
-            models.Index(
-                fields=["resolution_due_at", "status"],
+                fields=["status", "resolution_due_at"],
                 name="ticket_resolution_due_idx",
-            ),
-            models.Index(
-                fields=["requester_campus", "created_at"],
-                name="ticket_campus_created_idx",
-            ),
-            models.Index(
-                fields=["requester_campus", "sub_section", "-updated_at"],
-                name="ticket_campus_sub_idx",
             ),
         ]
 
     def save(self, *args, **kwargs):
         """Allocate the ticket number on the first save."""
-        if not self.ticket_no:
-            self.ticket_no = self._generate_ticket_no()
-        super().save(*args, **kwargs)
-
-    def _generate_ticket_no(self):
-        """Build "TKT-<campus>-<0000>" from the requester's campus."""
-        campus = self.requester_campus
-        seq = TicketSequence.allocate(campus)
-        return f"TKT-{campus.code.upper()}-{seq:04d}"
+        if self.ticket_no:
+            return super().save(*args, **kwargs)
+        # Two writes: the number contains the pk, which only the insert knows.
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            self.ticket_no = f"TKT-{self.requester_campus.code.upper()}-{self.pk:05d}"
+            super().save(update_fields=["ticket_no"])
 
     def __str__(self):
         return f"{self.ticket_no} ({self.status})"
-
-
-class TicketSequence(models.Model):
-    """The per-campus counter that ticket numbers come from.
-
-    Never parse `ticket_no` to work out the next one: string order puts
-    `-0010` below `-0009`, and two simultaneous creates would read the same
-    maximum and collide on the unique index.
-    """
-
-    campus = models.OneToOneField(
-        "org.Campus",
-        on_delete=models.CASCADE,
-        related_name="ticket_sequence",
-    )
-    last_number = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        app_label = "tickets"
-
-    @classmethod
-    def allocate(cls, campus):
-        """Return the next number for this campus. Never reuses one."""
-        with transaction.atomic():
-            row, created = cls.objects.select_for_update().get_or_create(campus=campus)
-            if created:
-                row.last_number = cls._max_existing_number(campus)
-            row.last_number += 1
-            row.save(update_fields=["last_number"])
-            return row.last_number
-
-    @staticmethod
-    def _max_existing_number(campus):
-        """Return the highest number already issued here, or 0."""
-        ticket_nos = Ticket.objects.filter(
-            requester_campus=campus
-        ).values_list("ticket_no", flat=True)
-        numbers = [0]
-        for ticket_no in ticket_nos:
-            try:
-                numbers.append(int(ticket_no.rsplit("-", 1)[-1]))
-            except (TypeError, ValueError):
-                pass
-        return max(numbers)
-
-    def __str__(self):
-        return f"Sequence {self.campus_id} at {self.last_number}"
-
-
-class TicketLocation(models.Model):
-    """Where the ticket is. Every ticket has one.
-
-    What counts as a location depends on the facility's type, and the shape
-    is checked by `facilities.validators.validate_location` before this is
-    written. The type is not stored again here; `facility.facility_type` is it.
-    """
-
-    ticket = models.OneToOneField(
-        Ticket,
-        on_delete=models.CASCADE,
-        related_name="location",
-    )
-    facility = models.ForeignKey(
-        "facilities.Facility",
-        on_delete=models.PROTECT,
-        related_name="+",
-    )
-    values = models.JSONField(default=dict)
-
-    class Meta:
-        app_label = "tickets"
-
-    def __str__(self):
-        return f"Location for {self.ticket_id}"
 
 
 class TicketLog(models.Model):
@@ -332,38 +270,6 @@ class TicketComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author_id} on {self.ticket_id}"
-
-
-class TicketFeedback(models.Model):
-    """The requester's rating of the finished job. One per ticket, and only theirs.
-
-    Submitted once the ticket is resolved. `Ticket.has_feedback` is the
-    annotation that answers "has this been rated yet" without loading it.
-    """
-
-    ticket = models.OneToOneField(
-        Ticket,
-        on_delete=models.CASCADE,
-        related_name="feedback",
-    )
-    # The constraint below is the real guard: nothing calls `full_clean()` here.
-    rating = models.PositiveSmallIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(5)]
-    )
-    comment = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        app_label = "tickets"
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(rating__gte=1, rating__lte=5),
-                name="ticket_feedback_rating_between_1_and_5",
-            )
-        ]
-
-    def __str__(self):
-        return f"Feedback {self.rating}/5 for {self.ticket_id}"
 
 
 def _attachment_upload_to(instance, filename):

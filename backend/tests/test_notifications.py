@@ -87,3 +87,24 @@ def test_another_users_notification_cannot_be_marked_read(api, requester, nrb_ho
     theirs.refresh_from_db()
     assert theirs.read is False
 
+
+
+def test_a_comment_never_reaches_the_requester(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, requester
+):
+    """The requester is refused the comment thread, so the feed must not hand
+    them the body it withholds — this once shipped a 100-character preview."""
+    from apps.notifications.notify import emit_comment_added
+    from apps.tickets.models import TicketComment
+
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.save(update_fields=["assigned_to"])
+    comment = TicketComment.objects.create(
+        ticket=nrb_electrical_ticket, author=nrb_hos, body="chase the store"
+    )
+
+    emit_comment_added(nrb_electrical_ticket, comment)
+
+    assert not _for(requester, "comment_added").exists()
+    # The assignee is who a comment on their job concerns.
+    assert _for(nrb_electrician, "comment_added").count() == 1

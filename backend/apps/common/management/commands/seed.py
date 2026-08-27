@@ -19,7 +19,19 @@ from apps.accounts.identity import display_name, local_part
 from apps.accounts.models import TechnicianTrade
 from apps.accounts.posts import assign_role
 from apps.facilities.models import Facility, FacilityType
-from apps.tickets.constants import PENDING_REASON_LABELS, TERMINAL_STATUSES
+from apps.facilities.validators import TYPE_SPECS
+from apps.org.models import Campus, ServiceItem, Trade
+from apps.sla.models import PRIORITY_LEVELS, Priority
+from apps.tickets.constants import (
+    ALL_STATUSES,
+    PENDING_REASON_CODES,
+    PENDING_REASON_LABELS,
+    TERMINAL_STATUSES,
+)
+from apps.tickets.models import Ticket, TicketComment, TicketLog
+from apps.tickets.phone import normalise_phone
+
+User = get_user_model()
 
 PENDING_NOTES = {
     "material_not_in_store": "Replacement parts not in the store.",
@@ -29,38 +41,6 @@ PENDING_NOTES = {
     "additional_labour_required": "Needs a second pair of hands to lift out.",
     "technical_assistance_required": "Beyond the section — specialist booked.",
 }
-from apps.org.models import Campus, ServiceItem, SubSection
-from apps.sla.models import Priority
-from apps.sla.clock import compute_due_dates
-from apps.tickets.models import (
-    Ticket,
-    TicketComment,
-    TicketFeedback,
-    TicketLocation,
-    TicketLog,
-)
-
-User = get_user_model()
-
-
-# (name, code). Every code needs an entry in facilities.validators.TYPE_SPECS.
-FACILITY_TYPES = [
-    ("Office Block", "office_block"),
-    ("Hostel", "hostel"),
-    ("Building", "building"),
-    ("Staff Quarters", "residential"),
-    ("Equipment", "equipment"),
-    ("Grounds / Field", "grounds"),
-]
-
-# (name, rank, response_minutes, resolution_minutes, hos_minutes, hod_minutes)
-# Rank 1 is what a ticket opens at — Priority.default() orders by rank.
-PRIORITIES = [
-    ("Low", 1, 480, 4320, 2880, 5760),    # 8h response, 3d resolution
-    ("Medium", 2, 240, 1440, 720, 1440),  # 4h response, 1d resolution
-    ("High", 3, 60, 480, 240, 480),       # 1h response, 8h resolution
-    ("Critical", 4, 30, 120, 60, 120),    # 30m response, 2h resolution
-]
 
 
 def demo_age_minutes(rng):
@@ -247,7 +227,19 @@ REQUESTER_NAMES = [
     ("Loise", "Wanjala"),
 ]
 
-# Location values by facility type, mirroring validators.TYPE_SPECS.
+# How often each status turns up in the demo backlog: mostly settled work with
+# a live tail. The weights are seed's; the statuses are tickets.constants'.
+STATUS_WEIGHTS = {
+    "open": 4,
+    "assigned": 3,
+    "in_progress": 4,
+    "pending": 2,
+    "resolved": 5,
+    "closed": 6,
+}
+
+# One generator per facility type in TYPE_SPECS, producing a location the API
+# would accept. `_check_demo_tables` proves both halves of that every run.
 LOCATION_VALUES = {
     "office_block": lambda r: {"floor": str(r.randint(0, 3)), "room": f"{r.randint(1, 4)}{r.randint(10, 40)}"},
     "hostel": lambda r: {"room_number": f"{r.choice('ABC')}-{r.randint(101, 320)}"},
@@ -279,29 +271,81 @@ class Command(BaseCommand):
                 "with a password from source control."
             )
 
+        self._check_demo_tables()
+
         with transaction.atomic():
             self._seed_facility_types()
             priorities = self._seed_priorities()
 
             campuses = self._seed_campuses()
-            sub_sections = self._seed_sub_sections()
-            self._seed_service_items(sub_sections)
+            trades = self._seed_trades()
+            self._seed_service_items(trades)
             self._seed_facilities(campuses)
 
             self._seed_admin(password)
             self._seed_director(password)
             self._seed_supervisors(campuses, password)
-            self._seed_technicians(campuses, sub_sections, password)
+            self._seed_technicians(campuses, trades, password)
             requesters = self._seed_requesters(campuses, password)
 
             if options["no_demo"]:
                 self.stdout.write("  Demo tickets: skipped (--no-demo)")
             else:
-                self._seed_demo_tickets(sections, sub_sections, requesters, priorities)
+                self._seed_demo_tickets(campuses, trades, requesters, priorities)
                 self._run_escalations()
 
         self._print_demo_logins()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
+
+    def _check_demo_tables(self):
+        """Fail before writing anything if a demo table has drifted from the code
+        that declares it.
+
+        Seed follows the declarations, it never defines them, and the failure it
+        guards against is silent: an unlisted status simply never gets generated,
+        and an unlisted facility type gets a location of `{}` that the API would
+        have rejected.
+        """
+        self._same_keys(STATUS_WEIGHTS, ALL_STATUSES, "demo status weights")
+        self._same_keys(PENDING_NOTES, PENDING_REASON_CODES, "hold-reason notes")
+        self._same_keys(LOCATION_VALUES, TYPE_SPECS, "demo location values")
+
+        # The same two orderings `sla.serializers` refuses over the API. Seeding
+        # around the serializer must not be the way an inverted pair gets in.
+        for name, _, response, resolution, hos, hod in PRIORITY_LEVELS:
+            for earlier, later, first, second in (
+                ("response", "resolution", response, resolution),
+                ("escalate_to_hos", "escalate_to_hod", hos, hod),
+            ):
+                if first > second:
+                    raise CommandError(
+                        f"PRIORITY_LEVELS['{name}'] is out of order: "
+                        f"{earlier} ({first}) must not exceed {later} ({second})."
+                    )
+
+        # Not just the right types: the values themselves must be a location the
+        # API would accept, checked against the same spec that validates one.
+        rng = random.Random(0)
+        for code, build in LOCATION_VALUES.items():
+            spec = TYPE_SPECS[code]
+            values = set(build(rng))
+            if not spec["required"] <= values <= spec["known"]:
+                raise CommandError(
+                    f"seed's demo location for '{code}' would be rejected by "
+                    f"TYPE_SPECS: builds {sorted(values)}, requires "
+                    f"{sorted(spec['required'])}, allows {sorted(spec['known'])}."
+                )
+
+    @staticmethod
+    def _same_keys(demo, declared, what):
+        """Raise unless a demo table covers exactly the keys the code declares."""
+        missing = set(declared) - set(demo)
+        unknown = set(demo) - set(declared)
+        if missing or unknown:
+            raise CommandError(
+                f"seed's {what} has drifted from the code that declares it: "
+                f"missing {sorted(missing)}, unknown {sorted(unknown)}."
+            )
 
     def _print_demo_logins(self):
         """One account per role. Sign-in is by email and the addresses are
@@ -328,20 +372,22 @@ class Command(BaseCommand):
         engine rather than stamping levels by hand means the demo shows what
         production would actually have done.
         """
-        from apps.sla.escalation import run_escalations
+        from apps.tickets.escalation import run_escalations
 
         count = run_escalations()
         self.stdout.write(f"  Escalations: {count} ticket(s) raised above the technician")
 
 
     def _seed_facility_types(self):
-        for name, code in FACILITY_TYPES:
-            FacilityType.objects.get_or_create(code=code, defaults={"name": name})
-        self.stdout.write(f"  FacilityType: {len(FACILITY_TYPES)}")
+        for code, spec in TYPE_SPECS.items():
+            FacilityType.objects.get_or_create(
+                code=code, defaults={"name": spec["label"]}
+            )
+        self.stdout.write(f"  FacilityType: {len(TYPE_SPECS)}")
 
     def _seed_priorities(self):
         priorities = {}
-        for name, rank, response, resolution, hos_minutes, hod_minutes in PRIORITIES:
+        for name, rank, response, resolution, hos_minutes, hod_minutes in PRIORITY_LEVELS:
             priorities[name] = Priority.objects.get_or_create(
                 rank=rank,
                 defaults={
@@ -364,21 +410,21 @@ class Command(BaseCommand):
         self.stdout.write(f"  Campus: {len(campuses)}")
         return campuses
 
-    def _seed_sub_sections(self):
-        sub_sections = {}
+    def _seed_trades(self):
+        trades = {}
         for name, code in SUB_SECTIONS:
-            sub_sections[code] = SubSection.objects.get_or_create(
+            trades[code] = Trade.objects.get_or_create(
                 name=name, defaults={"code": code}
             )[0]
-        self.stdout.write(f"  SubSection: {len(sub_sections)}")
-        return sub_sections
+        self.stdout.write(f"  Trade: {len(trades)}")
+        return trades
 
-    def _seed_service_items(self, sub_sections):
+    def _seed_service_items(self, trades):
         count = 0
         for code, names in SERVICE_ITEMS.items():
             for name in names:
                 ServiceItem.objects.get_or_create(
-                    sub_section=sub_sections[code], name=name
+                    trade=trades[code], name=name
                 )
                 count += 1
         self.stdout.write(f"  ServiceItem: {count}")
@@ -403,9 +449,13 @@ class Command(BaseCommand):
     _phone_counter = 0
 
     def _next_phone(self):
-        """A distinct, obviously-fake Kenyan mobile per seeded account, in E.164."""
+        """A distinct, obviously-fake Kenyan mobile per demo ticket, in E.164.
+
+        Through `normalise_phone` rather than formatted by hand, so seed cannot
+        mint a number the ticket API would refuse.
+        """
         self._phone_counter += 1
-        return f"+2547{self._phone_counter:08d}"
+        return normalise_phone(f"07{self._phone_counter:08d}")
 
     _usernames = None
 
@@ -434,27 +484,27 @@ class Command(BaseCommand):
                 "first_name": first,
                 "last_name": last,
                 "email": email,
-                "phone_number": self._next_phone(),
             },
         )
         if created:
             user.set_password(password)
             user.save(update_fields=["password"])
-        if user.campus_id != campus.pk:
+        # The admin has no campus: they are not based at one.
+        if campus is not None and user.campus_id != campus.pk:
             user.campus = campus
             user.save(update_fields=["campus"])
         return user
 
     _roster = None
 
-    def _set_role(self, user, role, sub_sections=(), **scope):
+    def _set_role(self, user, role, trades=(), **scope):
         """One call writes the role and the org FK that grants it.
 
         Delegates to `accounts.posts.assign_role`, the only writer of both. A
         seed keeping its own copy would seed a state the running app cannot
         produce.
         """
-        assign_role(user, role, sub_sections=sub_sections, **scope)
+        assign_role(user, role, trades=trades, **scope)
         if self._roster is None:
             self._roster = []
         campus = user.campus
@@ -487,7 +537,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  hod: {len(SUPERVISORS)}   hos: {len(SUPERVISORS)}")
 
-    def _seed_technicians(self, campuses, sub_sections, password):
+    def _seed_technicians(self, campuses, trades, password):
         """One technician per staffed trade, plus a multi-trade finisher at Nairobi.
 
         The role row alone grants a technician nothing — access comes from the
@@ -508,7 +558,7 @@ class Command(BaseCommand):
                     user,
                     "technician",
                     campus=campus,
-                    sub_sections=[sub_sections[trade_code]],
+                    trades=[trades[trade_code]],
                 )
                 count += 1
 
@@ -526,7 +576,7 @@ class Command(BaseCommand):
                 user,
                 "technician",
                 campus=campus,
-                sub_sections=[sub_sections[code] for code in trade_codes],
+                trades=[trades[code] for code in trade_codes],
             )
             count += 1
 
@@ -546,7 +596,7 @@ class Command(BaseCommand):
         return requesters
 
 
-    def _seed_demo_tickets(self, sections, sub_sections, requesters, priorities):
+    def _seed_demo_tickets(self, campuses, trades, requesters, priorities):
         if Ticket.objects.exists():
             self.stdout.write("  Demo tickets: skipped (tickets already exist)")
             return
@@ -554,8 +604,8 @@ class Command(BaseCommand):
         rng = random.Random(20260808)  # deterministic — same demo data every run
         now = timezone.now()
         items_by_trade = {
-            code: list(ServiceItem.objects.filter(sub_section=sub))
-            for code, sub in sub_sections.items()
+            code: list(ServiceItem.objects.filter(trade=sub))
+            for code, sub in trades.items()
         }
         facilities_by_campus = {
             code: list(
@@ -567,15 +617,9 @@ class Command(BaseCommand):
         # so multi-trade people never received work in their second trade.
         technicians = defaultdict(list)
         for link in TechnicianTrade.objects.select_related("user"):
-            technicians[(link.campus_id, link.sub_section_id)].append(link.user)
+            technicians[(link.campus_id, link.trade_id)].append(link.user)
 
-        # (status, weight) — a realistic backlog is mostly settled work
-        # with a live tail.
-        status_choices = [
-            ("open", 4), ("assigned", 3), ("in_progress", 4),
-            ("pending", 2), ("resolved", 5), ("closed", 6),
-        ]
-        statuses = [s for s, weight in status_choices for _ in range(weight)]
+        statuses = [s for s, weight in STATUS_WEIGHTS.items() for _ in range(weight)]
 
         staffed_pairs = [
             (campus_code, trade_code)
@@ -585,7 +629,7 @@ class Command(BaseCommand):
         unstaffed_pairs = [
             (campus_code, trade_code)
             for campus_code in campuses
-            for trade_code in sub_sections
+            for trade_code in trades
             if (campus_code, trade_code) not in staffed_pairs
         ]
 
@@ -596,12 +640,12 @@ class Command(BaseCommand):
             pool = unstaffed_pairs if index % 6 == 5 and unstaffed_pairs else staffed_pairs
             campus_code, trade_code = rng.choice(pool)
             campus = campuses[campus_code]
-            sub_section = sub_sections[trade_code]
+            trade = trades[trade_code]
             requester = rng.choice(requesters)
             item = rng.choice(items_by_trade[trade_code])
             status = rng.choice(statuses)
 
-            candidates = technicians.get((campus.id, sub_section.id)) or []
+            candidates = technicians.get((campus.id, trade.id)) or []
             technician = rng.choice(candidates) if candidates else None
             if technician is None:
                 status = "open"
@@ -613,19 +657,20 @@ class Command(BaseCommand):
                  priorities["High"], priorities["Critical"]]
             )
 
+            facility = self._pick_facility(facilities_by_campus[campus_code], rng)
             ticket = self._create_ticket(
-                requester=requester, campus=campus, sub_section=sub_section,
+                requester=requester, campus=campus, trade=trade,
                 item=item, priority=priority, status=status,
                 technician=technician, created_at=created_at,
+                facility=facility, rng=rng,
                 description=f"{item.name} reported by {display_name(requester)}.",
             )
 
-            self._attach_location(ticket, facilities_by_campus[campus_code], rng)
             self._write_history(ticket, technician, created_at, rng)
             created += 1
 
         created += self._seed_chronic_faults(
-            sections, sub_sections, requesters, priorities, technicians,
+            campuses, trades, requesters, priorities, technicians,
             facilities_by_campus, items_by_trade, rng, now,
         )
         self.stdout.write(
@@ -633,7 +678,7 @@ class Command(BaseCommand):
         )
 
     def _seed_chronic_faults(
-        self, sections, sub_sections, requesters, priorities, technicians,
+        self, campuses, trades, requesters, priorities, technicians,
         facilities_by_campus, items_by_trade, rng, now,
     ):
         """A handful of buildings with the same fault, over and over.
@@ -652,7 +697,7 @@ class Command(BaseCommand):
         created = 0
         for campus_code, trade_code, item_name, facility_name in chronic:
             campus = campuses[campus_code]
-            sub_section = sub_sections[trade_code]
+            trade = trades[trade_code]
             item = next(
                 (i for i in items_by_trade[trade_code] if i.name == item_name), None
             )
@@ -663,7 +708,7 @@ class Command(BaseCommand):
             if item is None or facility is None:
                 continue
 
-            candidates = technicians.get((campus.id, sub_section.id)) or []
+            candidates = technicians.get((campus.id, trade.id)) or []
             for _ in range(rng.randint(3, 5)):
                 requester = rng.choice(requesters)
                 status = rng.choice(["closed", "closed", "resolved", "in_progress", "open"])
@@ -675,34 +720,36 @@ class Command(BaseCommand):
                 )
                 created_at = now - timedelta(minutes=demo_age_minutes(rng))
                 ticket = self._create_ticket(
-                    requester=requester, campus=campus, sub_section=sub_section,
+                    requester=requester, campus=campus, trade=trade,
                     item=item, priority=priority, status=status,
                     technician=technician, created_at=created_at,
+                    facility=facility, rng=rng,
                     description=f"{item.name} reported at {facility.name}.",
                 )
-                self._write_location(ticket, facility.facility_type, facility, rng)
                 self._write_history(ticket, technician, created_at, rng)
                 created += 1
         return created
 
-    def _create_ticket(self, *, requester, campus, sub_section, item, priority,
-                       status, technician, created_at, description):
+    def _create_ticket(self, *, requester, campus, trade, item, priority,
+                       status, technician, created_at, facility, rng, description):
         """Create one demo ticket and back-date it.
 
-        Both generators below need exactly this, and they had a copy each —
+        Both generators above need exactly this, and they had a copy each —
         including their own hand-rolled SLA arithmetic, which is what
-        compute_due_dates() exists to prevent a second definition of.
+        Priority.due_dates() exists to prevent a second definition of.
         """
-        response_due_at, resolution_due_at = compute_due_dates(priority, created_at)
+        response_due_at, resolution_due_at = priority.due_dates(created_at)
         ticket = Ticket.objects.create(
             raised_by=requester,
             requester_campus=campus,
             service_item=item,
-            sub_section=sub_section,
+            trade=trade,
             priority=priority,
             assigned_to=None if status == "open" else technician,
+            facility=facility,
+            location_values=self._location_values(facility.facility_type, rng),
             description=description,
-            contact_phone=requester.phone_number,
+            contact_phone=self._next_phone(),
             status=status,
             response_due_at=response_due_at,
             resolution_due_at=resolution_due_at,
@@ -712,26 +759,19 @@ class Command(BaseCommand):
         ticket.refresh_from_db()
         return ticket
 
-    def _attach_location(self, ticket, facilities, rng):
-        """Every ticket names a facility off its campus's register.
-
-        All six types carry a Facility row, so this one branch covers them all.
-        """
+    @staticmethod
+    def _pick_facility(facilities, rng):
+        """One facility off the campus's register."""
         # Weighted, not uniform: an even spread drew a facility chart of equal stubs.
         weights = [4 if i < 2 else 2 if i < 5 else 1 for i in range(len(facilities))]
-        facility = rng.choices(facilities, weights=weights)[0]
-        self._write_location(ticket, facility.facility_type, facility, rng)
+        return rng.choices(facilities, weights=weights)[0]
 
     @staticmethod
-    def _write_location(ticket, facility_type, facility, rng):
+    def _location_values(facility_type, rng):
         """The type's own extra fields come from LOCATION_VALUES — mirroring
         TYPE_SPECS, which is what the API validates a real submission against."""
         builder = LOCATION_VALUES.get(facility_type.code)
-        TicketLocation.objects.create(
-            ticket=ticket,
-            facility=facility,
-            values=builder(rng) if builder else {},
-        )
+        return builder(rng) if builder else {}
 
     @staticmethod
     def _log(ticket, when, **fields):
@@ -813,8 +853,16 @@ class Command(BaseCommand):
                 from_value="resolved", to_value="closed",
             )
             if rng.random() < 0.7:
-                TicketFeedback.objects.create(
-                    ticket=ticket,
-                    rating=rng.choice([3, 4, 4, 5, 5, 5]),
-                    comment=rng.choice(["", "", "Quick turnaround, thank you.", "Well handled."]),
+                rating = rng.choice([3, 4, 4, 5, 5, 5])
+                Ticket.objects.filter(pk=ticket.pk).update(
+                    rating=rating,
+                    rating_comment=rng.choice(
+                        ["", "", "Quick turnaround, thank you.", "Well handled."]
+                    ),
+                    rated_at=closed_at,
+                )
+                # `TicketFeedbackView` logs the rating, so the demo trail does too.
+                self._log(
+                    ticket, closed_at, event_type="rated",
+                    actor=ticket.raised_by, to_value=str(rating),
                 )

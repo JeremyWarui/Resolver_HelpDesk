@@ -5,8 +5,11 @@ gone, because a scope hole that comes back quietly fails nothing.
 """
 
 import pytest
+from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.accounts.models import RoleAssignment
+from apps.accounts.posts import assign_role
+from apps.accounts.views import REFRESH_COOKIE
 from apps.common.roles import resolve_role
 from tests import factories
 
@@ -16,6 +19,7 @@ pytestmark = pytest.mark.django_db
 LOGIN = "/api/v1/auth/login/"
 ME = "/api/v1/auth/me/"
 REFRESH = "/api/v1/auth/refresh/"
+LOGOUT = "/api/v1/auth/logout/"
 
 
 def test_login_returns_a_token_and_the_users_role(api, nrb_hos):
@@ -95,6 +99,63 @@ def test_a_registered_user_can_sign_in_with_their_email(api, nrb, db):
 
 def test_me_requires_authentication(api):
     assert api.get(ME).status_code == 401
+
+
+def _login(api, user, password="pw"):
+    """Sign in over the wire, so the refresh cookie lands in the client's jar."""
+    response = api.post(
+        LOGIN, {"email": user.email, "password": password}, format="json"
+    )
+    assert response.status_code == 200, response.json()
+    return response
+
+
+def test_refresh_issues_a_usable_access_token(api, nrb_hos):
+    _login(api, nrb_hos)
+
+    response = api.post(REFRESH)
+    assert response.status_code == 200, response.json()
+    assert response.json()["roleChanged"] is False
+
+    api.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['accessToken']}")
+    assert api.get(ME).json()["active_role"]["role"] == "hos"
+
+
+def test_refresh_reports_a_role_change(api, requester, nrb):
+    """Claims are re-read from the database rather than copied forward, so a
+    promotion lands on the next silent refresh instead of at the next login."""
+    _login(api, requester)
+    assign_role(requester, "hos", campus=nrb)
+
+    body = api.post(REFRESH).json()
+    assert body["roleChanged"] is True
+    assert AccessToken(body["accessToken"])["role"] == "hos"
+
+
+def test_a_rotated_refresh_token_cannot_be_used_again(api, nrb_hos):
+    """Rotation blacklists the token it replaces, so a stolen cookie is worth
+    one use at most."""
+    _login(api, nrb_hos)
+    stolen = api.cookies[REFRESH_COOKIE].value
+
+    assert api.post(REFRESH).status_code == 200
+
+    api.cookies[REFRESH_COOKIE] = stolen
+    assert api.post(REFRESH).status_code == 401
+
+
+def test_logging_out_blacklists_the_refresh_token(api, nrb_hos):
+    _login(api, nrb_hos)
+    token = api.cookies[REFRESH_COOKIE].value
+    api.force_authenticate(nrb_hos)
+
+    assert api.post(LOGOUT).status_code == 204
+
+    # Logout clears the cookie too, so replay the value to prove the token is
+    # dead rather than merely forgotten by this client.
+    api.force_authenticate(None)
+    api.cookies[REFRESH_COOKIE] = token
+    assert api.post(REFRESH).status_code == 401
 
 
 def _assign_role(api, user, **scope):

@@ -8,10 +8,9 @@ into `posts`.
 import pytest
 
 from apps.accounts.identity import display_name
-from apps.accounts.models import RoleAssignment
+from apps.accounts.models import SCOPE_FIELD_BY_ROLE, RoleAssignment, TechnicianTrade
 from apps.accounts.posts import add_trade, assign_role
-from apps.accounts.models import TechnicianTrade
-from apps.accounts.scope import SCOPE_FIELD_BY_ROLE, post_holder, visible_campuses
+from apps.accounts.scope import post_holder, visible_campuses
 from apps.tickets.scope import scoped_ticket_qs
 from tests import factories
 
@@ -79,11 +78,11 @@ def test_filling_a_post_demotes_the_incumbent(role, nrb, db):
 def test_technician_gets_one_link_per_trade(nrb, electrical, plumbing, db):
     user = factories.make_user("tech", campus=nrb)
 
-    assign_role(user, "technician", campus=nrb, sub_sections=[electrical, plumbing])
+    assign_role(user, "technician", campus=nrb, trades=[electrical, plumbing])
 
     pairs = set(
         TechnicianTrade.objects.filter(user=user).values_list(
-            "campus_id", "sub_section_id"
+            "campus_id", "trade_id"
         )
     )
     assert pairs == {(nrb.pk, electrical.pk), (nrb.pk, plumbing.pk)}
@@ -99,10 +98,10 @@ def test_changing_post_takes_every_trade_link_with_it(
     """Links are the technician's actual access, so a move must not leave the old
     campus's pairs behind."""
     user = factories.make_user("tech", campus=nrb)
-    assign_role(user, "technician", campus=nrb, sub_sections=[electrical])
+    assign_role(user, "technician", campus=nrb, trades=[electrical])
     add_trade(user, msa, plumbing)
 
-    assign_role(user, "technician", campus=msa, sub_sections=[plumbing])
+    assign_role(user, "technician", campus=msa, trades=[plumbing])
 
     assert set(
         TechnicianTrade.objects.filter(user=user).values_list("campus_id", flat=True)
@@ -111,7 +110,7 @@ def test_changing_post_takes_every_trade_link_with_it(
 
 def test_demoted_technician_keeps_no_links(nrb, electrical, db):
     user = factories.make_user("tech", campus=nrb)
-    assign_role(user, "technician", campus=nrb, sub_sections=[electrical])
+    assign_role(user, "technician", campus=nrb, trades=[electrical])
 
     assign_role(user, "user")
 
@@ -119,14 +118,14 @@ def test_demoted_technician_keeps_no_links(nrb, electrical, db):
     assert not visible_campuses(user, "technician").exists()
 
 
-def test_the_campus_list_names_its_head(api, admin_user, nrb_hos, nrb):
-    """The admin Campuses screen names the head of each campus, so the
-    annotation behind it has to render the same two fields a column did.
+def test_the_campus_roster_names_its_head(api, admin_user, nrb_hos, nrb):
+    """The admin Campuses screen names the head of each campus. It reads the
+    roster, not `/campuses/`: the head is a post, so `accounts` answers for it.
     """
     from django.urls import reverse
 
     api.force_authenticate(admin_user)
-    rows = api.get(reverse("campus-list")).json()["results"]
+    rows = api.get(reverse("campus-roster")).json()["results"]
 
     row = next(r for r in rows if r["id"] == nrb.pk)
     assert row["hos"] == nrb_hos.pk
@@ -141,8 +140,59 @@ def test_a_campus_with_no_head_renders_null(api, admin_user, nrb):
     from django.urls import reverse
 
     api.force_authenticate(admin_user)
-    rows = api.get(reverse("campus-list")).json()["results"]
+    rows = api.get(reverse("campus-roster")).json()["results"]
 
     row = next(r for r in rows if r["id"] == nrb.pk)
     assert row["hos"] is None
     assert row["hos_name"] is None
+
+
+def test_the_campus_roster_costs_the_same_whatever_its_length(
+    api, admin_user, nrb_hos, nrb, msa, msa_hos, electrical
+):
+    """Naming the head is a prefetch, not a query per row.
+
+    `hos_name` used to call `post_holder()` inside the serializer method, so the
+    admin screen cost one query per campus and grew with the estate. Counting
+    a one-campus page against a three-campus one is what catches that: an exact
+    number would only say what today's page costs.
+    """
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    from django.urls import reverse
+
+    api.force_authenticate(admin_user)
+    url = reverse("campus-roster")
+
+    with CaptureQueriesContext(connection) as one_campus:
+        api.get(url, {"page_size": 1})
+
+    factories.make_technician("nrb_sparks", nrb, [electrical])
+    third = factories.make_campus("KSM", "Kisumu")
+    factories.make_user("ksm_hos", campus=third, role="hos")
+
+    with CaptureQueriesContext(connection) as three_campuses:
+        api.get(url)
+
+    assert len(three_campuses) == len(one_campus)
+
+
+def test_a_newly_created_campus_appears_on_the_roster_unstaffed(api, admin_user):
+    """Creating a campus is `org`'s job and says nothing about people, so the
+    create response carries no post fields. The roster is where a brand-new
+    campus reports that it has no head and no technicians yet.
+    """
+    from django.urls import reverse
+
+    api.force_authenticate(admin_user)
+    response = api.post(
+        reverse("campus-list"), {"name": "Kisumu", "code": "KSM"}, format="json"
+    )
+    assert response.status_code == 201, response.content
+    assert set(response.json()) == {"id", "name", "code", "location"}
+
+    rows = api.get(reverse("campus-roster")).json()["results"]
+    row = next(r for r in rows if r["id"] == response.json()["id"])
+    assert row["hos"] is None
+    assert row["hos_name"] is None
+    assert row["technician_count"] == 0

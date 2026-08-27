@@ -10,11 +10,11 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from apps.accounts.models import SCOPE_FIELD_BY_ROLE
 from apps.accounts.posts import add_trade, assign_role
-from apps.accounts.scope import SCOPE_FIELD_BY_ROLE
-from apps.sla.clock import compute_due_dates
-from apps.org.models import Campus, ServiceItem, SubSection
-from apps.sla.models import Priority
+from apps.facilities.models import Facility, FacilityType
+from apps.org.models import Campus, ServiceItem, Trade
+from apps.sla.models import PRIORITY_LEVELS, Priority
 from apps.tickets.models import Ticket
 
 User = get_user_model()
@@ -26,18 +26,34 @@ def make_campus(code, name=None):
     )[0]
 
 
-def make_sub_section(name="Electrical", code=None, **kwargs):
+def make_trade(name="Electrical", code=None, **kwargs):
     """A trade. Global — every campus fields every trade."""
-    return SubSection.objects.get_or_create(
+    return Trade.objects.get_or_create(
         name=name, defaults={"code": code or name[:3].upper(), **kwargs}
     )[0]
 
 
-def make_service_item(sub_section, name="Faulty socket"):
-    return ServiceItem.objects.get_or_create(sub_section=sub_section, name=name)[0]
+def make_service_item(trade, name="Faulty socket"):
+    return ServiceItem.objects.get_or_create(trade=trade, name=name)[0]
 
 
-def make_user(username, campus=None, role=None, sub_sections=()):
+def make_facility_type(code="building", name=None):
+    return FacilityType.objects.get_or_create(
+        code=code, defaults={"name": name or code.replace("_", " ").title()}
+    )[0]
+
+
+def make_facility(campus, name="Administration Block", facility_type=None):
+    """A place on a campus. Every ticket carries one, so `make_ticket` defaults
+    to this campus's block rather than making each test name a location."""
+    return Facility.objects.get_or_create(
+        campus=campus,
+        name=name,
+        defaults={"facility_type": facility_type or make_facility_type()},
+    )[0]
+
+
+def make_user(username, campus=None, role=None, trades=()):
     """Create a user at a campus and, optionally, give them their one post.
 
     A campus-scoped role is scoped to the campus they work at, which is what
@@ -48,16 +64,15 @@ def make_user(username, campus=None, role=None, sub_sections=()):
         username=username,
         password="pw",
         email=f"{username}@example.test",
-        phone_number=f"+2547{abs(hash(username)) % 100_000_000:08d}",
         campus=campus,
     )
     if role is not None:
         scope = {"campus": campus} if SCOPE_FIELD_BY_ROLE.get(role) == "campus" else {}
-        assign_role(user, role, sub_sections=list(sub_sections), **scope)
+        assign_role(user, role, trades=list(trades), **scope)
     return user
 
 
-def make_technician(username, campus, sub_sections):
+def make_technician(username, campus, trades):
     """A technician holding specific (campus, trade) pairs.
 
     For a technician working a *second* campus, call `link_technician` after:
@@ -66,26 +81,22 @@ def make_technician(username, campus, sub_sections):
     catch.
     """
     return make_user(
-        username, campus=campus, role="technician", sub_sections=list(sub_sections)
+        username, campus=campus, role="technician", trades=list(trades)
     )
 
 
-def link_technician(user, campus, sub_section):
+def link_technician(user, campus, trade):
     """One more (campus, trade) pair — `accounts.posts` writes it, not this."""
-    return add_trade(user, campus, sub_section)
-
-
-# (name, rank, response_minutes, resolution_minutes, hos_minutes, hod_minutes)
-PRIORITY_SPECS = [
-    ("Low", 1, 480, 4320, 1440, 2880),
-    ("Medium", 2, 240, 1440, 720, 1440),
-    ("High", 3, 60, 480, 240, 480),
-    ("Critical", 4, 30, 240, 60, 120),
-]
+    return add_trade(user, campus, trade)
 
 
 def make_priorities():
-    """Seed the four priorities. Low (rank 1) is what `Priority.default()` returns."""
+    """Create the four priorities the system ships with.
+
+    From `sla.PRIORITY_LEVELS`, the same table `seed` writes, so the suite
+    exercises the SLA windows the product actually runs on. Low (rank 1) is
+    what `Priority.default()` returns.
+    """
     return [
         Priority.objects.get_or_create(
             rank=rank,
@@ -97,11 +108,11 @@ def make_priorities():
                 "escalate_to_hod_minutes": hod_minutes,
             },
         )[0]
-        for name, rank, response, resolution, hos_minutes, hod_minutes in PRIORITY_SPECS
+        for name, rank, response, resolution, hos_minutes, hod_minutes in PRIORITY_LEVELS
     ]
 
 
-def make_ticket(raised_by, campus, sub_section, service_item=None, **kwargs):
+def make_ticket(raised_by, campus, trade, service_item=None, **kwargs):
     """A ticket in a specific (campus, trade) — the pair scope matches on.
 
     Opens at the default priority unless a test overrides it, mirroring
@@ -109,19 +120,29 @@ def make_ticket(raised_by, campus, sub_section, service_item=None, **kwargs):
     """
     kwargs.setdefault("priority", Priority.default())
     kwargs.setdefault("requester_campus", campus)
+    kwargs.setdefault("facility", make_facility(kwargs["requester_campus"]))
     kwargs.setdefault("description", "test ticket")
-    kwargs.setdefault("contact_phone", raised_by.phone_number)
+    kwargs.setdefault("contact_phone", "+254700000000")
     # Due dates come from the same helper production uses; leaving them null would
     # quietly disable every SLA assertion downstream.
-    response_due, resolution_due = compute_due_dates(kwargs["priority"], timezone.now())
+    response_due, resolution_due = kwargs["priority"].due_dates(timezone.now())
     kwargs.setdefault("response_due_at", response_due)
     kwargs.setdefault("resolution_due_at", resolution_due)
     return Ticket.objects.create(
         raised_by=raised_by,
-        sub_section=sub_section,
-        service_item=service_item or make_service_item(sub_section),
+        trade=trade,
+        service_item=service_item or make_service_item(trade),
         **kwargs,
     )
+
+
+def rate_ticket(ticket, rating, comment=""):
+    """Rate a ticket the way `TicketFeedbackView` does, and return the ticket."""
+    ticket.rating = rating
+    ticket.rating_comment = comment
+    ticket.rated_at = timezone.now()
+    ticket.save(update_fields=["rating", "rating_comment", "rated_at"])
+    return ticket
 
 
 def age_ticket(ticket, **delta):

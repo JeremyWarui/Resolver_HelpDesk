@@ -43,6 +43,14 @@ def _advance(ticket, *statuses, actor, **kwargs):
         transition_status(ticket, status, actor=actor, **kwargs)
 
 
+def _rate(ticket, rating, comment=""):
+    """Rate a settled ticket the way `TicketFeedbackView` does."""
+    ticket.rating = rating
+    ticket.rating_comment = comment
+    ticket.rated_at = timezone.now()
+    ticket.save(update_fields=["rating", "rating_comment", "rated_at"])
+
+
 def test_the_figures_are_computed_over_the_callers_scope(
     nrb_hos,
     msa_hos,
@@ -72,7 +80,7 @@ def test_a_breakdown_of_an_empty_scope_is_empty_not_everything(
     window,
 ):
     """Fail-closed: a scope with nothing in it returns nothing, never the lot."""
-    assert breakdown(scoped_ticket_qs(msa_hos, "hos"), window, "sub_section") == []
+    assert breakdown(scoped_ticket_qs(msa_hos, "hos"), window, "trade") == []
 
 
 def test_ratings_are_scoped_like_the_tickets_they_belong_to(
@@ -84,8 +92,6 @@ def test_ratings_are_scoped_like_the_tickets_they_belong_to(
     msa_electrician,
     window,
 ):
-    from apps.tickets.models import TicketFeedback
-
     for ticket, tech in (
         (nrb_electrical_ticket, nrb_electrician),
         (msa_electrical_ticket, msa_electrician),
@@ -93,7 +99,7 @@ def test_ratings_are_scoped_like_the_tickets_they_belong_to(
         ticket.assigned_to = tech
         ticket.save(update_fields=["assigned_to"])
         _advance(ticket, "assigned", "in_progress", "resolved", actor=tech)
-        TicketFeedback.objects.create(ticket=ticket, rating=5)
+        _rate(ticket, 5)
 
     assert aggregate(scoped_ticket_qs(nrb_hos, "hos"), window)["feedback_count"] == 1
     assert aggregate(scoped_ticket_qs(msa_hos, "hos"), window)["feedback_count"] == 1
@@ -197,7 +203,7 @@ def test_trade_breakdown_splits_by_craft(
     nrb_plumbing_ticket,
     window,
 ):
-    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "sub_section")
+    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "trade")
     assert {row["label"]: row["total"] for row in rows} == {
         "Electrical": 1,
         "Plumbing": 1,
@@ -210,7 +216,7 @@ def test_trade_breakdown_does_not_leak_another_campus(
     msa_electrical_ticket,
     window,
 ):
-    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "sub_section")
+    rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "trade")
     assert sum(row["total"] for row in rows) == 1
 
 
@@ -234,18 +240,12 @@ def test_facility_breakdown_counts_by_location(
     window,
 ):
     from apps.facilities.models import Facility
-    from apps.tickets.models import TicketLocation
 
     block = Facility.objects.create(
         campus=nrb, facility_type=facility_types["office_block"], name="Admin Block"
     )
     for _ in range(2):
-        ticket = factories.make_ticket(requester, nrb, electrical)
-        TicketLocation.objects.create(
-            ticket=ticket,
-            facility=block,
-            values={"floor": "2", "room": "204"},
-        )
+        factories.make_ticket(requester, nrb, electrical, facility=block)
 
     rows = breakdown(scoped_ticket_qs(nrb_hos, "hos"), window, "facility")
     assert [(row["label"], row["total"]) for row in rows] == [("Admin Block", 2)]
@@ -261,17 +261,11 @@ def test_facility_breakdown_does_not_leak_another_campus(
     window,
 ):
     from apps.facilities.models import Facility
-    from apps.tickets.models import TicketLocation
 
     block = Facility.objects.create(
         campus=nrb, facility_type=facility_types["office_block"], name="Admin Block"
     )
-    ticket = factories.make_ticket(requester, nrb, electrical)
-    TicketLocation.objects.create(
-        ticket=ticket,
-        facility=block,
-        values={"floor": "2", "room": "204"},
-    )
+    factories.make_ticket(requester, nrb, electrical, facility=block)
 
     assert breakdown(scoped_ticket_qs(msa_hos, "hos"), window, "facility") == []
 
@@ -301,7 +295,7 @@ def test_technician_performance_counts_per_assignee(
         # Fail closed: an unknown role gets the requester's view.
         ("director_of_everything", "campus", "status"),
         # And an allowed dimension is still honoured.
-        ("hos", "sub_section", "sub_section"),
+        ("hos", "trade", "trade"),
     ],
 )
 def test_a_role_cannot_widen_its_own_view_with_a_query_param(role, requested, expected):

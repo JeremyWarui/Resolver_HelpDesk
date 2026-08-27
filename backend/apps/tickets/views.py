@@ -19,13 +19,13 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.tickets.models import (
     Ticket,
     TicketAttachment,
     TicketLog,
     TicketComment,
-    TicketFeedback,
 )
 from apps.tickets.serializers import (
     AuditLogRowSerializer,
@@ -58,8 +58,8 @@ from apps.tickets.lifecycle import (
     TransitionError,
 )
 from apps.tickets.scope import scoped_ticket_qs, ticket_base_qs
-from apps.sla.clock import q_overdue
-from apps.common.pagination import AppendOnlyFeedPagination, TicketFeedPagination
+from apps.tickets.sla import q_overdue
+from apps.common.pagination import AppendOnlyFeedPagination
 from apps.common.roles import (
     IsAdminGroup,
     STAFF_ROLES,
@@ -105,7 +105,6 @@ class TicketStatusView(APIView):
         ticket = get_ticket_for_request_or_403(request, pk)
         serializer = TicketStatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
 
         role = resolve_role(request)
         is_assigned_tech = (
@@ -161,7 +160,6 @@ class TicketAssignView(APIView):
         assignee = serializer.validated_data["assigned_to"]
         new_priority = serializer.validated_data.get("priority")
         note = serializer.validated_data.get("note", "")
-
 
         assign_ticket(ticket, assignee, request.user, priority=new_priority, note=note)
 
@@ -287,7 +285,8 @@ class TicketFeedbackView(APIView):
                 status=400,
             )
 
-        if TicketFeedback.objects.filter(ticket=ticket).exists():
+        # `rated_at`, not `rating`: a one-star rating is still a rating.
+        if ticket.rated_at is not None:
             return Response(
                 {"detail": "Feedback has already been submitted."},
                 status=409,
@@ -295,16 +294,29 @@ class TicketFeedbackView(APIView):
 
         serializer = TicketFeedbackSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        feedback = serializer.save(ticket=ticket)
+
+        ticket.rating = serializer.validated_data["rating"]
+        ticket.rating_comment = serializer.validated_data["comment"]
+        ticket.rated_at = timezone.now()
+        ticket.save(
+            update_fields=["rating", "rating_comment", "rated_at", "updated_at"]
+        )
 
         TicketLog.objects.create(
             ticket=ticket,
             actor=request.user,
             event_type="rated",
-            to_value=str(feedback.rating),
+            to_value=str(ticket.rating),
         )
 
-        return Response(serializer.data, status=201)
+        return Response(
+            {
+                "rating": ticket.rating,
+                "comment": ticket.rating_comment,
+                "created_at": ticket.rated_at,
+            },
+            status=201,
+        )
 
 
 class TicketLogListView(generics.ListAPIView):
@@ -343,7 +355,6 @@ class TicketListCreateView(generics.ListCreateAPIView):
     """
 
     permission_classes = [IsAuthenticated]
-    pagination_class = TicketFeedPagination
 
     def get_serializer_class(self):
         """The write shape for a create, the read shape for a list."""
@@ -379,8 +390,8 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(priority_id=params["priority"])
         if params.get("campus"):
             qs = qs.filter(requester_campus_id=params["campus"])
-        if params.get("sub_section"):
-            qs = qs.filter(sub_section_id=params["sub_section"])
+        if params.get("trade"):
+            qs = qs.filter(trade_id=params["trade"])
         if params.get("assigned_to"):
             qs = qs.filter(assigned_to_id=params["assigned_to"])
         if params.get("raised_by"):
@@ -460,16 +471,13 @@ class TicketFilterOptionsView(APIView):
         )
 
         trade_rows = (
-            scoped.exclude(sub_section__isnull=True)
-            .values("sub_section_id", "sub_section__name")
+            scoped.exclude(trade__isnull=True)
+            .values("trade_id", "trade__name")
             .order_by()
             .distinct()
         )
-        sub_sections = sorted(
-            (
-                {"id": r["sub_section_id"], "name": r["sub_section__name"]}
-                for r in trade_rows
-            ),
+        trades = sorted(
+            ({"id": r["trade_id"], "name": r["trade__name"]} for r in trade_rows),
             key=lambda s: s["name"].lower(),
         )
 
@@ -479,7 +487,7 @@ class TicketFilterOptionsView(APIView):
         return Response(
             {
                 "campuses": campuses,
-                "sub_sections": sub_sections,
+                "trades": trades,
                 "technicians": technicians,
                 "requesters": requesters,
                 "pending_reasons": [
@@ -503,7 +511,7 @@ class TicketDetailView(generics.RetrieveAPIView):
         return get_ticket_for_request_or_403(
             self.request,
             self.kwargs["pk"],
-            qs=ticket_base_qs().select_related("feedback"),
+            qs=ticket_base_qs(),
         )
 
 
@@ -619,7 +627,6 @@ class AdminAuditLogView(generics.ListAPIView):
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
     serializer_class = AuditLogRowSerializer
-    pagination_class = TicketFeedPagination
 
     def get_queryset(self):
         """Every log row, filtered by whatever the admin asked for."""
@@ -644,33 +651,26 @@ class AdminAuditLogView(generics.ListAPIView):
 
 
 class TicketFeedbackListView(generics.ListAPIView):
-    """GET /tickets/feedback/ — the ratings inside the caller's scope.
+    """GET /tickets/feedback/ — the rated tickets inside the caller's scope.
 
-    Scope is the ticket's, not the rating's, so a technician sees the ratings
-    on every ticket in their (campus, trade) pairs, including work they did not
-    do. A trade's reputation is shared.
+    Ordinary ticket scope, so a technician sees the ratings on every ticket in
+    their (campus, trade) pairs, including work they did not do. A trade's
+    reputation is shared.
     """
 
     permission_classes = [IsAuthenticated]
     serializer_class = TicketFeedbackRowSerializer
-    pagination_class = TicketFeedPagination
 
     def get_queryset(self):
-        """Ratings on tickets the caller can see, newest first."""
+        """Rated tickets the caller can see, newest rating first."""
         role = resolve_role(self.request)
-        scoped = scoped_ticket_qs(self.request.user, role)
-        qs = TicketFeedback.objects.filter(ticket__in=scoped).select_related(
-            "ticket__service_item",
-            "ticket__sub_section",
-            "ticket__requester_campus",
-            "ticket__assigned_to",
-        )
+        qs = scoped_ticket_qs(self.request.user, role).filter(rated_at__isnull=False)
 
         params = self.request.query_params
         if params.get("rating"):
             qs = qs.filter(rating=params["rating"])
         if params.get("date_from"):
-            qs = qs.filter(created_at__gte=params["date_from"])
+            qs = qs.filter(rated_at__gte=params["date_from"])
         if params.get("date_to"):
-            qs = qs.filter(created_at__lte=params["date_to"])
-        return qs.order_by("-created_at")
+            qs = qs.filter(rated_at__lte=params["date_to"])
+        return qs.order_by("-rated_at")

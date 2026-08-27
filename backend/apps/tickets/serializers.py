@@ -11,24 +11,22 @@ from rest_framework import serializers
 
 from apps.accounts.models import TechnicianTrade
 from apps.org.models import ServiceItem
-from apps.common.phone import (
+from apps.tickets.phone import (
     CONTACT_PHONE_HELP,
     InvalidPhoneNumber,
     normalise_phone,
 )
 from apps.sla.models import Priority
-from apps.sla.clock import compute_due_dates, is_overdue
-from apps.facilities.models import Facility, FacilityType
+from apps.facilities.models import Facility
 from apps.facilities.validators import validate_location
 from apps.tickets.models import (
     Ticket,
     TicketAttachment,
     TicketComment,
-    TicketFeedback,
-    TicketLocation,
     TicketLog,
 )
 from apps.tickets.constants import ALL_STATUSES, PENDING_REASON_CODES
+from apps.tickets.sla import is_overdue
 from apps.accounts.identity import display_name
 from apps.accounts.serializers import UserMinSerializer
 
@@ -41,7 +39,7 @@ class _PriorityMinSerializer(serializers.Serializer):
     rank = serializers.IntegerField()
 
 
-class _SubSectionMinSerializer(serializers.Serializer):
+class _TradeMinSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     code = serializers.CharField()
@@ -70,12 +68,17 @@ class _FacilityMinSerializer(serializers.Serializer):
 
 
 class _TicketLocationSerializer(serializers.Serializer):
-    # Read through the facility: the ticket no longer stores the type twice.
+    """The ticket's own location columns, still nested for the client.
+
+    `source="*"` on the parent field: location is two columns on the Ticket, and
+    the facility names its own type, so nothing here is stored twice.
+    """
+
     facility_type = _FacilityTypeMinSerializer(
         source="facility.facility_type", read_only=True
     )
     facility = _FacilityMinSerializer(read_only=True)
-    values = serializers.JSONField()
+    values = serializers.JSONField(source="location_values", read_only=True)
 
 
 class TicketReadSerializer(serializers.ModelSerializer):
@@ -85,13 +88,13 @@ class TicketReadSerializer(serializers.ModelSerializer):
     """
 
     service_item = _ServiceItemMinSerializer(read_only=True)
-    sub_section = _SubSectionMinSerializer(read_only=True)
+    trade = _TradeMinSerializer(read_only=True)
     priority = _PriorityMinSerializer(read_only=True)
     assigned_to = UserMinSerializer(read_only=True, allow_null=True)
     raised_by = UserMinSerializer(read_only=True)
     raised_by_id = serializers.IntegerField(read_only=True)
     requester_campus = _CampusMinSerializer(read_only=True)
-    location = _TicketLocationSerializer(read_only=True, allow_null=True)
+    location = _TicketLocationSerializer(source="*", read_only=True)
     is_breaching = serializers.SerializerMethodField()
     has_feedback = serializers.SerializerMethodField()
     pending_reason_display = serializers.CharField(
@@ -107,7 +110,7 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "raised_by_id",
             "requester_campus",
             "service_item",
-            "sub_section",
+            "trade",
             "priority",
             "assigned_to",
             "description",
@@ -131,19 +134,12 @@ class TicketReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_is_breaching(self, ticket):
-        """The badge. `sla.clock` decides what late means; see its docstring."""
+        """The badge. `tickets.sla` decides what late means; see its docstring."""
         return is_overdue(ticket)
 
     def get_has_feedback(self, ticket):
-        """Whether the requester has rated this yet — a flag, not the rating.
-
-        Reads the `has_feedback` annotation the queryset supplies; the
-        attribute fallback is for the odd unannotated instance.
-        """
-        annotated = getattr(ticket, "has_feedback", None)
-        if annotated is not None:
-            return bool(annotated)
-        return TicketFeedback.objects.filter(ticket=ticket).exists()
+        """Whether the requester has rated this yet — a flag, not the rating."""
+        return ticket.rated_at is not None
 
 
 class TicketDetailReadSerializer(TicketReadSerializer):
@@ -162,11 +158,13 @@ class TicketDetailReadSerializer(TicketReadSerializer):
 
     def get_feedback(self, ticket):
         """The submitted rating, or None when the requester has not rated it."""
-        try:
-            feedback = ticket.feedback
-        except TicketFeedback.DoesNotExist:
+        if ticket.rated_at is None:
             return None
-        return TicketFeedbackSerializer(feedback).data
+        return {
+            "rating": ticket.rating,
+            "comment": ticket.rating_comment,
+            "created_at": ticket.rated_at,
+        }
 
 
 class LocationInputSerializer(serializers.Serializer):
@@ -199,7 +197,7 @@ class TicketCreateSerializer(serializers.Serializer):
     """
 
     service_item = serializers.PrimaryKeyRelatedField(
-        queryset=ServiceItem.objects.select_related("sub_section")
+        queryset=ServiceItem.objects.select_related("trade")
     )
     location = LocationInputSerializer()
     description = serializers.CharField(required=False, allow_blank=True, default="")
@@ -233,15 +231,6 @@ class TicketCreateSerializer(serializers.Serializer):
 
         service_item = attrs["service_item"]
 
-        contact_phone = attrs.get("contact_phone")
-        if not contact_phone:
-            # An unusable profile number must not block raising a ticket.
-            try:
-                contact_phone = normalise_phone(getattr(user, "phone_number", ""))
-            except InvalidPhoneNumber:
-                contact_phone = ""
-        attrs["contact_phone"] = contact_phone
-
         priority = Priority.default()
 
         location_input = attrs["location"]
@@ -252,7 +241,7 @@ class TicketCreateSerializer(serializers.Serializer):
         )
 
         # Underscored so DRF leaves them alone; create() pops each one.
-        attrs["_sub_section"] = service_item.sub_section
+        attrs["_trade"] = service_item.trade
         attrs["_priority"] = priority
         attrs["_requester_campus"] = campus
         attrs["_location_data"] = location_data
@@ -260,10 +249,10 @@ class TicketCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        """Write the ticket, its location and its `created` log row."""
+        """Write the ticket and its `created` log row."""
         request = self.context["request"]
 
-        sub_section = validated_data.pop("_sub_section")
+        trade = validated_data.pop("_trade")
         priority = validated_data.pop("_priority")
         requester_campus = validated_data.pop("_requester_campus")
         location_data = validated_data.pop("_location_data")
@@ -272,24 +261,20 @@ class TicketCreateSerializer(serializers.Serializer):
 
         # The clock starts at creation: time spent unassigned is what the SLA measures.
         now = timezone.now()
-        response_due_at, resolution_due_at = compute_due_dates(priority, now)
+        response_due_at, resolution_due_at = priority.due_dates(now)
 
         ticket = Ticket.objects.create(
             raised_by=request.user,
             requester_campus=requester_campus,
             service_item=validated_data["service_item"],
-            sub_section=sub_section,
+            trade=trade,
             priority=priority,
+            facility=location_data["facility"],
+            location_values=location_data["values"],
             description=validated_data.get("description", ""),
             contact_phone=validated_data["contact_phone"],
             response_due_at=response_due_at,
             resolution_due_at=resolution_due_at,
-        )
-
-        TicketLocation.objects.create(
-            ticket=ticket,
-            facility=location_data["facility"],
-            values=location_data["values"],
         )
 
         TicketLog.objects.create(
@@ -337,7 +322,7 @@ class TicketAssignSerializer(serializers.Serializer):
         ticket = self.context["ticket"]
         if not TechnicianTrade.objects.filter(
             campus=ticket.requester_campus,
-            sub_section=ticket.sub_section,
+            trade=ticket.trade,
             user=attrs["assigned_to"],
         ).exists():
             raise serializers.ValidationError(
@@ -361,35 +346,33 @@ class TicketCommentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "author", "created_at", "updated_at"]
 
 
-class TicketFeedbackSerializer(serializers.ModelSerializer):
-    """A rating, as the requester submits it and as the detail view returns it."""
+class TicketFeedbackSerializer(serializers.Serializer):
+    """A rating, as the requester submits it.
 
-    class Meta:
-        model = TicketFeedback
-        fields = ["id", "rating", "comment", "created_at"]
-        read_only_fields = ["id", "created_at"]
+    Not a ModelSerializer: rating and comment are two columns on the Ticket,
+    and the caller decides when they may be written.
+    """
+
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TicketFeedbackRowSerializer(serializers.ModelSerializer):
-    """A rating as the Feedback tab lists it.
+    """A rated ticket as the Feedback tab lists it.
 
-    Flattened, carrying just enough of the ticket to say what was rated and
-    who did the work — the tab is a list of ratings, not of tickets.
+    Flattened, carrying just enough to say what was rated and who did the work
+    — the tab is a list of ratings, not of tickets.
     """
 
-    ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
-    service_item = serializers.SerializerMethodField()
-    campus = serializers.CharField(
-        source="ticket.requester_campus.name", read_only=True
-    )
-    trade = serializers.CharField(source="ticket.sub_section.name", read_only=True)
-    assigned_to = UserMinSerializer(
-        source="ticket.assigned_to", read_only=True, allow_null=True
-    )
-    resolved_at = serializers.DateTimeField(source="ticket.resolved_at", read_only=True)
+    service_item = serializers.CharField(source="service_item.name", read_only=True)
+    campus = serializers.CharField(source="requester_campus.name", read_only=True)
+    trade = serializers.CharField(source="trade.name", read_only=True)
+    assigned_to = UserMinSerializer(read_only=True, allow_null=True)
+    comment = serializers.CharField(source="rating_comment", read_only=True)
+    created_at = serializers.DateTimeField(source="rated_at", read_only=True)
 
     class Meta:
-        model = TicketFeedback
+        model = Ticket
         fields = [
             "id",
             "ticket_no",
@@ -404,9 +387,6 @@ class TicketFeedbackRowSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_service_item(self, obj):
-        item = obj.ticket.service_item
-        return item.name if item else ""
 
 class TicketAttachmentSerializer(serializers.ModelSerializer):
     """An attachment, with an absolute URL and the size of the stored file."""

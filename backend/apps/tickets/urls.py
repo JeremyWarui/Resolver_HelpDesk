@@ -7,20 +7,20 @@ Every `/tickets/<pk>/` route re-checks scope through
 
 from django.urls import path
 
-from .views import (
-    TicketListCreateView,
-    TicketFilterOptionsView,
-    TicketDetailView,
-    TicketStatusView,
+from apps.tickets.views import (
+    AdminAuditLogView,
     TicketAssignView,
+    TicketAttachmentDetailView,
+    TicketAttachmentView,
     TicketClaimView,
     TicketCommentListCreateView,
-    TicketFeedbackView,
+    TicketDetailView,
     TicketFeedbackListView,
+    TicketFeedbackView,
+    TicketFilterOptionsView,
+    TicketListCreateView,
     TicketLogListView,
-    TicketAttachmentView,
-    TicketAttachmentDetailView,
-    AdminAuditLogView,
+    TicketStatusView,
 )
 
 urlpatterns = [

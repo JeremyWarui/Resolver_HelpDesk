@@ -7,7 +7,7 @@ one dimension's rows without recomputing them.
 
 from django.urls import path
 
-from . import report_views, views
+from apps.analytics import report_views, views
 
 app_name = "analytics"
 

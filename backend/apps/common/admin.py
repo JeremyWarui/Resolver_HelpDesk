@@ -12,14 +12,9 @@ from apps.accounts.models import (
     TechnicianTrade,
 )
 from apps.facilities.models import Facility, FacilityType
-from apps.org.models import Campus, ServiceItem, SubSection
+from apps.org.models import Campus, ServiceItem, Trade
 from apps.sla.models import Priority
-from apps.tickets.models import (
-    Ticket,
-    TicketComment,
-    TicketFeedback,
-    TicketLocation,
-)
+from apps.tickets.models import Ticket, TicketComment
 
 admin.site.register(
     [
@@ -27,15 +22,13 @@ admin.site.register(
         RoleAssignment,
         Campus,
         TechnicianTrade,
-        SubSection,
+        Trade,
         ServiceItem,
         FacilityType,
         Facility,
         Priority,
         Ticket,
-        TicketLocation,
         TicketComment,
-        TicketFeedback,
     ]
 )
 

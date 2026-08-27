@@ -6,15 +6,15 @@ comparison is drawn on. What a role's list omits is what it cannot be shown
 about other people.
 """
 
-GROUP_BY_DIMENSIONS = ("sub_section", "facility", "technician", "status", "campus")
+GROUP_BY_DIMENSIONS = ("trade", "facility", "technician", "status", "campus")
 
 # Campus, not section: one Maintenance section per campus draws the same chart.
 ROLE_GROUP_BY = {
     "admin": ("campus", GROUP_BY_DIMENSIONS),
     "manager": ("campus", GROUP_BY_DIMENSIONS),
-    "hod": ("sub_section", ("sub_section", "facility", "technician", "status")),
-    "hos": ("technician", ("sub_section", "facility", "technician", "status")),
-    "technician": ("status", ("status", "sub_section")),
+    "hod": ("trade", ("trade", "facility", "technician", "status")),
+    "hos": ("technician", ("trade", "facility", "technician", "status")),
+    "technician": ("status", ("status", "trade")),
     "user": ("status", ("status",)),
 }
 

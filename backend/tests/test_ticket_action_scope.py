@@ -168,7 +168,7 @@ def test_assignable_technicians_list_is_narrowed_by_trade(
     api.force_authenticate(nrb_hos)
     response = api.get(
         reverse("technician-list"),
-        {"section": nrb.pk, "sub_section": electrical.pk},
+        {"section": nrb.pk, "trade": electrical.pk},
     )
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
@@ -186,7 +186,7 @@ def test_the_technician_list_never_reaches_another_campus(
     api.force_authenticate(nrb_hos)
     response = api.get(
         reverse("technician-list"),
-        {"section": msa.pk, "sub_section": electrical.pk},
+        {"section": msa.pk, "trade": electrical.pk},
     )
     assert response.status_code == 200
     assert response.json() == []
@@ -211,20 +211,14 @@ def test_technician_with_a_second_trade_reaches_both(
 
 @pytest.fixture
 def rated_electrical(nrb_electrical_ticket):
-    from apps.tickets.models import TicketFeedback
-
     nrb_electrical_ticket.status = "closed"
     nrb_electrical_ticket.save(update_fields=["status"])
-    return TicketFeedback.objects.create(
-        ticket=nrb_electrical_ticket, rating=5, comment="Quick work"
-    )
+    return factories.rate_ticket(nrb_electrical_ticket, 5, "Quick work")
 
 
 @pytest.fixture
 def rated_plumbing(nrb_plumbing_ticket):
-    from apps.tickets.models import TicketFeedback
-
-    return TicketFeedback.objects.create(ticket=nrb_plumbing_ticket, rating=2)
+    return factories.rate_ticket(nrb_plumbing_ticket, 2)
 
 
 def _feedback(api, user):
@@ -252,7 +246,7 @@ def test_a_technician_sees_only_their_own_trade(
     """A trade's reputation is shared, so this is not "ratings on work I did" —
     but it stops at the trade boundary, exactly as the ticket list does."""
     rows = _feedback(api, nrb_electrician)
-    assert [row["ticket_no"] for row in rows] == [rated_electrical.ticket.ticket_no]
+    assert [row["ticket_no"] for row in rows] == [rated_electrical.ticket_no]
 
 
 def test_another_campus_is_not_visible(
@@ -261,9 +255,7 @@ def test_another_campus_is_not_visible(
     rated_electrical,
     msa_electrical_ticket,
 ):
-    from apps.tickets.models import TicketFeedback
-
-    TicketFeedback.objects.create(ticket=msa_electrical_ticket, rating=3)
+    factories.rate_ticket(msa_electrical_ticket, 3)
     rows = _feedback(api, msa_hos)
     assert [row["ticket_no"] for row in rows] == [msa_electrical_ticket.ticket_no]
 
@@ -275,9 +267,7 @@ def test_a_requester_sees_only_the_ratings_they_gave(
     rated_electrical,
     msa_electrical_ticket,
 ):
-    from apps.tickets.models import TicketFeedback
-
-    TicketFeedback.objects.create(ticket=msa_electrical_ticket, rating=1)
+    factories.rate_ticket(msa_electrical_ticket, 1)
     assert len(_feedback(api, requester)) == 1
     assert len(_feedback(api, msa_requester)) == 1
 

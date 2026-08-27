@@ -1,20 +1,22 @@
 """
-Username and display name, derived from the local part of an email address:
-`john.doe@ksg.ac.ke` gives username `john.doe` and display name `John Doe`.
+The email address is the identity.
+
+Username and display name derive from the local part: `john.doe@ksg.ac.ke`
+gives username `john.doe` and display name `John Doe`.
 """
 
 from django.contrib.auth import get_user_model
 
+# Django's own limit on AbstractUser.username.
 USERNAME_MAX_LENGTH = 150
 
 
 def local_part(email):
-    """Return the normalized part of an email address before '@'."""
     return (email or "").strip().split("@", 1)[0].lower()
 
 
 def identity_from_email(email, exclude_pk=None):
-    """Return a unique username, first name, and last name derived from email."""
+    """A unique username, first name and last name, all derived from the email."""
     base = local_part(email)
     parts = [part for part in base.split(".") if part]
 
@@ -30,9 +32,10 @@ def identity_from_email(email, exclude_pk=None):
 
     base = base[:USERNAME_MAX_LENGTH]
     username = base
-    # Emails are unique but local parts are not, so two people can derive one.
     number = 1
 
+    # Emails are unique but local parts are not, so two people can derive one.
+    # The suffix eats into the base rather than pushing the name past the limit.
     while users.filter(username__iexact=username).exists():
         suffix = str(number)
         username = f"{base[:USERNAME_MAX_LENGTH - len(suffix)]}{suffix}"
@@ -42,13 +45,13 @@ def identity_from_email(email, exclude_pk=None):
 
 
 def display_name_parts(first_name, last_name, username):
-    """Return a display name, falling back to the username."""
+    """Falls back to the username, so this is never blank."""
     name = f"{first_name or ''} {last_name or ''}".strip()
     return name or (username or "")
 
 
 def display_name(user):
-    """Return a user's display name, or an empty string if no user is provided."""
+    """Empty when there is no user, so callers need no None check."""
     if user is None:
         return ""
 

@@ -38,28 +38,14 @@ def raise_ticket(api, item, somewhere):
     return _raise
 
 
-def test_contact_phone_defaults_to_the_requesters_profile_number(
+def test_the_number_is_taken_from_the_ticket(
     api,
     requester,
     raise_ticket,
     nrb,
     priorities,
 ):
-    api.force_authenticate(requester)
-    response = raise_ticket()
-    assert response.status_code == 201, response.json()
-    ticket = Ticket.objects.get(pk=response.json()["id"])
-    assert ticket.contact_phone == requester.phone_number
-
-
-def test_requester_can_give_a_different_number(
-    api,
-    requester,
-    raise_ticket,
-    nrb,
-    priorities,
-):
-    """Raising on behalf of somewhere else — the caretaker is who to call."""
+    """Typed per ticket. There is no profile number to fall back to."""
     api.force_authenticate(requester)
     response = raise_ticket(contact_phone="0722 111 222")
     assert response.status_code == 201
@@ -119,7 +105,7 @@ def test_unusable_numbers_are_rejected(
     assert "contact_phone" in response.json()
 
 
-def test_a_user_with_no_number_can_still_raise_a_ticket(
+def test_a_ticket_raised_without_a_number_is_accepted(
     api,
     nrb,
     raise_ticket,
@@ -127,8 +113,6 @@ def test_a_user_with_no_number_can_still_raise_a_ticket(
 ):
     """The number is a convenience for the technician, not a gate on the repair."""
     user = factories.make_user("phoneless", campus=nrb, role="user")
-    user.phone_number = ""
-    user.save(update_fields=["phone_number"])
 
     api.force_authenticate(user)
     response = raise_ticket()

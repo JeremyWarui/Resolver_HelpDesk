@@ -73,7 +73,7 @@ def test_multi_campus_technician_sees_only_assigned_pairs(
 def test_technician_with_no_links_sees_nothing(nrb, nrb_electrical_ticket):
     """Fail closed: a technician role with no trade links grants no access."""
     tech = factories.make_user(
-        "unlinked", campus=nrb, role="technician", sub_sections=[]
+        "unlinked", campus=nrb, role="technician", trades=[]
     )
     assert visible(tech, "technician") == set()
 
@@ -85,7 +85,7 @@ def test_removing_a_trade_link_revokes_access(
     electrical,
 ):
     TechnicianTrade.objects.filter(
-        user=nrb_electrician, campus=nrb, sub_section=electrical
+        user=nrb_electrician, campus=nrb, trade=electrical
     ).delete()
     assert visible(nrb_electrician, "technician") == set()
 
@@ -171,7 +171,7 @@ def test_trade_filter_narrows_the_list(
     nrb_electrical_ticket,
     nrb_plumbing_ticket,
 ):
-    assert _listed(api, nrb_hos, sub_section=electrical.pk) == {
+    assert _listed(api, nrb_hos, trade=electrical.pk) == {
         nrb_electrical_ticket.id
     }
 
@@ -185,7 +185,7 @@ def test_trade_filter_cannot_reach_another_campus(
 ):
     """Same trade, wrong campus — the filter narrows within scope, it does not
     re-open it."""
-    assert _listed(api, nrb_hos, sub_section=electrical.pk) == {
+    assert _listed(api, nrb_hos, trade=electrical.pk) == {
         nrb_electrical_ticket.id
     }
 
@@ -199,7 +199,7 @@ def test_trade_filter_outside_scope_returns_nothing_not_everything(
 ):
     """An electrician asking for plumbing gets an empty list — never the
     unfiltered set, which is what a filter applied before scoping would give."""
-    assert _listed(api, nrb_electrician, sub_section=plumbing.pk) == set()
+    assert _listed(api, nrb_electrician, trade=plumbing.pk) == set()
 
 
 def test_filter_options_offer_only_trades_the_caller_can_see(
@@ -214,4 +214,4 @@ def test_filter_options_offer_only_trades_the_caller_can_see(
 
     api.force_authenticate(nrb_electrician)
     options = api.get(reverse("ticket-filter-options")).json()
-    assert [row["name"] for row in options["sub_sections"]] == ["Electrical"]
+    assert [row["name"] for row in options["trades"]] == ["Electrical"]

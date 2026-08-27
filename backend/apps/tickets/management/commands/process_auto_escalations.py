@@ -1,6 +1,6 @@
 """Management command: process automatic ticket escalations.
 
-Delegates to apps.sla.escalation. Run hourly from cron:
+Delegates to apps.tickets.escalation. Run hourly from cron:
     python manage.py process_auto_escalations
     python manage.py process_auto_escalations --dry-run   # report, write nothing
 """
@@ -8,7 +8,7 @@ Delegates to apps.sla.escalation. Run hourly from cron:
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.sla.escalation import run_escalations
+from apps.tickets.escalation import run_escalations
 
 
 class Command(BaseCommand):

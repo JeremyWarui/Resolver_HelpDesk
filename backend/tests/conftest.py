@@ -1,4 +1,4 @@
-"""Shared fixture graph. A technician is scoped by `(section, sub_section)` —
+"""Shared fixture graph. A technician is scoped by `(section, trade)` —
 campus *and* trade — so one campus or one trade would prove nothing.
 
     NRB ─ Administration ─ Maintenance ─┬─ Electrical  ← nrb_electrician
@@ -49,17 +49,17 @@ def msa(db):
 
 @pytest.fixture
 def electrical(db):
-    return factories.make_sub_section("Electrical", "ELEC")
+    return factories.make_trade("Electrical", "ELEC")
 
 
 @pytest.fixture
 def plumbing(db):
-    return factories.make_sub_section("Plumbing", "PLUMB")
+    return factories.make_trade("Plumbing", "PLUMB")
 
 
 @pytest.fixture
 def carpentry(db):
-    return factories.make_sub_section("Carpentry", "CARP")
+    return factories.make_trade("Carpentry", "CARP")
 
 
 @pytest.fixture

@@ -1,6 +1,24 @@
-"""Priority levels and the two escalation thresholds each one carries."""
+"""Priority levels and the two escalation thresholds each one carries.
 
+Reference data, and nothing else: no row here knows a ticket exists.
+"""
+
+from datetime import timedelta
+
+from django.core.validators import MinValueValidator
 from django.db import models
+
+# The four levels the system ships with, in rank order, as
+# (name, rank, response, resolution, escalate_to_hos, escalate_to_hod) minutes.
+# Declared here rather than in the seeder for the same reason
+# `facilities.validators.TYPE_SPECS` is: the set is fixed, the code owns it, and
+# both `seed` and the test factories create their rows from this one table.
+PRIORITY_LEVELS = [
+    ("Low", 1, 480, 4320, 2880, 5760),    # 8h response, 3d resolution
+    ("Medium", 2, 240, 1440, 720, 1440),  # 4h response, 1d resolution
+    ("High", 3, 60, 480, 240, 480),       # 1h response, 8h resolution
+    ("Critical", 4, 30, 120, 60, 120),    # 30m response, 2h resolution
+]
 
 
 class Priority(models.Model):
@@ -10,20 +28,23 @@ class Priority(models.Model):
     catalogue. A ticket opens at the default (lowest rank) and the HOS sets the
     real priority when they assign it.
 
-    rank: 1 = lowest, 4 = highest (used for ordering and for `default()`).
-    response_minutes: target from ticket creation to first assignment.
-    resolution_minutes: target from ticket creation to resolved status.
-    escalate_to_hos_minutes / escalate_to_hod_minutes: the two structural
-    thresholds. Escalation is technician to HOS to HOD and nothing else, so
-    these are columns rather than a configurable rule table.
+    Escalation is technician to HOS to HOD and nothing else, which is why the
+    two thresholds are columns here rather than rows in a rule table.
     """
 
-    name = models.CharField(max_length=80)
-    rank = models.PositiveIntegerField(unique=True)
-    response_minutes = models.PositiveIntegerField()
-    resolution_minutes = models.PositiveIntegerField()
-    escalate_to_hos_minutes = models.PositiveIntegerField()
-    escalate_to_hod_minutes = models.PositiveIntegerField()
+    # Unique because the trail records a priority change by name
+    # (`TicketLog.from_value`), and two rows called "High" make it unreadable.
+    name = models.CharField(max_length=80, unique=True)
+    rank = models.PositiveIntegerField(unique=True)  # 1 = lowest, and the default
+    # A zero-minute target is a ticket born overdue, so every window is >= 1.
+    response_minutes = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    resolution_minutes = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    escalate_to_hos_minutes = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)]
+    )
+    escalate_to_hod_minutes = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)]
+    )
 
     class Meta:
         app_label = "sla"
@@ -32,6 +53,18 @@ class Priority(models.Model):
 
     def __str__(self):
         return f"{self.name} (rank {self.rank})"
+
+    def due_dates(self, start):
+        """Return (response_due_at, resolution_due_at) measured from `start`.
+
+        Called at ticket creation, again on reopen, which restarts the clock,
+        and on a priority change, which re-measures from the original creation
+        time rather than handing back time already spent waiting.
+        """
+        return (
+            start + timedelta(minutes=self.response_minutes),
+            start + timedelta(minutes=self.resolution_minutes),
+        )
 
     @classmethod
     def default(cls):

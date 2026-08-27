@@ -1,4 +1,7 @@
+"""Notification routes, included by resolver/api_urls.py under /api/v1/."""
+
 from django.urls import path
+
 from apps.notifications.views import (
     NotificationListView,
     NotificationMarkAllReadView,

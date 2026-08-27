@@ -10,10 +10,23 @@ import pytest
 from django.utils import timezone
 
 from apps.accounts.models import RoleAssignment
-from apps.sla.escalation import run_escalation_for_ticket
+from apps.tickets.escalation import run_escalation_for_ticket
 from tests import factories
 
 pytestmark = pytest.mark.django_db
+
+
+def age_past(ticket, threshold):
+    """Backdate a ticket to just past one of its own priority's thresholds.
+
+    The minutes are read off the priority rather than written here, so retuning
+    the SLA policy cannot quietly stop these tests from testing escalation. A
+    literal "two days" only lands past the HOS threshold while Low happens to
+    be set to one.
+    """
+    return factories.age_ticket(
+        ticket, minutes=getattr(ticket.priority, threshold) + 1
+    )
 
 
 def test_a_fresh_ticket_does_not_escalate(
@@ -33,7 +46,7 @@ def test_ticket_escalates_to_hos_after_the_first_threshold(
     priorities,
     nrb_hos,
 ):
-    factories.age_ticket(nrb_electrical_ticket, days=2)
+    age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
     assert (
         run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
         is True
@@ -47,9 +60,13 @@ def test_ticket_escalates_on_to_hod(
     nrb_hos,
     nrb_hod,
 ):
-    factories.age_ticket(nrb_electrical_ticket, days=2)
+    """One level per pass: past the first threshold it reaches the HOS, and
+    only once past the second does it go on to the HOD."""
+    age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
     run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
-    factories.age_ticket(nrb_electrical_ticket, days=4)
+    assert nrb_electrical_ticket.current_level == "hos"
+
+    age_past(nrb_electrical_ticket, "escalate_to_hod_minutes")
     run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
     assert nrb_electrical_ticket.current_level == "hod"
 
@@ -62,7 +79,7 @@ def test_a_ticket_already_at_hod_does_not_escalate_further(
 ):
     nrb_electrical_ticket.current_level = "hod"
     nrb_electrical_ticket.save(update_fields=["current_level"])
-    factories.age_ticket(nrb_electrical_ticket, days=30)
+    age_past(nrb_electrical_ticket, "escalate_to_hod_minutes")
     assert (
         run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
         is False
@@ -78,7 +95,7 @@ def test_settled_tickets_never_escalate(
 ):
     nrb_electrical_ticket.status = status
     nrb_electrical_ticket.save(update_fields=["status"])
-    factories.age_ticket(nrb_electrical_ticket, days=30)
+    age_past(nrb_electrical_ticket, "escalate_to_hod_minutes")
     assert (
         run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
         is False
@@ -92,8 +109,14 @@ def test_paused_time_does_not_count_toward_the_threshold(
 ):
     """A ticket parked waiting for parts must not escalate for the wait it was
     told to take."""
-    factories.age_ticket(nrb_electrical_ticket, days=2)
-    nrb_electrical_ticket.paused_at = timezone.now() - timedelta(days=1, hours=12)
+    hos_minutes = nrb_electrical_ticket.priority.escalate_to_hos_minutes
+    age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
+
+    # Paused half way to the threshold, so only half the window ever ran, even
+    # though the ticket is past it by the wall clock.
+    nrb_electrical_ticket.paused_at = nrb_electrical_ticket.created_at + timedelta(
+        minutes=hos_minutes // 2
+    )
     nrb_electrical_ticket.status = "pending"
     nrb_electrical_ticket.save(update_fields=["paused_at", "status"])
 
@@ -111,15 +134,17 @@ def test_a_vacant_hos_seat_is_skipped_not_escalated_to(
     nrb,
 ):
     """With no HOS in post the ticket goes straight to the HOD rather than
-    sitting at a level nobody is watching."""
+    sitting at a level nobody is watching.
+
+    Aged past the first threshold only: the HOD's own threshold has not been
+    reached, so reaching the HOD here is the skip and nothing else.
+    """
     # Vacating the seat is deleting the role row; there is no second place to clear.
     RoleAssignment.objects.filter(role="hos", campus=nrb).delete()
-    factories.age_ticket(nrb_electrical_ticket, days=3)
+    age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
 
     assert (
         run_escalation_for_ticket(nrb_electrical_ticket, timezone.now())
         is True
     )
     assert nrb_electrical_ticket.current_level == "hod"
-
-

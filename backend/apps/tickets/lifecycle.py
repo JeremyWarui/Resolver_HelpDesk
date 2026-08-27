@@ -16,7 +16,6 @@ from apps.notifications.notify import (
     emit_ticket_resolved,
     emit_ticket_status_changed,
 )
-from apps.sla.clock import compute_due_dates
 from apps.tickets.constants import (
     PENDING_REASON_CODES,
     PENDING_REASON_LABELS,
@@ -103,8 +102,8 @@ def transition_status(
         # Stale resolution timestamps would corrupt is_breaching and resolved-time
         # analytics on a live ticket. Breach history stays in TicketLog.
         ticket.assigned_to = None
-        ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
-            ticket.priority, now
+        ticket.response_due_at, ticket.resolution_due_at = ticket.priority.due_dates(
+            now
         )
         ticket.paused_at = None
         ticket.accumulated_pause = timedelta(0)
@@ -179,6 +178,7 @@ def claim_ticket(ticket, technician):
 
     ticket.assigned_to = technician
     ticket.save(update_fields=["assigned_to", "updated_at"])
+
     TicketLog.objects.create(
         ticket=ticket,
         actor=technician,
@@ -194,9 +194,9 @@ def claim_ticket(ticket, technician):
 
 
 def assign_ticket(ticket, assignee, actor, priority=None, note=""):
-    """Hand a ticket to `assignee`, optionally setting its real priority.
+    """Hand a ticket to `technician`, optionally setting its real priority.
 
-    Reassignment is the same call: `previous_assignee` tells the two apart in the
+    Reassignment is the same call: `previous_technician` tells the two apart in the
     log, so the caller must pass a ticket whose `assigned_to` is still the old one.
     """
     previous_assignee = ticket.assigned_to
@@ -213,8 +213,8 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
         ticket.priority = priority
         # From created_at, not now: re-basing would hand back time the ticket has
         # already spent waiting.
-        ticket.response_due_at, ticket.resolution_due_at = compute_due_dates(
-            priority, ticket.created_at
+        ticket.response_due_at, ticket.resolution_due_at = priority.due_dates(
+            ticket.created_at
         )
         updated_fields += ["priority", "response_due_at", "resolution_due_at"]
 
@@ -233,9 +233,7 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
         ticket=ticket,
         actor=actor,
         event_type="reassigned" if previous_assignee is not None else "assigned",
-        from_value=(
-            display_name(previous_assignee) if previous_assignee is not None else ""
-        ),
+        from_value=display_name(previous_assignee),
         to_value=display_name(assignee),
         reason=note,
     )

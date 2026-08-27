@@ -142,7 +142,7 @@ def _sheet_summary(ws, scoped_qs, date_range) -> None:
     ws.append([])
     ws.append(["Tickets by trade", ""])
     ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
-    for row in data["demand"]["by_sub_section"]:
+    for row in data["demand"]["by_trade"]:
         ws.append([row["label"], row["total"]])
 
     ws.append([])
@@ -181,17 +181,14 @@ def _sheet_tickets(ws, qs) -> None:
     tickets = qs.select_related(
         "raised_by",
         "requester_campus",
-        "sub_section",
+        "trade",
         "service_item",
         "priority",
         "assigned_to",
-        "location__facility",
+        "facility",
     )
 
     for t in tickets:
-        # A ticket may predate the location rule and have no location row.
-        location = getattr(t, "location", None)
-        facility = location.facility if location else None
         ws.append(
             [
                 t.ticket_no,
@@ -200,9 +197,9 @@ def _sheet_tickets(ws, qs) -> None:
                 t.get_current_level_display(),
                 display_name(t.raised_by) if t.raised_by_id else "",
                 t.requester_campus.name if t.requester_campus_id else "",
-                t.sub_section.name if t.sub_section_id else "",
+                t.trade.name if t.trade_id else "",
                 t.service_item.name if t.service_item_id else "",
-                facility.name if facility else "",
+                t.facility.name,
                 # Never blank: in a spreadsheet a blank reads as missing data.
                 display_name(t.assigned_to) if t.assigned_to_id else "Unassigned",
                 (t.description or "")[:200],

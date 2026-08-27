@@ -8,7 +8,7 @@ derived server-side from that one choice plus the requester's own campus.
 import pytest
 from django.urls import reverse
 
-from apps.org.models import SubSection
+from apps.org.models import Trade
 from apps.tickets.models import Ticket
 from tests import factories
 
@@ -22,7 +22,7 @@ def socket(electrical):
 
 def test_every_campus_offers_every_active_trade(nrb, electrical, plumbing):
     """Trades are global: one Maintenance section per campus, all five crafts."""
-    codes = {sub.code for sub in SubSection.objects.filter(is_active=True)}
+    codes = {sub.code for sub in Trade.objects.filter(is_active=True)}
     assert codes == {electrical.code, plumbing.code}
 
 
@@ -44,7 +44,7 @@ def test_creating_a_ticket_derives_trade_and_campus(
     assert response.status_code == 201, response.json()
 
     ticket = Ticket.objects.get(pk=response.json()["id"])
-    assert ticket.sub_section_id == electrical.pk
+    assert ticket.trade_id == electrical.pk
     assert ticket.requester_campus_id == nrb.id
 
 

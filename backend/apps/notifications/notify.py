@@ -172,17 +172,28 @@ def emit_ticket_resolved(ticket) -> None:
 
 @_never_fails
 def emit_comment_added(ticket, comment) -> None:
+    """Tell the assigned technician that a comment landed on their job.
+
+    Never the requester. Comments are the staff working log and the requester
+    is refused the thread, so notifying them — with a preview of the body, as
+    this once did — would hand them through the feed exactly what the endpoint
+    withholds. They hear about the work through status changes instead.
+    """
     author = comment.author
-    if author and author.id != ticket.raised_by_id:
-        author_name = display_name(author)
-        preview = (comment.body or "")[:100]
-        _notify_users(
-            [ticket.raised_by_id],
-            "comment_added",
-            "New comment on your ticket",
-            f"{author_name} commented on #{ticket.ticket_no}: {preview}",
-            ticket,
-        )
+    if not ticket.assigned_to_id:
+        return
+    if author and author.id == ticket.assigned_to_id:
+        return
+
+    author_name = display_name(author) if author else "Someone"
+    preview = (comment.body or "")[:100]
+    _notify_users(
+        [ticket.assigned_to_id],
+        "comment_added",
+        "New comment on your ticket",
+        f"{author_name} commented on #{ticket.ticket_no}: {preview}",
+        ticket,
+    )
 
 
 @_never_fails

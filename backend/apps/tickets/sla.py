@@ -1,27 +1,15 @@
-"""The SLA clock: when a ticket is due, and whether it made its target.
+"""Whether a ticket is late, as a Q and as a check on one row.
 
-Every "is this late?" predicate comes from here, so a ticket's own badge
-cannot contradict the dashboard it appears on.
+Every "is this late?" predicate comes from here, so a ticket's own badge cannot
+contradict the dashboard it appears on. It lives beside the Ticket rather than
+in `apps.sla` because every one of these filters a Ticket queryset; `apps.sla`
+holds the policy, which knows nothing about tickets.
 """
-
-from datetime import timedelta
 
 from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.tickets.constants import RUNNING_STATUSES, TERMINAL_STATUSES
-
-
-def compute_due_dates(priority, start):
-    """Return (response_due_at, resolution_due_at) for a priority from `start`.
-
-    Called at ticket creation and again on reopen, which restarts the clock
-    from the reopen time.
-    """
-    return (
-        start + timedelta(minutes=priority.response_minutes),
-        start + timedelta(minutes=priority.resolution_minutes),
-    )
 
 
 def _now(now=None):

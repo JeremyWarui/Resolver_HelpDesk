@@ -6,8 +6,9 @@ from django.db import models
 class FacilityType(models.Model):
     """A small, fixed enumeration of facility kinds (e.g. office_block, building).
 
-    Seeded once; the set changes only with a code + seed change.
-    Each type maps to one location form on the frontend.
+    The rows mirror `facilities.validators.TYPE_SPECS`, which declares the set
+    and the location form each type maps to on the frontend. Seed reads it; add
+    a type there, not here.
     """
 
     name = models.CharField(max_length=80, unique=True)

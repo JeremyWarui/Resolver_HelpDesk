@@ -7,27 +7,31 @@ the token being replaced, so a role change lands on the next silent refresh.
 
 import logging
 
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.db.models import Count, Prefetch
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.identity import display_name
-from apps.accounts.models import RoleAssignment
-from apps.accounts.scope import home_campus
+from apps.accounts.models import RoleAssignment, TechnicianTrade
+from apps.accounts.scope import visible_campuses
 from apps.accounts.serializers import (
+    CampusRosterSerializer,
     RoleAssignmentSerializer,
     RoleAssignmentWriteSerializer,
     UserAdminSerializer,
     UserCreateSerializer,
     UserUpdateSerializer,
 )
-from apps.common.pagination import ConfigListPagination
-from apps.common.roles import IsAdminGroup
+from apps.common.roles import IsAdminGroup, resolve_role
+from apps.org.models import Campus
 
 _logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -37,8 +41,9 @@ COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
 def get_assignment(user):
-    """Return the user's RoleAssignment with its whole scope graph, or None."""
-    # Exactly what RoleAssignmentSerializer walks, so serializing costs no queries.
+    # select_related covers the two FKs RoleAssignmentSerializer renders. The
+    # trade list is a separate query no select_related can reach, and this is
+    # never serialized many at once.
     return (
         RoleAssignment.objects.filter(user=user)
         .select_related("campus", "assigned_by")
@@ -47,30 +52,22 @@ def get_assignment(user):
 
 
 def build_tokens_for_assignment(user, role_assignment):
-    """Return a (refresh, access) pair carrying the scope claims."""
+    """Return a (refresh, access) pair carrying the two claims that get read.
+
+    `role` is what `common.roles.resolve_role` trusts, `campus_id` is what the
+    frontend decodes, and nothing else belongs here: a JWT payload is base64,
+    not encrypted, so an unread claim is a field published for no reason.
+    """
     refresh = RefreshToken.for_user(user)
-
+    refresh["role"] = role_assignment.role if role_assignment else None
     # Their *home* campus, not what their role oversees.
-    campus = home_campus(user)
-
-    claims = {
-        "email": user.email,
-        "role": role_assignment.role if role_assignment else None,
-        "campus_id": campus.pk if campus else None,
-        "scope_campus_id": role_assignment.campus_id if role_assignment else None,
-        "role_assignment_id": role_assignment.pk if role_assignment else None,
-    }
-    for key, value in claims.items():
-        refresh[key] = value
-
+    refresh["campus_id"] = user.campus_id
     return refresh, refresh.access_token
 
 
 def serialize_auth_user(user, assignment):
-    """Return the signed-in user, as `/api/v1/users/` renders one, plus their role."""
+    """The signed-in user in the shape `/users/` renders, plus their role."""
     data = UserAdminSerializer(user).data
-    data["phone"] = user.phone_number or None
-    data["is_active"] = user.is_active
     data["active_role"] = (
         RoleAssignmentSerializer(assignment).data if assignment else None
     )
@@ -78,19 +75,19 @@ def serialize_auth_user(user, assignment):
 
 
 def _set_refresh_cookie(response, refresh_token):
-    """Write the httponly refresh cookie."""
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=str(refresh_token),
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="Lax",
-        secure=False,
+        # Off only for local http development. This carries a seven-day session.
+        secure=not settings.DEBUG,
     )
 
 
 def _session_response(user, http_status=status.HTTP_200_OK):
-    """Return the one shape a successful sign-in produces, for login and register."""
+    """The one shape a successful sign-in produces. Login and register share it."""
     assignment = get_assignment(user)
     refresh, access = build_tokens_for_assignment(user, assignment)
     response = Response(
@@ -105,7 +102,6 @@ def _session_response(user, http_status=status.HTTP_200_OK):
 
 
 def _get_user(pk):
-    """Fetch a user by primary key, or 404."""
     return get_object_or_404(User, pk=pk)
 
 
@@ -161,21 +157,24 @@ def jwt_refresh(request):
             {"detail": "No refresh token."}, status=status.HTTP_401_UNAUTHORIZED
         )
 
+    # Only the token work is guarded. Answering a failure further down with 401
+    # would send the caller to the login screen for a fault signing in cannot fix.
     try:
         refresh = RefreshToken(raw_refresh)
         refresh.verify()
         refresh.blacklist()
-        user = User.objects.get(pk=refresh[_user_id_claim()])
-        old_role = refresh.payload.get("role")
-        assignment = get_assignment(user)
-        new_refresh, new_access = build_tokens_for_assignment(user, assignment)
-        new_role = assignment.role if assignment else None
+        user = User.objects.get(pk=refresh[api_settings.USER_ID_CLAIM])
     except Exception as exc:
-        _logger.debug("jwt_refresh failed: %s", exc)
+        _logger.debug("jwt_refresh rejected a token: %s", exc)
         return Response(
             {"detail": "Invalid or expired refresh token."},
             status=status.HTTP_401_UNAUTHORIZED,
         )
+
+    old_role = refresh.payload.get("role")
+    assignment = get_assignment(user)
+    new_refresh, new_access = build_tokens_for_assignment(user, assignment)
+    new_role = assignment.role if assignment else None
 
     # roleChanged tells the frontend its cached user object is stale.
     response = Response(
@@ -195,20 +194,11 @@ def jwt_logout(request):
         try:
             RefreshToken(raw_refresh).blacklist()
         except Exception:
+            # An expired or already-blacklisted token is still a signed-out user.
             pass
     response = Response(status=status.HTTP_204_NO_CONTENT)
     response.delete_cookie(REFRESH_COOKIE)
     return response
-
-
-def _user_id_claim():
-    """Return SimpleJWT's user-id claim name."""
-    try:
-        from rest_framework_simplejwt.settings import api_settings
-
-        return api_settings.USER_ID_CLAIM
-    except Exception:
-        return "sub"
 
 
 class MeView(APIView):
@@ -221,13 +211,41 @@ class MeView(APIView):
         return Response(serialize_auth_user(request.user, get_assignment(request.user)))
 
 
+class CampusRosterView(generics.ListAPIView):
+    """GET /campus-roster/ — every campus with the post-holders behind it.
+
+    The admin Campuses screen. `org` serves the campus itself; the head and the
+    technician count are posts, so they are read here, where posts live.
+    """
+
+    serializer_class = CampusRosterSerializer
+    permission_classes = [IsAuthenticated, IsAdminGroup]
+
+    def get_queryset(self):
+        return (
+            Campus.objects.prefetch_related(
+                # One query per page, not per row. At most one row comes back:
+                # `accounts.posts` displaces the incumbent when the post is filled.
+                Prefetch(
+                    "role_assignments",
+                    queryset=RoleAssignment.objects.filter(role="hos").select_related(
+                        "user"
+                    ),
+                    to_attr="hos_posts",
+                )
+            )
+            # People, not links: a technician working two trades here has two rows.
+            .annotate(
+                technician_count=Count("technician_trades__user", distinct=True)
+            ).order_by("name")
+        )
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def public_campus_list(request):
-    """GET /auth/campuses/ — the campus list, public."""
+    """GET /auth/campuses/ — the campus list."""
     # Public, unlike /api/v1/campuses/: a registrant picks a campus with no token.
-    from apps.org.models import Campus
-
     return Response(list(Campus.objects.order_by("name").values("id", "name", "code")))
 
 
@@ -237,14 +255,14 @@ class UserRoleAssignmentView(APIView):
     # Admin only: one Maintenance HOS per campus is an org-level decision.
     permission_classes = [IsAuthenticated, IsAdminGroup]
 
-    def get(self, request, user_pk):
+    def get(self, request, pk):
         """Return the one role as a single-element list, because the frontend reads a list."""
-        ra = get_assignment(_get_user(user_pk))
+        ra = get_assignment(_get_user(pk))
         return Response([RoleAssignmentSerializer(ra).data] if ra else [])
 
-    def post(self, request, user_pk):
+    def post(self, request, pk):
         """Replace the user's role, reporting anyone it displaced."""
-        target = _get_user(user_pk)
+        target = _get_user(pk)
         serializer = RoleAssignmentWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         _, displaced = serializer.save(target, actor=request.user)
@@ -265,25 +283,20 @@ class UserRoleAssignmentView(APIView):
 
 
 class UserListCreateView(generics.ListCreateAPIView):
-    """GET and POST /api/v1/users/ — the admin user list, and account creation.
-
-    Paginated by `ConfigListPagination`, like every other admin config list.
-    """
+    """GET and POST /users/ — the admin user list, and account creation."""
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
-    pagination_class = ConfigListPagination
     queryset = User.objects.select_related(
         "campus", "role_assignment__campus"
     ).order_by("-date_joined")
 
     def get_serializer_class(self):
-        """The write shape for a create, the read shape for a list."""
         if self.request.method == "POST":
             return UserCreateSerializer
         return UserAdminSerializer
 
     def create(self, request, *args, **kwargs):
-        """Create an account and return it in the read shape."""
+        """Answer in the read shape, not the write shape that came in."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(
@@ -293,12 +306,11 @@ class UserListCreateView(generics.ListCreateAPIView):
 
 
 class UserDetailView(APIView):
-    """PATCH and DELETE /api/v1/users/{pk}/."""
+    """PATCH and DELETE /users/{pk}/."""
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
 
     def patch(self, request, pk):
-        """Edit the account's email or campus."""
         serializer = UserUpdateSerializer(
             _get_user(pk), data=request.data, partial=True
         )
@@ -315,3 +327,43 @@ class UserDetailView(APIView):
             )
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ScopedTechnicianRosterView(APIView):
+    """GET /technicians/ — the technicians in the caller's scope, and their trades.
+
+    Includes idle ones, unlike any list derived from tickets. Scope comes from
+    the JWT role and fails closed; `?campus=` and `?trade=` narrow what it
+    returned. The assignment modal must send the trade, or an HOS can give a
+    Plumbing job to a carpenter, who then gets a 403 on their own ticket.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        role = resolve_role(request)
+        links = TechnicianTrade.objects.filter(
+            campus__in=visible_campuses(request.user, role)
+        )
+        if campus_id := request.query_params.get("campus"):
+            links = links.filter(campus_id=campus_id)
+        if trade_id := request.query_params.get("trade"):
+            links = links.filter(trade_id=trade_id)
+        links = links.select_related("trade").order_by("trade__name")
+
+        trades = {}
+        for link in links:
+            ids, names = trades.setdefault(link.user_id, ([], []))
+            if link.trade_id not in ids:
+                ids.append(link.trade_id)
+                names.append(link.trade.name)
+
+        # One query for the roster; serializing `link.user` would re-walk it per link.
+        users = User.objects.filter(pk__in=list(trades)).select_related(
+            "campus", "role_assignment__campus"
+        )
+        rows = UserAdminSerializer(users, many=True).data
+        for row in rows:
+            row["trade_ids"], row["trade_names"] = trades[row["id"]]
+
+        return Response(sorted(rows, key=lambda row: row["full_name"].lower()))

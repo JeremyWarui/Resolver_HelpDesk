@@ -6,28 +6,26 @@ params, and fails closed: a role with no rule sees nothing.
 
 from django.db.models import Exists, OuterRef
 
-from apps.accounts.scope import role_holds_campus, technician_pair_exists
+from apps.accounts.models import TechnicianTrade
+from apps.accounts.scope import role_holds_campus
 
 
 def ticket_base_qs():
     """The one Ticket queryset every read starts from.
 
-    Carries the relations `TicketReadSerializer` touches and the `has_feedback`
-    annotation. A second copy elsewhere costs a query per row.
+    Carries the relations `TicketReadSerializer` touches. A second copy
+    elsewhere costs a query per row.
     """
-    from apps.tickets.models import Ticket, TicketFeedback
+    from apps.tickets.models import Ticket
 
-    return Ticket.objects.annotate(
-        # Exists(), not a join: a join would fan the rows out.
-        has_feedback=Exists(TicketFeedback.objects.filter(ticket=OuterRef("pk"))),
-    ).select_related(
-        "sub_section",
+    return Ticket.objects.select_related(
+        "trade",
         "priority",
         "service_item",
         "assigned_to",
         "raised_by",
         "requester_campus",
-        "location__facility__facility_type",
+        "facility__facility_type",
     )
 
 
@@ -47,12 +45,19 @@ def scoped_ticket_qs(user, role):
         return base.filter(raised_by=user)
 
     if role == "technician":
-        # Two-dimensional (campus AND trade), so a subquery rather than a path.
-        return base.filter(technician_pair_exists(user))
+        # Pairwise, never the cross product: two `__in` lookups would also match
+        # Carpentry@Nairobi + Plumbing@Mombasa against pairs nobody assigned.
+        return base.filter(
+            Exists(
+                TechnicianTrade.objects.filter(
+                    user=user,
+                    campus_id=OuterRef("requester_campus_id"),
+                    trade_id=OuterRef("trade_id"),
+                )
+            )
+        )
 
     if role in ("hos", "hod"):
-        return base.filter(
-            role_holds_campus(user, role, prefix="requester_campus_id")
-        )
+        return base.filter(role_holds_campus(user, role, prefix="requester_campus_id"))
 
     return base.none()

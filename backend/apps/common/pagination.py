@@ -1,33 +1,31 @@
-"""Page-size policies. Config lists and ticket feeds page by number; the
-append-only feeds use a cursor, which is stable while rows are inserted.
+"""Page-size policy. Two shapes, because there are two kinds of list.
+
+`DefaultPagination` is the project default, set in `REST_FRAMEWORK`, so a view
+names a pagination class only when it deviates: an append-only feed, or a list
+short enough not to page at all.
 """
 
-from rest_framework.pagination import PageNumberPagination, CursorPagination
+from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
 
 
-class ConfigListPagination(PageNumberPagination):
-    """For admin config lists — /campuses/, /sections/, /priorities/, etc."""
+class DefaultPagination(PageNumberPagination):
+    """Page numbers, and a client that may ask for a different page size.
 
-    page_size = 20
+    The size itself is `PAGE_SIZE` in settings — one number, in one place. All
+    this adds over DRF's default is letting a caller override it, which the
+    admin tables need and DRF does not enable on its own.
+    """
+
     page_size_query_param = "page_size"
     max_page_size = 100
-
-
-class TicketFeedPagination(PageNumberPagination):
-    """For the ticket queue — activity-first, ordered -updated_at.
-    PageNumber because the sort key moves constantly, ruling out cursor."""
-
-    page_size = 20
-    page_size_query_param = "page_size"
-    max_page_size = 100
-    ordering = "-updated_at"
 
 
 class AppendOnlyFeedPagination(CursorPagination):
     """For immutable append-only feeds: logs, comments, audit trail.
-    Ordered -created_at tie-broken by id.
-    Envelope: { results, meta: { nextCursor, prevCursor, total } }
+
+    A cursor rather than a page number, because rows are inserted while a
+    reader is paging and a page number would repeat or skip one.
     """
 
     page_size = 20

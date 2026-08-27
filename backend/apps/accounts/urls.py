@@ -1,16 +1,22 @@
-"""Account routes, included by resolver/api_urls.py under /api/v1/."""
+"""Account routes, included by resolver/api_urls.py under /api/v1/.
+
+Paths, not a router: none of these is table CRUD. Identity derives from the
+email and role writes go through `posts.assign_role`.
+"""
 
 from django.urls import path
 
-from .views import (
+from apps.accounts.views import (
+    CampusRosterView,
     MeView,
-    UserRoleAssignmentView,
-    UserListCreateView,
+    ScopedTechnicianRosterView,
     UserDetailView,
+    UserListCreateView,
+    UserRoleAssignmentView,
     jwt_login,
-    jwt_register,
-    jwt_refresh,
     jwt_logout,
+    jwt_refresh,
+    jwt_register,
     public_campus_list,
 )
 
@@ -21,11 +27,19 @@ urlpatterns = [
     path("auth/refresh/", jwt_refresh, name="auth-refresh"),
     path("auth/logout/", jwt_logout, name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
+    # `org` serves the campus; the posts behind it are read here.
+    path("campus-roster/", CampusRosterView.as_view(), name="campus-roster"),
     path("users/", UserListCreateView.as_view(), name="user-list"),
     path("users/<int:pk>/", UserDetailView.as_view(), name="user-detail"),
     path(
-        "users/<int:user_pk>/role-assignments/",
+        "users/<int:pk>/role-assignments/",
         UserRoleAssignmentView.as_view(),
         name="user-role-assignments",
+    ),
+    # Read only: `accounts.posts.assign_role` is the only writer of a trade link.
+    path(
+        "technicians/",
+        ScopedTechnicianRosterView.as_view(),
+        name="technician-list",
     ),
 ]

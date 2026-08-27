@@ -1,4 +1,7 @@
-"""Kenyan phone numbers — one definition, used wherever a number is accepted.
+"""Kenyan phone numbers: the single definition of what a number is.
+
+A ticket carries the number the technician should call (`Ticket.contact_phone`),
+which is the only place the system accepts one.
 
 Stored in E.164 (`+254712345678`), so a number is dialable as written.
 

@@ -1,17 +1,16 @@
 """
-The campuses, the trades, and the service catalogue hung off them.
+Structure only: no row here points at a user.
 
-A campus is the whole organisational tree: this is the Maintenance section of
-one department, so a department, a section type and a section per campus would
-each carry exactly one value and encode nothing the campus does not already
-say. Structure only — nothing here points at a user.
+Campus is the whole tree. With one department and one section type, a
+Department, SectionType and Section row per campus would each carry a single
+value and encode nothing the campus does not.
 """
 
 from django.db import models
 
 
 class Campus(models.Model):
-    """A physical campus or branch. The unit every scope rule is drawn on."""
+    """The unit every scope rule is drawn on."""
 
     name = models.CharField(max_length=200, unique=True)
     code = models.CharField(max_length=10, unique=True)  # e.g. "NRB", "MSA"
@@ -26,15 +25,14 @@ class Campus(models.Model):
         return f"{self.code}: {self.name}"
 
 
-class SubSection(models.Model):
-    """A trade: Carpentry, Masonry, Painting, Plumbing, Electrical.
+class Trade(models.Model):
+    """Carpentry, Masonry, Painting, Plumbing, Electrical.
 
-    Global, not per-campus. Every campus runs Maintenance and every campus
-    fields all five trades, so a per-campus trade table would hold the same
-    five rows five times.
+    Global, not per-campus: all five run everywhere, so a per-campus table
+    would hold the same five rows five times. Not a Section: the section is
+    Maintenance, and it has one HOS.
     """
 
-    # No priority field: priority is a judgement about one ticket, not a trade.
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=20, unique=True)
     description = models.TextField(blank=True)
@@ -49,14 +47,12 @@ class SubSection(models.Model):
 
 
 class ServiceItem(models.Model):
-    """A requestable service within a trade.
-
-    Picking one is the only routing decision a requester makes; the trade is
-    derived from it server-side, and the campus from the requester.
+    """The only routing decision a requester makes.
+    Trade is derived from the item server-side, campus from the requester.
     """
 
-    sub_section = models.ForeignKey(
-        SubSection,
+    trade = models.ForeignKey(
+        Trade,
         on_delete=models.CASCADE,
         related_name="service_items",
     )
@@ -66,13 +62,13 @@ class ServiceItem(models.Model):
 
     class Meta:
         app_label = "org"
-        ordering = ["sub_section", "name"]
+        ordering = ["trade", "name"]
         constraints = [
             models.UniqueConstraint(
-                fields=["sub_section", "name"],
-                name="unique_service_item_per_sub_section",
+                fields=["trade", "name"],
+                name="unique_service_item_per_trade",
             )
         ]
 
     def __str__(self):
-        return f"{self.sub_section.name} → {self.name}"
+        return f"{self.trade.name} → {self.name}"

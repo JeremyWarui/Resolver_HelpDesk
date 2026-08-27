@@ -10,6 +10,7 @@ import pytest
 from django.urls import reverse
 
 from tests import factories
+from apps.sla.models import Priority
 from apps.tickets.models import Ticket, TicketLog
 
 pytestmark = pytest.mark.django_db
@@ -96,23 +97,20 @@ def test_raising_priority_tightens_the_sla_from_creation(
     assert nrb_electrical_ticket.resolution_due_at == expected
 
 
-def test_an_hos_can_read_the_priorities(api, nrb_hos, low_priority, critical_priority):
-    """The assignment modal fetches this list so the HOS can set the real
-    priority as they hand the ticket out, so it cannot be admin-only.
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_electrician", "requester"])
+def test_anyone_who_sees_a_ticket_can_read_the_priorities(
+    api, request, role, low_priority, critical_priority
+):
+    """Every ticket view renders a priority badge, and the assignment modal
+    fetches this list so the HOS can set the real priority as they hand the
+    ticket out. Neither can be admin-only.
     """
-    api.force_authenticate(nrb_hos)
+    api.force_authenticate(request.getfixturevalue(role))
     response = api.get(reverse("priority-list"))
 
     assert response.status_code == 200
     names = {row["name"] for row in response.json()["results"]}
     assert {low_priority.name, critical_priority.name} <= names
-
-
-def test_a_technician_can_read_the_priorities(api, nrb_electrician, low_priority):
-    """Every ticket view renders a priority badge, so the vocabulary has to be
-    readable by everyone who can see a ticket."""
-    api.force_authenticate(nrb_electrician)
-    assert api.get(reverse("priority-list")).status_code == 200
 
 
 def test_a_non_admin_still_cannot_change_the_policy(api, nrb_hos, low_priority):
@@ -135,3 +133,90 @@ def test_a_non_admin_still_cannot_change_the_policy(api, nrb_hos, low_priority):
 
     low_priority.refresh_from_db()
     assert low_priority.resolution_minutes != 5
+
+
+def test_the_set_of_priorities_is_fixed(api, admin_user, low_priority):
+    """Not even an admin adds or removes a level.
+
+    A new lowest rank silently becomes `Priority.default()` and changes what
+    every new ticket opens at, with nothing on any trail to say so. Deletion is
+    refused by `Ticket.priority`'s PROTECT anyway, since a ticket references
+    its priority for the life of the record.
+    """
+    api.force_authenticate(admin_user)
+
+    created = api.post(
+        reverse("priority-list"),
+        {
+            "name": "Zeroth",
+            "rank": 0,
+            "response_minutes": 1,
+            "resolution_minutes": 2,
+            "escalate_to_hos_minutes": 1,
+            "escalate_to_hod_minutes": 2,
+        },
+        format="json",
+    )
+    assert created.status_code == 405
+    assert Priority.default().pk == low_priority.pk
+
+    assert api.delete(
+        reverse("priority-detail", args=[low_priority.pk])
+    ).status_code == 405
+
+
+@pytest.mark.parametrize(
+    "payload,rejected_field",
+    [
+        ({"escalate_to_hod_minutes": 10}, "escalate_to_hod_minutes"),
+        ({"escalate_to_hos_minutes": 99999}, "escalate_to_hod_minutes"),
+        ({"resolution_minutes": 5}, "resolution_minutes"),
+        ({"response_minutes": 99999}, "resolution_minutes"),
+    ],
+)
+def test_both_threshold_pairs_stay_in_order(
+    api, admin_user, low_priority, payload, rejected_field
+):
+    """Escalation is a sequence, so an HOD threshold under the HOS one is not a
+    slow escalation but an unordered one. A resolution target inside the
+    response target asks for the job to be done before it is picked up.
+
+    Each case sends one field: a PATCH has to be judged on the row it would
+    produce, not on the half it happens to carry.
+    """
+    api.force_authenticate(admin_user)
+    response = api.patch(
+        reverse("priority-detail", args=[low_priority.pk]), payload, format="json"
+    )
+
+    assert response.status_code == 400, response.json()
+    assert rejected_field in response.json()
+
+    before = low_priority.resolution_minutes
+    low_priority.refresh_from_db()
+    assert low_priority.resolution_minutes == before
+
+
+def test_a_target_of_zero_minutes_is_refused(api, admin_user, low_priority):
+    """A zero window is a ticket born overdue."""
+    api.force_authenticate(admin_user)
+    response = api.patch(
+        reverse("priority-detail", args=[low_priority.pk]),
+        {"response_minutes": 0},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "response_minutes" in response.json()
+
+
+def test_two_priorities_cannot_share_a_name(api, admin_user, low_priority, critical_priority):
+    """The trail records a priority change by name (`TicketLog.from_value`), so
+    two rows called "Low" make it unreadable."""
+    api.force_authenticate(admin_user)
+    response = api.patch(
+        reverse("priority-detail", args=[critical_priority.pk]),
+        {"name": low_priority.name},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "name" in response.json()

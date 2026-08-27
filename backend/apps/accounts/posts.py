@@ -7,8 +7,12 @@ back, so there is no second copy to keep in step.
 
 from django.db import transaction
 
-from apps.accounts.models import RoleAssignment, TechnicianTrade
-from apps.accounts.scope import SCOPE_FIELD_BY_ROLE
+from apps.accounts.models import (
+    SCOPE_FIELD_BY_ROLE,
+    RoleAssignment,
+    TechnicianTrade,
+)
+from apps.org.models import Campus
 
 # One person per supervisor post at a campus, so filling one displaces whoever
 # held it. `manager` is here too: one organisation, one manager.
@@ -16,19 +20,19 @@ SINGLE_HOLDER_ROLES = ("hos", "hod", "manager")
 
 
 def ensure_requester(user):
-    """Guarantee a RoleAssignment exists, defaulting to `user`."""
+    """Every user holds exactly one role, so a new account needs this one."""
     return RoleAssignment.objects.get_or_create(user=user, defaults={"role": "user"})[0]
 
 
 @transaction.atomic
-def assign_role(target, role, *, campus=None, sub_sections=(), actor=None):
+def assign_role(target, role, *, campus=None, trades=(), actor=None):
     """Give a user a post, and report whoever it displaced.
 
-    Returns `(role_assignment, displaced)` — the person this took a supervisor
-    post off, or None. The caller reports them: an admin should not have to
-    infer a demotion from a screen that stops mentioning someone.
+    Returns `(role_assignment, displaced)`. The caller reports the displaced
+    person: an admin should not have to infer a demotion from a screen that
+    stops mentioning someone.
 
-    `campus` is a model, not an id: resolving an id is validation, and belongs
+    `campus` is a model, not an id. Resolving an id is validation, and belongs
     to the serializer that took it from a client.
     """
     displaced = _displace_incumbent(target, role, campus, actor)
@@ -42,19 +46,19 @@ def assign_role(target, role, *, campus=None, sub_sections=(), actor=None):
     # A technician moving campus must not keep the old campus's trades.
     TechnicianTrade.objects.filter(user=target).delete()
     if role == "technician":
-        for sub_section in sub_sections:
-            TechnicianTrade.objects.create(
-                user=target, campus=campus, sub_section=sub_section
-            )
+        for trade in trades:
+            TechnicianTrade.objects.create(user=target, campus=campus, trade=trade)
 
     return assignment, displaced
 
 
-def add_trade(user, campus, sub_section):
-    """Give a technician one more (campus, trade) pair."""
-    # The role row's campus is a single FK and cannot hold two pairs.
+def add_trade(user, campus, trade):
+    """One more (campus, trade) pair.
+
+    Not on the role row: its campus is a single FK and cannot hold two pairs.
+    """
     link, _ = TechnicianTrade.objects.get_or_create(
-        user=user, campus=campus, sub_section=sub_section
+        user=user, campus=campus, trade=trade
     )
     return link
 
@@ -90,8 +94,6 @@ def scope_kwargs_from_ids(role, *, campus_id=None):
     Raises `LookupError` carrying a field name and a message the caller
     renders as a validation error.
     """
-    from apps.org.models import Campus
-
     if SCOPE_FIELD_BY_ROLE.get(role) != "campus":
         return {}
 

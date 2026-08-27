@@ -12,13 +12,13 @@ from typing import Optional
 from django.db.models import Avg, Count, F, OuterRef, Q, Subquery
 from django.utils import timezone
 
-from apps.sla.clock import q_met, q_overdue, q_settled_with_due
 from apps.tickets.constants import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
     TERMINAL_STATUSES,
 )
-from apps.tickets.models import TicketFeedback, TicketLog
+from apps.tickets.models import TicketLog
+from apps.tickets.sla import q_met, q_overdue, q_settled_with_due
 
 
 def resolve_date_range(params: dict) -> dict:
@@ -86,7 +86,7 @@ def resolution_seconds(resolved_at, created_at, accumulated_pause):
 # Each dimension is a key expression, a label expression, and the relation a
 # row must have to be counted at all.
 _DIMENSIONS = {
-    "sub_section": (F("sub_section__id"), F("sub_section__name"), None),
+    "trade": (F("trade__id"), F("trade__name"), None),
     "technician": (F("assigned_to__id"), F("assigned_to__username"), "assigned_to"),
     "status": (F("status"), F("status"), None),
     "campus": (
@@ -95,9 +95,9 @@ _DIMENSIONS = {
         None,
     ),
     "facility": (
-        F("location__facility__id"),
-        F("location__facility__name"),
-        "location__facility",
+        F("facility__id"),
+        F("facility__name"),
+        "facility",
     ),
 }
 
@@ -254,7 +254,7 @@ def aggregate(scoped_qs, date_range: dict, group_by: Optional[str] = None) -> di
         else None
     )
 
-    csat_agg = TicketFeedback.objects.filter(ticket__in=resolved_qs).aggregate(
+    csat_agg = resolved_qs.filter(rated_at__isnull=False).aggregate(
         avg=Avg("rating"), count=Count("id")
     )
 
@@ -272,7 +272,7 @@ def aggregate(scoped_qs, date_range: dict, group_by: Optional[str] = None) -> di
         "csat": round(float(csat_agg["avg"]), 2) if csat_agg["avg"] else None,
         "feedback_count": csat_agg["count"] or 0,
         "demand": {
-            "by_sub_section": breakdown(scoped_qs, date_range, "sub_section"),
+            "by_trade": breakdown(scoped_qs, date_range, "trade"),
             "by_facility": breakdown(scoped_qs, date_range, "facility"),
         },
     }

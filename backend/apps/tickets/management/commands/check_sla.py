@@ -9,8 +9,8 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.notifications.notify import emit_sla_breach
-from apps.sla.clock import q_overdue
 from apps.tickets.models import Ticket, TicketLog
+from apps.tickets.sla import q_overdue
 
 
 class Command(BaseCommand):

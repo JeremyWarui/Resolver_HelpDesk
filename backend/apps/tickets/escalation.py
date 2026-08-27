@@ -2,7 +2,8 @@
 
 Escalation is structural — technician to HOS to HOD — so the thresholds are
 two columns on the ticket's Priority, not a rule table. A vacant post is
-skipped and the ticket carries on upward.
+skipped and the ticket carries on upward rather than resting where nobody is
+watching.
 """
 
 from datetime import timedelta
@@ -11,17 +12,14 @@ from django.utils import timezone
 
 from apps.accounts.scope import post_holder
 from apps.notifications.notify import emit_ticket_escalated
-from apps.tickets.constants import ACTIVE_STATUSES, TERMINAL_STATUSES
+from apps.tickets.constants import ACTIVE_STATUSES, LEVEL_ORDER, TERMINAL_STATUSES
 from apps.tickets.models import Ticket, TicketLog
-
-LEVEL_ORDER = {"technician": 0, "hos": 1, "hod": 2}
 
 
 def resolve_active_holder(campus, level):
     """The user a ticket escalates to at `level`, or None if the post is vacant.
 
-    Reads `RoleAssignment`, the only record of who holds a post. A vacant post
-    means the escalation falls through to the next level up. Both posts are
+    Reads `RoleAssignment`, the only record of who holds a post. Both posts are
     campus-scoped: an HOS and an HOD differ in rank, not in reach.
     """
     if level in ("hos", "hod"):
