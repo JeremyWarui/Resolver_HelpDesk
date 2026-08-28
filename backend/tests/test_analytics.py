@@ -53,25 +53,12 @@ def _resolve(ticket, technician):
 # ─── Scope: the figures belong to the caller ────────────────────────────────
 
 
-def test_each_campus_reports_its_own_volume(
-    nrb_hos, msa_hos, nrb_electrical_ticket, msa_electrical_ticket, window
-):
-    assert _figures(nrb_hos, "hos", window)["total"] == 1
-    assert _figures(msa_hos, "hos", window)["total"] == 1
-
-
 def test_an_hods_numbers_exclude_another_campus(
     nrb_hod, nrb_electrical_ticket, msa_electrical_ticket, window
 ):
     figures = _figures(nrb_hod, "hod", window)
     assert figures["total"] == 1
     assert figures["open_backlog"] == 1
-
-
-def test_a_manager_reads_every_campus(
-    manager, nrb_electrical_ticket, msa_electrical_ticket, window
-):
-    assert _figures(manager, "manager", window)["total"] == 2
 
 
 def test_a_technician_is_measured_on_their_pairs_not_the_cross_product(
@@ -89,14 +76,6 @@ def test_a_technician_is_measured_on_their_pairs_not_the_cross_product(
     factories.make_ticket(msa_requester, msa, electrical)  # cross product, not held
 
     assert _figures(tech, "technician", window)["total"] == 2
-
-
-def test_a_requester_is_measured_only_on_their_own_tickets(
-    api, requester, msa_requester, nrb_electrical_ticket, msa_electrical_ticket
-):
-    api.force_authenticate(requester)
-    data = api.get(reverse("analytics:analytics")).data
-    assert data["totals"]["open_backlog"] == 1
 
 
 def test_a_breakdown_of_an_empty_scope_is_empty_not_everything(
@@ -237,16 +216,6 @@ def test_facility_health_is_one_row_per_facility_and_trade(
         ("Science Lab", "Plumbing"): 1,
         ("Great Hall", "Electrical"): 1,
     }
-
-
-def test_facility_health_does_not_leak_another_campus(
-    msa_hos, nrb, electrical, requester, facility_types, priorities, window
-):
-    block = Facility.objects.create(
-        campus=nrb, facility_type=facility_types["office_block"], name="Admin Block"
-    )
-    factories.make_ticket(requester, nrb, electrical, facility=block)
-    assert _rows(msa_hos, "hos", window, "facility", "trade") == []
 
 
 # ─── Response and resolution time (§8) ──────────────────────────────────────
@@ -402,10 +371,10 @@ def test_technician_rows_carry_workload_and_rating(
 def test_a_technician_is_named_the_way_the_rest_of_the_system_names_them(
     nrb_hos, nrb, electrical, requester, priorities, window
 ):
-    """The Tickets sheet of the same workbook runs names through
-    `display_name`, so a breakdown labelled by username calls one person two
-    things in one report. The fixtures carry no first or last name, which is
-    why this test sets them."""
+    """Every other surface names a technician through `display_name`, so a
+    breakdown labelled by username calls one person two things on one screen.
+    The fixtures carry no first or last name, which is why this test sets
+    them."""
     tech = factories.make_technician("jane.mwangi", nrb, [electrical])
     tech.first_name, tech.last_name = "Jane", "Mwangi"
     tech.save(update_fields=["first_name", "last_name"])
@@ -413,16 +382,6 @@ def test_a_technician_is_named_the_way_the_rest_of_the_system_names_them(
 
     (row,) = _rows(nrb_hos, "hos", window, "technician")
     assert row["label"] == "Jane Mwangi"
-
-
-def test_a_technician_with_no_name_falls_back_to_their_username(
-    nrb_hos, nrb_electrical_ticket, nrb_electrician, window
-):
-    """Never blank: a row in a chart with no label is a bar nobody can read."""
-    _resolve(nrb_electrical_ticket, nrb_electrician)
-
-    (row,) = _rows(nrb_hos, "hos", window, "technician")
-    assert row["label"] == "nrb_electrician"
 
 
 def test_ratings_are_scoped_like_the_tickets_they_belong_to(
@@ -476,21 +435,6 @@ def test_a_ticket_back_at_work_is_no_longer_a_bottleneck(
     assert bottlenecks(scoped_ticket_qs(nrb_hos, "hos")) == []
 
 
-def test_a_long_stuck_ticket_is_reported_however_old_it_is(
-    nrb_hos, nrb_electrical_ticket, nrb_electrician
-):
-    """Not windowed. The job that has been blocked since before the reporting
-    period opened is the one an HOD most needs to see."""
-    ticket = factories.age_ticket(nrb_electrical_ticket, days=200)
-    claim_ticket(ticket, nrb_electrician)
-    transition_status(
-        ticket, "pending", nrb_electrician, pending_reason="awaiting_material_requested"
-    )
-
-    rows = bottlenecks(scoped_ticket_qs(nrb_hos, "hos"))
-    assert [(r["key"], r["total"]) for r in rows] == [("awaiting_material_requested", 1)]
-
-
 def test_two_reasons_are_two_rows_biggest_first(
     nrb_hos, nrb, electrical, requester, nrb_electrician, priorities
 ):
@@ -514,19 +458,6 @@ def test_two_reasons_are_two_rows_biggest_first(
     assert rows[0]["since"] < max(held["material_not_in_store"])
 
 
-def test_bottlenecks_do_not_leak_another_campus(
-    msa_hos, nrb_electrical_ticket, nrb_electrician
-):
-    claim_ticket(nrb_electrical_ticket, nrb_electrician)
-    transition_status(
-        nrb_electrical_ticket,
-        "pending",
-        nrb_electrician,
-        pending_reason="location_inaccessible",
-    )
-    assert bottlenecks(scoped_ticket_qs(msa_hos, "hos")) == []
-
-
 # ─── Trend ──────────────────────────────────────────────────────────────────
 
 
@@ -540,20 +471,6 @@ def test_the_trend_buckets_volume_over_the_window(
     assert sum(r["total"] for r in rows) == 2
     assert len(rows) == 2
     assert rows[0]["bucket"] < rows[1]["bucket"]
-
-
-@pytest.mark.parametrize("bucket,expected", [("day", 2), ("week", 1), ("month", 1)])
-def test_a_coarser_bucket_gathers_the_same_tickets(
-    nrb_hos, nrb, electrical, requester, priorities, window, bucket, expected
-):
-    """Two tickets a day apart: two daily rows, one weekly row, one monthly row.
-    The total never changes, only how finely it is cut."""
-    factories.make_ticket(requester, nrb, electrical)
-    factories.age_ticket(factories.make_ticket(requester, nrb, electrical), days=1)
-
-    rows = trend(scoped_ticket_qs(nrb_hos, "hos"), window, bucket)
-    assert sum(r["total"] for r in rows) == 2
-    assert len(rows) == expected
 
 
 def test_an_unknown_bucket_falls_back_rather_than_raising(

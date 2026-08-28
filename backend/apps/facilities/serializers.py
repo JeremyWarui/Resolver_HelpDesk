@@ -34,7 +34,6 @@ class FacilitySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
-            "code",
             "campus",
             "campus_name",
             "facility_type",

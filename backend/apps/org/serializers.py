@@ -22,7 +22,7 @@ class ServiceItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ServiceItem
-        fields = ["id", "trade", "name", "description", "is_active"]
+        fields = ["id", "trade", "name", "is_active"]
 
 
 class TradeSerializer(serializers.ModelSerializer):
@@ -32,4 +32,4 @@ class TradeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trade
-        fields = ["id", "name", "code", "description", "is_active", "items"]
+        fields = ["id", "name", "code", "is_active", "items"]

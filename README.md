@@ -15,11 +15,9 @@ complexity that the current need does not justify.
 Resolver_HelpDesk/
 ├── backend/     Django 6.0 + DRF 3.16 + PostgreSQL
 ├── frontend/    React + TypeScript + Vite
-├── docs/
-│   ├── architecture/   Architecture assessment, proposed lean architecture
-│   ├── migration/      Gap analysis, migration roadmap
-│   ├── refactoring/    Refactoring matrix, per-module decisions
-│   └── future/         Planned Administration modules
+├── docs/        Briefing and the reports styling guide
+├── CLAUDE.md    How the system is built
+├── REVIEW.md    What the system must do
 ├── README.md
 └── CHANGELOG.md
 ```
@@ -40,20 +38,21 @@ enterprise Service Desk platform. Build artefacts and dependency trees
 
 ## Status
 
-**Built.** Backend and frontend are ported and reconciled against each other:
-221 backend tests pass, the frontend typechecks and builds, and every
-`apiClient` path the frontend calls resolves to a Django route.
+**Backend reviewed and trimmed against `REVIEW.md`; frontend not yet.** The
+backend suite is green (186 test functions) and the seed runs end to end. The
+frontend still calls the pre-trim contract in several places and is the next
+piece of work.
 
-`docs/architecture/target-architecture.md` is the as-built architecture and the
-place to start. `CLAUDE.md` is the working guide.
+`REVIEW.md` is what the system is required to do. `CLAUDE.md` is the working
+guide and the architecture reference — start there.
 
-What changed from the reference implementation, in one paragraph: the catalogue
-lost a level (`ServiceCategory` folded into `SubSection`, which is also the
-technician scoping boundary) and lost priority entirely; roles collapsed to one
-per user with no cover and no switching; technician scope became two-dimensional
-(campus **and** trade), enforced pairwise; every ticket now carries a location,
-chosen from six facility types; WebSockets, web push and per-campus workflow
-configuration are gone.
+What this is, in one paragraph: one department (Administration), one section
+type (Maintenance), five trades, five campuses. Roles are one per user, with no
+cover and no switching. Technician scope is two-dimensional — campus **and**
+trade — and enforced pairwise. Every ticket carries a location chosen from six
+facility types, and a priority the HOS sets at assignment. Escalation is
+structural: technician → HOS → HOD. Notifications are polled; there are no
+WebSockets, no web push and no per-campus workflow configuration.
 
 ## Getting started
 
@@ -71,12 +70,12 @@ pytest -q --no-cov
 ```
 
 `seed` is idempotent and refuses to run without `SEED_DEFAULT_PASSWORD`. It
-creates 5 campuses, 5 trades, 28 service items, 37 facilities, 39 users and 45
-demo tickets spread over the previous fortnight.
+creates 5 campuses, 5 trades, 28 service items, 56 facilities, 41 users and 168
+demo tickets spread over the previous 90 days.
 
 Sign-in is by email address, and a seeded person's address is their name —
-`peter.kimani@ksg.ac.ke` is the Nairobi HOS. The command prints one login per
-role when it finishes, since the role is no longer readable off the address.
+`peter.kimani@ksg.ac.ke` is the Nairobi HOS. The address does not say what
+anyone is, so the command prints one login per role when it finishes.
 
 ### Frontend
 

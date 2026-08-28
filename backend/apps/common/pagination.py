@@ -6,7 +6,6 @@ short enough not to page at all.
 """
 
 from rest_framework.pagination import CursorPagination, PageNumberPagination
-from rest_framework.response import Response
 
 
 class DefaultPagination(PageNumberPagination):
@@ -32,15 +31,3 @@ class AppendOnlyFeedPagination(CursorPagination):
     page_size_query_param = "page_size"
     max_page_size = 100
     ordering = ("-created_at", "id")
-
-    def get_paginated_response(self, data):
-        return Response(
-            {
-                "results": data,
-                "meta": {
-                    "nextCursor": self.get_next_link(),
-                    "prevCursor": self.get_previous_link(),
-                    "total": None,  # cursor pagination does not provide a total count
-                },
-            }
-        )

@@ -27,7 +27,6 @@ from apps.tickets.models import (
 )
 from apps.tickets.constants import ALL_STATUSES, PENDING_REASON_CODES
 from apps.tickets.sla import is_overdue
-from apps.accounts.identity import display_name
 from apps.accounts.serializers import UserMinSerializer
 
 User = get_user_model()
@@ -82,9 +81,11 @@ class _TicketLocationSerializer(serializers.Serializer):
 
 
 class TicketReadSerializer(serializers.ModelSerializer):
-    """A ticket as a list row: everything the table shows, nothing it does not.
+    """A ticket as a list row: what a table cell renders, and nothing else.
 
-    The base for the detail shape too, so a field added here appears in both.
+    Every field here earns a column. The SLA machinery behind "late" and the
+    full location are what a reader opens the ticket for, so they sit on the
+    detail shape.
     """
 
     service_item = _ServiceItemMinSerializer(read_only=True)
@@ -92,11 +93,11 @@ class TicketReadSerializer(serializers.ModelSerializer):
     priority = _PriorityMinSerializer(read_only=True)
     assigned_to = UserMinSerializer(read_only=True, allow_null=True)
     raised_by = UserMinSerializer(read_only=True)
-    raised_by_id = serializers.IntegerField(read_only=True)
     requester_campus = _CampusMinSerializer(read_only=True)
-    location = _TicketLocationSerializer(source="*", read_only=True)
+    facility = serializers.CharField(source="facility.name", read_only=True)
     is_breaching = serializers.SerializerMethodField()
     has_feedback = serializers.SerializerMethodField()
+    # The label, not the code: a cell renders words, and filtering is server-side.
     pending_reason_display = serializers.CharField(
         source="get_pending_reason_display", read_only=True
     )
@@ -107,29 +108,23 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "id",
             "ticket_no",
             "raised_by",
-            "raised_by_id",
             "requester_campus",
             "service_item",
             "trade",
             "priority",
             "assigned_to",
+            "facility",
             "description",
             "status",
+            # An HOS's job includes seeing what escalated (REVIEW.md §4).
             "current_level",
-            "response_due_at",
             "resolution_due_at",
-            "paused_at",
-            "accumulated_pause",
-            "pending_reason",
             "pending_reason_display",
-            "pending_reason_note",
             "is_breaching",
             "has_feedback",
             "created_at",
             "updated_at",
             "resolved_at",
-            "closed_at",
-            "location",
         ]
         read_only_fields = fields
 
@@ -143,17 +138,27 @@ class TicketReadSerializer(serializers.ModelSerializer):
 
 
 class TicketDetailReadSerializer(TicketReadSerializer):
-    """Detail-only extension: submitted feedback and the requester's contact number.
+    """One ticket, in full: the list row plus everything a reader opened it for.
 
-    `contact_phone` is deliberately absent from the list serializer. A
-    technician opening one ticket needs a number to call; nobody needs every
-    requester's number in a single paginated response.
+    `contact_phone` is here and not on the list: nobody needs every requester's
+    number in one paginated response.
     """
 
     feedback = serializers.SerializerMethodField()
+    location = _TicketLocationSerializer(source="*", read_only=True)
 
     class Meta(TicketReadSerializer.Meta):
-        fields = TicketReadSerializer.Meta.fields + ["feedback", "contact_phone"]
+        fields = TicketReadSerializer.Meta.fields + [
+            "feedback",
+            "contact_phone",
+            "location",
+            "response_due_at",
+            "paused_at",
+            "accumulated_pause",
+            "pending_reason",
+            "pending_reason_note",
+            "closed_at",
+        ]
         read_only_fields = fields
 
     def get_feedback(self, ticket):
@@ -196,8 +201,11 @@ class TicketCreateSerializer(serializers.Serializer):
     same fault cannot land in different queues.
     """
 
+    # The catalogue hides retired rows; the pk is client-supplied, so re-check.
     service_item = serializers.PrimaryKeyRelatedField(
-        queryset=ServiceItem.objects.select_related("trade")
+        queryset=ServiceItem.objects.filter(
+            is_active=True, trade__is_active=True
+        ).select_related("trade")
     )
     location = LocationInputSerializer()
     description = serializers.CharField(required=False, allow_blank=True, default="")
@@ -342,8 +350,8 @@ class TicketCommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TicketComment
-        fields = ["id", "author", "body", "created_at", "updated_at"]
-        read_only_fields = ["id", "author", "created_at", "updated_at"]
+        fields = ["id", "author", "body", "created_at"]
+        read_only_fields = fields
 
 
 class TicketFeedbackSerializer(serializers.Serializer):
@@ -435,47 +443,15 @@ class TicketLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class AuditLogRowSerializer(serializers.ModelSerializer):
+class AuditLogRowSerializer(TicketLogSerializer):
     """A TicketLog row as the admin audit table lists it.
 
-    Wider than the per-ticket timeline in one respect only — the ticket number,
-    because the admin is reading across every ticket.
+    The timeline shape plus the ticket number, because the admin reads across
+    every ticket rather than down one.
     """
 
-    actor = serializers.SerializerMethodField()
-    actor_username = serializers.CharField(
-        source="actor.username", read_only=True, allow_null=True
-    )
-    action = serializers.CharField(source="event_type", read_only=True)
     ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
-    detail = serializers.SerializerMethodField()
 
-    class Meta:
-        model = TicketLog
-        fields = [
-            "id",
-            "actor",
-            "actor_username",
-            "action",
-            "ticket_no",
-            "detail",
-            "reason",
-            "created_at",
-        ]
+    class Meta(TicketLogSerializer.Meta):
+        fields = TicketLogSerializer.Meta.fields + ["ticket_no"]
         read_only_fields = fields
-
-    def get_actor(self, obj):
-        """The person, by name — an audit log is read by humans looking for who.
-
-        The username travels beside it: two people can share a name, and it is the
-        stable handle.
-        """
-        return display_name(obj.actor) or None
-
-    def get_detail(self, obj):
-        parts = []
-        if obj.from_value:
-            parts.append(f"from: {obj.from_value}")
-        if obj.to_value:
-            parts.append(f"to: {obj.to_value}")
-        return " | ".join(parts)

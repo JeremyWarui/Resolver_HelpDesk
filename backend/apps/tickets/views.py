@@ -62,7 +62,6 @@ from apps.tickets.sla import q_overdue
 from apps.common.pagination import AppendOnlyFeedPagination
 from apps.common.roles import (
     IsAdminGroup,
-    STAFF_ROLES,
     TICKET_SUPERVISOR_ROLES,
     resolve_role,
 )
@@ -71,14 +70,12 @@ from apps.accounts.identity import display_name_parts
 
 
 def get_ticket_for_request_or_403(
-    request, pk, *, allow_requester=True, staff_only=False, qs=None
+    request, pk, *, allow_requester=True, supervisor_only=False, qs=None
 ):
     """Fetch a ticket, or 403. The IDOR guard every action view goes through.
 
-    Your own ticket, or one inside your role's scope. Fails closed otherwise.
-
-    `staff_only` closes the first door: a requester's own ticket is inside the
-    `user` scope, so without it they could assign their own job.
+    Your own ticket, or one inside your role's scope; `supervisor_only` narrows
+    that to the roles that may direct a ticket. Fails closed.
     """
     ticket = get_object_or_404(qs if qs is not None else Ticket, pk=pk)
 
@@ -86,11 +83,21 @@ def get_ticket_for_request_or_403(
         return ticket
 
     role = resolve_role(request)
-    if staff_only and role not in STAFF_ROLES:
+    if supervisor_only and role not in TICKET_SUPERVISOR_ROLES:
         raise PermissionDenied("You do not have permission to perform this action.")
     if not scoped_ticket_qs(request.user, role).filter(pk=ticket.pk).exists():
         raise PermissionDenied("You do not have access to this ticket.")
     return ticket
+
+
+def refuse_read_only_roles(request):
+    """Refuse the manager any write on a ticket.
+
+    Their scope is every campus and their authority none of it, so scope alone
+    lets them through.
+    """
+    if resolve_role(request) == "manager":
+        raise PermissionDenied("A manager has read-only oversight of tickets.")
 
 
 class TicketStatusView(APIView):
@@ -140,7 +147,10 @@ class TicketStatusView(APIView):
 
 
 class TicketAssignView(APIView):
-    """POST /tickets/{pk}/assign/ — hand a ticket to a technician, and set its priority."""
+    """POST /tickets/{pk}/assign/ — hand a ticket to a technician, and set its priority.
+
+    Supervisors only: who holds a job and how urgent it is are the HOS's calls.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -150,7 +160,7 @@ class TicketAssignView(APIView):
             request,
             pk,
             allow_requester=False,
-            staff_only=True,
+            supervisor_only=True,
             qs=Ticket.objects.select_related("service_item", "assigned_to", "priority"),
         )
         serializer = TicketAssignSerializer(
@@ -161,7 +171,12 @@ class TicketAssignView(APIView):
         new_priority = serializer.validated_data.get("priority")
         note = serializer.validated_data.get("note", "")
 
-        assign_ticket(ticket, assignee, request.user, priority=new_priority, note=note)
+        try:
+            assign_ticket(
+                ticket, assignee, request.user, priority=new_priority, note=note
+            )
+        except TransitionError as e:
+            return Response({"detail": str(e)}, status=400)
 
         return Response(
             {
@@ -231,8 +246,7 @@ class TicketCommentListCreateView(generics.ListCreateAPIView):
         ticket = get_ticket_for_request_or_403(self.request, self.kwargs["pk"])
         if ticket.raised_by_id == self.request.user.pk:
             raise PermissionDenied("Comments on a ticket are not shown to its raiser.")
-        if resolve_role(self.request) == "manager":
-            raise PermissionDenied("A manager has read-only oversight of tickets.")
+        refuse_read_only_roles(self.request)
         return ticket
 
     def perform_create(self, serializer):
@@ -518,8 +532,8 @@ class TicketDetailView(generics.RetrieveAPIView):
 class TicketAttachmentView(APIView):
     """GET and POST /tickets/{pk}/attachments/ — the files on one ticket.
 
-    Anyone who can reach the ticket can add and read files on it. Deleting is
-    narrower and lives on its own route: a removed photo is evidence gone.
+    Reachable means readable; acting on the ticket means you may add one.
+    Deleting is narrower and lives on its own route.
     """
 
     permission_classes = [IsAuthenticated]
@@ -536,6 +550,8 @@ class TicketAttachmentView(APIView):
     def post(self, request, pk):
         """Upload one or more files, compressing each before it is stored."""
         ticket = get_ticket_for_request_or_403(request, pk)
+        # An upload is a write on the ticket.
+        refuse_read_only_roles(request)
 
         current_count = ticket.attachments.count()
         if current_count >= MAX_ATTACHMENTS_PER_TICKET:

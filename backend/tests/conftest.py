@@ -1,11 +1,9 @@
-"""Shared fixture graph. A technician is scoped by `(section, trade)` —
-campus *and* trade — so one campus or one trade would prove nothing.
+"""Shared fixture graph. A technician is scoped by the (campus, trade)
+pairs they hold, so one campus or one trade would prove nothing.
 
-    NRB ─ Administration ─ Maintenance ─┬─ Electrical  ← nrb_electrician
-                                        ├─ Plumbing    ← nrb_plumber
-                                        └─ Carpentry, Masonry, Painting
-    MSA ─ Administration ─ Maintenance ─┬─ Electrical  ← msa_electrician
-                                        └─ …
+    NRB ─┬─ Electrical  ← nrb_electrician
+         └─ Plumbing    ← nrb_plumber
+    MSA ─── Electrical  ← msa_electrician
 
 `nrb_electrician` must not see `msa_electrical_ticket` (wrong campus, right
 trade) or `nrb_plumbing_ticket` (right campus, wrong trade).
@@ -55,11 +53,6 @@ def electrical(db):
 @pytest.fixture
 def plumbing(db):
     return factories.make_trade("Plumbing", "PLUMB")
-
-
-@pytest.fixture
-def carpentry(db):
-    return factories.make_trade("Carpentry", "CARP")
 
 
 @pytest.fixture

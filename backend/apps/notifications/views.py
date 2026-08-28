@@ -9,27 +9,36 @@ from apps.notifications.models import Notification
 
 
 def _serialize_notification(n):
+    """One notification row, in the snake_case every other endpoint uses."""
     return {
-        "id": str(n.pk),
-        "eventType": n.event_type,
+        "id": n.pk,
+        "event_type": n.event_type,
         "title": n.title,
         "body": n.body,
-        "ticketId": str(n.ticket_id) if n.ticket_id else None,
+        "ticket_id": n.ticket_id,
         "read": n.read,
-        "createdAt": n.created_at.isoformat(),
+        "created_at": n.created_at.isoformat(),
     }
 
 
 class NotificationListView(APIView):
+    """GET /notifications/ — the caller's own feed, newest first.
+
+    `unread_count` covers the whole feed so the bell badge does not stop at
+    the page.
+    """
+
     permission_classes = [IsAuthenticated]
 
+    FEED_LIMIT = 50
+
     def get(self, request):
-        qs = Notification.objects.filter(user=request.user).order_by("-created_at")[:50]
-        data = [_serialize_notification(n) for n in qs]
+        own = Notification.objects.filter(user=request.user)
+        rows = own.order_by("-created_at")[: self.FEED_LIMIT]
         return Response(
             {
-                "data": data,
-                "unreadCount": sum(1 for n in data if not n["read"]),
+                "results": [_serialize_notification(n) for n in rows],
+                "unread_count": own.filter(read=False).count(),
             }
         )
 

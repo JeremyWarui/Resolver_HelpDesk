@@ -35,7 +35,6 @@ class Trade(models.Model):
 
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=20, unique=True)
-    description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -57,7 +56,6 @@ class ServiceItem(models.Model):
         related_name="service_items",
     )
     name = models.CharField(max_length=200)
-    description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

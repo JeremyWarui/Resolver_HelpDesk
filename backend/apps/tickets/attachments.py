@@ -56,7 +56,10 @@ def process_upload(file_obj, content_type: str) -> tuple[bytes, str]:
 
 
 def _compress_image(raw: bytes, content_type: str) -> tuple[bytes, str]:
-    """Resize and recompress an image. Returns (bytes, final_content_type)."""
+    """Resize and recompress an image, keeping its format.
+
+    Returns (bytes, final_content_type).
+    """
     from PIL import Image, ImageOps  # deferred: only image uploads need PIL
 
     img = Image.open(io.BytesIO(raw))
@@ -69,25 +72,11 @@ def _compress_image(raw: bytes, content_type: str) -> tuple[bytes, str]:
         ratio = IMAGE_MAX_DIMENSION / max(w, h)
         img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
 
-    if content_type == "image/png":
-        has_alpha = img.mode in ("RGBA", "LA") or (
-            img.mode == "P" and "transparency" in img.info
-        )
-        if has_alpha:
-            out = io.BytesIO()
-            img.save(out, format="PNG", optimize=True)
-            return out.getvalue(), "image/png"
-        # A screenshot is smaller as JPEG, a flat diagram is not, so try both.
-        png_buf = io.BytesIO()
-        img.save(png_buf, format="PNG", optimize=True)
-        jpg_buf = io.BytesIO()
-        img.convert("RGB").save(
-            jpg_buf, format="JPEG", quality=IMAGE_QUALITY, optimize=True
-        )
-        if len(png_buf.getvalue()) <= len(jpg_buf.getvalue()):
-            return png_buf.getvalue(), "image/png"
-        return jpg_buf.getvalue(), "image/jpeg"
-
     out = io.BytesIO()
+    if content_type == "image/png":
+        img.save(out, format="PNG", optimize=True)
+        return out.getvalue(), "image/png"
+
+    # JPEG has no alpha channel, so flatten before encoding.
     img.convert("RGB").save(out, format="JPEG", quality=IMAGE_QUALITY, optimize=True)
     return out.getvalue(), "image/jpeg"

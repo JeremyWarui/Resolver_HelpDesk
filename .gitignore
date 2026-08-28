@@ -31,3 +31,6 @@ playwright-report/
 .idea/
 .DS_Store
 *.swp
+
+# Visual Studio
+.vs/

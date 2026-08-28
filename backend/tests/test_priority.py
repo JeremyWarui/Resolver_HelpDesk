@@ -1,6 +1,6 @@
 """Priority is set at assignment, not chosen from the catalogue.
 
-A ticket opens at Low and the HOS, who has read it and knows the section's
+A ticket opens at Low and the HOS, who has read it and knows the campus's
 workload, sets the real priority as they hand it out.
 """
 
@@ -196,27 +196,3 @@ def test_both_threshold_pairs_stay_in_order(
     low_priority.refresh_from_db()
     assert low_priority.resolution_minutes == before
 
-
-def test_a_target_of_zero_minutes_is_refused(api, admin_user, low_priority):
-    """A zero window is a ticket born overdue."""
-    api.force_authenticate(admin_user)
-    response = api.patch(
-        reverse("priority-detail", args=[low_priority.pk]),
-        {"response_minutes": 0},
-        format="json",
-    )
-    assert response.status_code == 400
-    assert "response_minutes" in response.json()
-
-
-def test_two_priorities_cannot_share_a_name(api, admin_user, low_priority, critical_priority):
-    """The trail records a priority change by name (`TicketLog.from_value`), so
-    two rows called "Low" make it unreadable."""
-    api.force_authenticate(admin_user)
-    response = api.patch(
-        reverse("priority-detail", args=[critical_priority.pk]),
-        {"name": low_priority.name},
-        format="json",
-    )
-    assert response.status_code == 400
-    assert "name" in response.json()

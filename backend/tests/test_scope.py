@@ -38,7 +38,7 @@ def test_technician_does_not_see_another_trade_at_own_campus(
     nrb_electrical_ticket,
     nrb_plumbing_ticket,
 ):
-    """Right campus, wrong trade — the boundary a section-only scope cannot
+    """Right campus, wrong trade — the boundary a campus-only scope cannot
     see at all.
     """
     assert nrb_plumbing_ticket.id not in visible(nrb_electrician, "technician")
@@ -90,7 +90,7 @@ def test_removing_a_trade_link_revokes_access(
     assert visible(nrb_electrician, "technician") == set()
 
 
-def test_hos_sees_every_trade_in_own_section(
+def test_hos_sees_every_trade_at_own_campus(
     nrb_hos,
     nrb_electrical_ticket,
     nrb_plumbing_ticket,

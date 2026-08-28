@@ -21,7 +21,6 @@ def wamalwa(nrb, facility_types):
         campus=nrb,
         facility_type=facility_types["hostel"],
         name="Wamalwa",
-        code="NRB-WMW",
     )
 
 
@@ -31,7 +30,6 @@ def admin_block(nrb, facility_types):
         campus=nrb,
         facility_type=facility_types["office_block"],
         name="Administration Block",
-        code="NRB-ADMIN",
     )
 
 
@@ -50,7 +48,6 @@ def test_equipment_is_identified_by_the_asset_itself(nrb, facility_types):
         campus=nrb,
         facility_type=facility_types["equipment"],
         name="Standby Generator",
-        code="NRB-GEN",
     )
     result = validate_location(generator, {}, nrb.id)
     assert result["facility"] == generator

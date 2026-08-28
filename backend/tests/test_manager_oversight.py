@@ -108,3 +108,37 @@ def test_a_manager_reads_the_reporting_for_every_campus(
 
     assert body.status_code == 200
     assert body.data["totals"]["open_backlog"] == 2
+
+
+def test_a_manager_cannot_upload_an_attachment(
+    api,
+    manager,
+    nrb_electrical_ticket,
+    settings,
+    tmp_path,
+):
+    """Adding evidence to a ticket is working it, not overseeing it.
+
+    The manager passes every scope check here — they read every campus — so
+    without the role refusal an upload is the one write that reaches the
+    ticket. Reading the files stays open, which the assertion below holds.
+    """
+    settings.MEDIA_ROOT = str(tmp_path)
+    from tests.test_attachments import an_image
+
+    api.force_authenticate(manager)
+    response = api.post(
+        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
+        {"files": an_image()},
+        format="multipart",
+    )
+
+    assert response.status_code == 403
+    assert nrb_electrical_ticket.attachments.count() == 0
+
+    assert (
+        api.get(
+            reverse("ticket-attachments", args=[nrb_electrical_ticket.pk])
+        ).status_code
+        == 200
+    )

@@ -12,9 +12,8 @@ class FacilityType(models.Model):
     """
 
     name = models.CharField(max_length=80, unique=True)
-    code = models.CharField(
-        max_length=20, unique=True
-    )  # stable key used to pick the location form
+    # Stable key: picks the location form, and keys into TYPE_SPECS.
+    code = models.CharField(max_length=20, unique=True)
 
     class Meta:
         app_label = "facilities"
@@ -38,7 +37,6 @@ class Facility(models.Model):
         related_name="facilities",
     )
     name = models.CharField(max_length=160)
-    code = models.CharField(max_length=40, blank=True)
 
     class Meta:
         app_label = "facilities"

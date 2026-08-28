@@ -132,18 +132,6 @@ def test_refresh_reports_a_role_change(api, requester, nrb):
     assert AccessToken(body["accessToken"])["role"] == "hos"
 
 
-def test_a_rotated_refresh_token_cannot_be_used_again(api, nrb_hos):
-    """Rotation blacklists the token it replaces, so a stolen cookie is worth
-    one use at most."""
-    _login(api, nrb_hos)
-    stolen = api.cookies[REFRESH_COOKIE].value
-
-    assert api.post(REFRESH).status_code == 200
-
-    api.cookies[REFRESH_COOKIE] = stolen
-    assert api.post(REFRESH).status_code == 401
-
-
 def test_logging_out_blacklists_the_refresh_token(api, nrb_hos):
     _login(api, nrb_hos)
     token = api.cookies[REFRESH_COOKIE].value

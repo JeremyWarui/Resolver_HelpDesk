@@ -423,3 +423,36 @@ def _overdue_ids(api):
     response = api.get(reverse("ticket-list"), {"overdue": "1"})
     assert response.status_code == 200
     return {row["ticket_no"] for row in response.json()["results"]}
+
+
+def test_a_settled_ticket_cannot_be_assigned(
+    api,
+    nrb_hos,
+    nrb_electrician,
+    nrb_electrical_ticket,
+):
+    """Assignment is for live work. A finished ticket is reopened, not handed on.
+
+    A settled ticket has already been judged against `resolved_at`. Assigning
+    one names a technician for a job that is over and notifies them about it;
+    with a priority attached it also re-bases both due dates underneath a
+    verdict already reached.
+    """
+    ticket = nrb_electrical_ticket
+    ticket.status = "closed"
+    ticket.save(update_fields=["status"])
+
+    api.force_authenticate(nrb_hos)
+    response = api.post(
+        reverse("ticket-assign", args=[ticket.pk]),
+        {"assigned_to": nrb_electrician.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Reopen it first" in response.data["detail"]
+    ticket.refresh_from_db()
+    assert ticket.assigned_to_id is None
+    assert ticket.status == "closed"
+    assert not ticket.logs.filter(event_type__in=("assigned", "reassigned")).exists()
+

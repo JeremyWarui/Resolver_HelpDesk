@@ -7,28 +7,28 @@ from apps.accounts.identity import display_name, identity_from_email
 from apps.accounts.models import ROLE_CHOICES, RoleAssignment, TechnicianTrade
 from apps.accounts.posts import assign_role, ensure_requester, scope_kwargs_from_ids
 from apps.org.models import Campus, Trade
+from apps.org.serializers import CampusSerializer
 
 User = get_user_model()
 
 
-class CampusRosterSerializer(serializers.Serializer):
+class CampusRosterSerializer(CampusSerializer):
     """A campus and who staffs it, for the admin Campuses screen.
 
-    Lives here rather than in `org` because both people fields are posts, and
-    `RoleAssignment` is the only record of a post. `org` holds structure and
-    names no user, which is what keeps the two apps one-directional.
-
-    Both fields come from `CampusRosterView`'s queryset, so a page of campuses
-    costs no query per row.
+    Staffing lives here, not in `org`: a post is a `RoleAssignment`, and `org`
+    reading one would close an org → accounts → org cycle.
     """
 
-    id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField(read_only=True)
-    code = serializers.CharField(read_only=True)
-    location = serializers.CharField(read_only=True)
     hos = serializers.SerializerMethodField()
     hos_name = serializers.SerializerMethodField()
     technician_count = serializers.IntegerField(read_only=True)
+
+    class Meta(CampusSerializer.Meta):
+        fields = CampusSerializer.Meta.fields + [
+            "hos",
+            "hos_name",
+            "technician_count",
+        ]
 
     def get_hos(self, campus):
         holder = self._hos(campus)

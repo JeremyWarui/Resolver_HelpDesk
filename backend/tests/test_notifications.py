@@ -71,8 +71,8 @@ def test_the_feed_is_the_callers_own(api, requester, nrb_hos, nrb_electrical_tic
     )
     api.force_authenticate(requester)
     body = api.get(reverse("notifications-list")).json()
-    assert body["data"] == []
-    assert body["unreadCount"] == 0
+    assert body["results"] == []
+    assert body["unread_count"] == 0
 
 
 def test_another_users_notification_cannot_be_marked_read(api, requester, nrb_hos):

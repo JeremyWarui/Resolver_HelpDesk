@@ -6,6 +6,7 @@ campus is a post, and `accounts.CampusRosterView` answers that. Nothing here
 reads a user, so `org` depends on no other app.
 """
 
+from django.db.models import Prefetch
 from rest_framework import generics, viewsets
 from rest_framework.permissions import IsAuthenticated
 
@@ -53,8 +54,10 @@ class ServiceItemViewSet(viewsets.ModelViewSet):
 
 
 class CatalogTreeView(generics.ListAPIView):
-    """Trades are global, so this does not vary by campus and any authenticated
-    user may call it.
+    """What the ticket wizard may offer: active trades and their active items.
+
+    `Ticket.service_item` is PROTECTed, so retiring is the only way to remove
+    one. The admin lists stay unfiltered, or a retired row could never return.
     """
 
     serializer_class = TradeSerializer
@@ -63,6 +66,11 @@ class CatalogTreeView(generics.ListAPIView):
     def get_queryset(self):
         return (
             Trade.objects.filter(is_active=True)
-            .prefetch_related("service_items")
+            .prefetch_related(
+                Prefetch(
+                    "service_items",
+                    queryset=ServiceItem.objects.filter(is_active=True),
+                )
+            )
             .order_by("name")
         )

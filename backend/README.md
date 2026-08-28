@@ -8,9 +8,8 @@ reports.
 entirely by env vars) · JWT · pytest
 
 Notifications are polled over REST — there are no WebSockets, no Channels and
-no web push. See `../docs/architecture/target-architecture.md` for the as-built
-architecture; this app was ported from the enterprise Service Desk, whose
-reference implementation lives outside this repo.
+no web push. `../CLAUDE.md` is the architecture guide; `../REVIEW.md` is what
+the system is required to do.
 
 ---
 
@@ -32,7 +31,7 @@ DEBUG=True
 
 ```bash
 python manage.py migrate
-python manage.py seed_full          # seeds campuses, departments, sections, users, facilities, demo tickets
+SEED_DEFAULT_PASSWORD='<demo password>' python manage.py seed
 python manage.py runserver          # http://localhost:8000
 ```
 
@@ -42,20 +41,14 @@ python manage.py runserver          # http://localhost:8000
 
 ## Seed Accounts
 
-`seed_full` creates demo users across all roles, all sharing the password supplied via the `SEED_DEFAULT_PASSWORD` environment variable (required — the command aborts if it is unset, and the password is never committed):
+`seed` creates 41 demo users across every role, all sharing the password given
+in `SEED_DEFAULT_PASSWORD` (required — the command aborts if it is unset, and
+the password is never committed). `--no-demo` seeds structure and accounts
+without the demo tickets.
 
-```bash
-SEED_DEFAULT_PASSWORD='<demo password>' python manage.py seed_full
-```
-
-| Role | Username example |
-|------|-----------------|
-| Admin | admin |
-| Manager | admin_mgr |
-| HOD | nrb_admin_hod |
-| HOS | nrb_networks_hos |
-| Technician | nrb_networks_tech1 |
-| Requester | any user with no `RoleAssignment` |
+Every account is `first.last@ksg.ac.ke`, because the email **is** the identity
+and the username derives from it. The address therefore does not say who is
+what, so the command ends by printing one login per role.
 
 ---
 
@@ -65,28 +58,30 @@ SEED_DEFAULT_PASSWORD='<demo password>' python manage.py seed_full
 
 ```
 apps/
-├── accounts/     — User, UserProfile, JWT auth, RoleAssignment
-├── org/          — Campus, Department, Section, SectionTechnician
-├── tickets/      — Ticket, TicketComment, TicketFeedback, TicketLog
-├── catalog/      — ServiceCategory, ServiceItem
-├── sla/          — Priority, EscalationRule, SLAHistory
-├── facilities/   — Facility, FacilityType, TicketLocation
-├── analytics/    — aggregate/breakdown services, role-scoped views, report generation
-├── common/       — shared exceptions, validators, enums, management commands
-└── realtime/     — Django Channels consumers, WS event dispatch
+├── accounts/     — CustomUser, RoleAssignment, TechnicianTrade, JWT auth
+├── org/          — Campus, Trade, ServiceItem  (structure only, names no user)
+├── tickets/      — Ticket, TicketLog, TicketComment, TicketAttachment
+├── sla/          — Priority  (targets and the two escalation thresholds)
+├── facilities/   — Facility, FacilityType
+├── analytics/    — metrics engine and the one reporting endpoint
+├── notifications/— Notification, and the emitters that write it
+└── common/       — roles, pagination, admin, the seed command
 ```
 
 ### Request flow
 
 ```
-HTTP → resolver/urls.py → resolver/api_urls.py → apps/*/urls.py → views/ → services/ → models/
+HTTP → resolver/urls.py → resolver/api_urls.py → apps/*/urls.py → views → service module → models
 ```
 
-Views never mutate Ticket directly — always call a service (e.g. `TicketService.update_status()`).
+No app has a `services/` subpackage; a service module sits directly in its app
+(`tickets/lifecycle.py`, `tickets/scope.py`, `accounts/posts.py`). Views never
+mutate a Ticket directly — always through `transition_status`, `assign_ticket`
+or `claim_ticket`.
 
 ### Scope enforcement
 
-Every view derives scope from the JWT role claim via `scoped_ticket_qs(user, role)` in `apps/tickets/services/scope.py`. Scope is never read from client query params — it is resolved server-side and fails closed (empty queryset on error).
+Every read derives scope from the JWT role claim via `scoped_ticket_qs(user, role)` in `apps/tickets/scope.py`. Scope is never read from client query params — it is resolved server-side and fails closed (empty queryset on an unknown role).
 
 ---
 
@@ -95,10 +90,10 @@ Every view derives scope from the JWT role claim via `scoped_ticket_qs(user, rol
 | Role | Scope |
 |------|-------|
 | Admin | Organisation-wide |
-| Manager | Own department across all campuses |
-| HOD | Own campus-department (all its sections) |
-| HOS | Own section(s) |
-| Technician | Sections assigned via `SectionTechnician` |
+| Manager | Every campus, read-only |
+| HOD | Own campus |
+| HOS | Own campus |
+| Technician | The (campus, trade) pairs held as `TechnicianTrade` rows |
 | Requester | Own tickets only (every authenticated user) |
 
 ---
@@ -108,49 +103,66 @@ Every view derives scope from the JWT role claim via `scoped_ticket_qs(user, rol
 All under `/api/v1/`:
 
 ```
-Auth:           POST  /auth/login/           POST /auth/refresh/
-Tickets:        GET   /tickets/              GET/PATCH /tickets/{id}/
-                POST  /tickets/create/       POST /tickets/{id}/assign/
-                POST  /tickets/{id}/comments/ POST /tickets/{id}/feedback/
-Filter options: GET   /tickets/filter-options/
-Analytics:      GET   /analytics/overview/   GET /analytics/performance/technicians/
-                GET   /analytics/performance/sections/
-Reports:        GET   /reports/types/        GET /reports/generate/?report_type=...&timeframe=...
-Audit log:      GET   /admin/audit-log/      (admin only)
-Org:            GET   /campuses/  /departments/?campus=  /sections/?department=  /technicians/
-Facilities:     GET   /facilities/
-Catalogue:      GET   /catalogue/categories/  /catalogue/items/
+Auth:        POST /auth/login/  /auth/register/  /auth/refresh/  /auth/logout/
+             GET  /auth/me/     /auth/campuses/   (campuses is public)
+Tickets:     GET  /tickets/                POST /tickets/
+             GET  /tickets/{id}/
+             POST /tickets/{id}/status/    POST /tickets/{id}/assign/
+             POST /tickets/{id}/claim/     POST /tickets/{id}/feedback/
+             GET  /tickets/{id}/logs/
+             GET+POST /tickets/{id}/comments/
+             GET+POST /tickets/{id}/attachments/
+             DELETE   /tickets/{id}/attachments/{id}/
+             GET  /tickets/filter-options/  GET /tickets/feedback/
+Users:       GET+POST /users/   PATCH+DELETE /users/{id}/
+             GET+POST /users/{id}/role-assignments/   (admin)
+             GET  /technicians/   /campus-roster/
+Reference:   GET  /campuses/  /trades/  /service-items/  /catalog/
+             GET  /priorities/  /facilities/  /facility-types/
+Analytics:   GET  /analytics/            (every figure, one call)
+Notifications: GET /notifications/  PATCH /notifications/{id}/read/
+             POST /notifications/read-all/
+Audit log:   GET  /admin/audit-log/      (admin only)
 ```
 
 ---
 
 ## Analytics & Reports
 
-`aggregate(scoped_qs, date_range, group_by)` in `apps/analytics/services.py` is the single metrics core — one conditional-Count pass over the scoped queryset. Role endpoints call it once and slice the result.
+`apps/analytics/metrics.py` is the whole engine. Four functions, each taking a Ticket queryset already scoped to the caller plus the window being reported on:
 
-For breakdown-only paths (`performance/sections`, `performance/technicians`), `breakdown()` is used instead of `aggregate()` to avoid the full ~44-query pass (reduced to 1–2 queries).
+| Function | Shape | Serves |
+| --- | --- | --- |
+| `totals(qs, window)` | one dict | volume, backlog, overdue, missed, escalated, response and resolution time, SLA attainment, ratings |
+| `group(qs, window, dimensions)` | rows | one or two of trade, facility, campus, technician, status — `("facility", "trade")` is facility health |
+| `bottlenecks(qs)` | rows | what is on hold **now**, by reason, with the oldest hold in each — a snapshot, so it takes no window |
+| `trend(qs, window, bucket)` | rows | volume by day, week or month |
 
-Reports stream `.xlsx` files with a Summary sheet + data sheets (Ticket Lifecycle, Technician Performance, Facility Health, Pending Analysis). Available types: `ticket-lifecycle`, `technician-performance`, `facility-health`, `pending-analysis`, `comprehensive`.
+`GET /analytics/` returns all four in one call, and is the only reporting endpoint. Which dimensions a role may ask for is `role_config.py`, and it fails closed.
+
+Because `bottlenecks` is a snapshot, **a hold is reportable only while it lasts**. Nothing keeps hold history, so there is no answer to "what was on hold in March". That is a decision, not a gap: each pause stays on its ticket's own trail as a `status_changed` row, and only the aggregate is dropped.
 
 ---
 
 ## Testing
 
 ```bash
-pytest                                      # all tests (343 passed, 1 xfail)
-pytest apps/tickets/tests/ -v              # specific app
-pytest --create-db                         # rebuild test DB after model changes
-pytest --cov-report=html                   # HTML coverage report
+SECRET_KEY=dev-only-not-a-secret pytest -q --no-cov     # the whole suite
+SECRET_KEY=dev-only-not-a-secret pytest tests/test_scope.py -q
 ```
+
+Tests live in `backend/tests/` and run on in-memory SQLite
+(`resolver/test_settings.py`), so the suite never touches a real database.
 
 ---
 
 ## Management Commands
 
 ```bash
-python manage.py seed_full                          # idempotent full seed
-python manage.py process_auto_escalations           # run escalation sweep
-python manage.py process_auto_escalations --dry-run
+SEED_DEFAULT_PASSWORD='<pw>' python manage.py seed  # idempotent; --no-demo for structure only
+python manage.py process_auto_escalations           # escalation sweep (hourly)
+python manage.py check_sla                          # record breaches (every 5 min)
+# both take --dry-run
 ```
 
 ---
@@ -158,20 +170,23 @@ python manage.py process_auto_escalations --dry-run
 ## Org Hierarchy
 
 ```
-Campus
-  └── CampusDepartment  (Campus + Department + HOD)
-        └── Section  (CampusDepartment + SectionType + HOS)
-              ├── SectionTechnician  (Technician ↔ Section)
-              └── Ticket
+Campus  ── the whole tree; one Maintenance section per campus is implied
+  ├── TechnicianTrade  (user + campus + trade)  ← the scoping pair
+  └── Ticket  (requester_campus + trade)
+
+Trade  ── global, five of them; ServiceItem hangs off it
 ```
 
-**Ticket numbering:** `CAMPUS-DEPT-NNNNN` (e.g. `NRB-ICT-00001`)
+**Ticket numbering:** `TKT-CAMPUS-NNNNN` (e.g. `TKT-NRB-00001`), built from
+the pk in `Ticket.save()`. There is no sequence table.
 
 **Status workflow:** `open → assigned → in_progress ⇄ pending → resolved → closed`
 
 **Escalation:** Technician → HOS → HOD — structural, time-based, cron-driven.
 
-**Priority resolution:** `ServiceItem.default_priority` (optional per-item override) → falls back to `ServiceCategory.default_priority`. Lets one urgent item (e.g. "Burst Pipe") outrank its otherwise-routine category (e.g. "Plumbing Services") without moving it or changing the category for everyone else.
+**Priority** is a property of a ticket, not of a service. Every ticket opens at
+the lowest rank and the HOS sets the real one when they assign it, so nobody
+grades their own urgency.
 
 ---
 

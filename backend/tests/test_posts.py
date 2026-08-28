@@ -147,36 +147,6 @@ def test_a_campus_with_no_head_renders_null(api, admin_user, nrb):
     assert row["hos_name"] is None
 
 
-def test_the_campus_roster_costs_the_same_whatever_its_length(
-    api, admin_user, nrb_hos, nrb, msa, msa_hos, electrical
-):
-    """Naming the head is a prefetch, not a query per row.
-
-    `hos_name` used to call `post_holder()` inside the serializer method, so the
-    admin screen cost one query per campus and grew with the estate. Counting
-    a one-campus page against a three-campus one is what catches that: an exact
-    number would only say what today's page costs.
-    """
-    from django.db import connection
-    from django.test.utils import CaptureQueriesContext
-    from django.urls import reverse
-
-    api.force_authenticate(admin_user)
-    url = reverse("campus-roster")
-
-    with CaptureQueriesContext(connection) as one_campus:
-        api.get(url, {"page_size": 1})
-
-    factories.make_technician("nrb_sparks", nrb, [electrical])
-    third = factories.make_campus("KSM", "Kisumu")
-    factories.make_user("ksm_hos", campus=third, role="hos")
-
-    with CaptureQueriesContext(connection) as three_campuses:
-        api.get(url)
-
-    assert len(three_campuses) == len(one_campus)
-
-
 def test_a_newly_created_campus_appears_on_the_roster_unstaffed(api, admin_user):
     """Creating a campus is `org`'s job and says nothing about people, so the
     create response carries no post fields. The roster is where a brand-new

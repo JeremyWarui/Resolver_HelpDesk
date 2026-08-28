@@ -6,11 +6,10 @@ its own scope, and `scoped_ticket_qs` is what narrows them.
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-# May act on someone else's ticket. `manager` is absent: read scope, never
-# lifecycle.
+# May act on someone else's ticket: assign, set priority, move status, delete
+# another person's attachment. A manager reads only; a technician works a
+# ticket but does not decide who holds it.
 TICKET_SUPERVISOR_ROLES = ("admin", "hod", "hos")
-
-STAFF_ROLES = TICKET_SUPERVISOR_ROLES + ("technician",)
 
 
 def resolve_role(request):

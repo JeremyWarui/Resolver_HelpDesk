@@ -196,9 +196,15 @@ def claim_ticket(ticket, technician):
 def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     """Hand a ticket to `technician`, optionally setting its real priority.
 
-    Reassignment is the same call: `previous_technician` tells the two apart in the
-    log, so the caller must pass a ticket whose `assigned_to` is still the old one.
+    Reassignment is the same call, so the caller must pass a ticket whose
+    `assigned_to` is still the old one. Live work only — reopen a settled
+    ticket first, which is what restarts the clock.
     """
+    if ticket.status in TERMINAL_STATUSES:
+        raise TransitionError(
+            f"Cannot assign a ticket that is '{ticket.status}'. Reopen it first."
+        )
+
     previous_assignee = ticket.assigned_to
     old_status = ticket.status
     old_priority = ticket.priority

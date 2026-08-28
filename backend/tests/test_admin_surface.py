@@ -7,6 +7,7 @@ gets nothing.
 import pytest
 from django.urls import reverse
 
+from apps.accounts.identity import display_name
 from apps.tickets.models import TicketLog
 
 pytestmark = pytest.mark.django_db
@@ -84,8 +85,13 @@ def test_the_audit_log_shows_every_ticket_to_an_admin(
 
 
 def test_an_audit_row_names_who_did_what(api, admin_user, nrb_electrical_ticket):
-    """Name and username both: usernames are email local parts, so most read
-    close to a name and some do not, and two people can share a name."""
+    """The audit row is a TicketLog row in the same shape as a ticket timeline.
+
+    Name and username both: usernames are email local parts, so most read close
+    to a name and some do not, and two people can share a name. The row carries
+    the ticket number on top, which is the only thing reading across every
+    ticket needs that reading down one does not.
+    """
     TicketLog.objects.create(
         ticket=nrb_electrical_ticket,
         actor=admin_user,
@@ -98,12 +104,12 @@ def test_an_audit_row_names_who_did_what(api, admin_user, nrb_electrical_ticket)
     api.force_authenticate(admin_user)
     row = api.get(reverse("admin-audit-log")).json()["results"][0]
 
-    assert row["action"] == "status_changed"
-    assert row["actor_username"] == admin_user.username
-    assert row["detail"] == "from: open | to: assigned"
+    assert row["event_type"] == "status_changed"
+    assert row["actor"]["username"] == admin_user.username
+    assert row["actor"]["full_name"] == display_name(admin_user)
+    assert (row["from_value"], row["to_value"]) == ("open", "assigned")
     assert row["reason"] == "taking it on"
-    assert "target_type" not in row
-    assert "department" not in row
+    assert row["ticket_no"] == nrb_electrical_ticket.ticket_no
 
 
 def test_the_audit_log_is_admin_only(api, nrb_hos, nrb_electrical_ticket):

@@ -5,12 +5,14 @@ skipped entirely if any already exist.
     SEED_DEFAULT_PASSWORD='…' python manage.py seed --no-demo   # structure only
 """
 
+import io
 import os
 import random
 from collections import defaultdict
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
@@ -20,6 +22,14 @@ from apps.accounts.models import TechnicianTrade
 from apps.accounts.posts import assign_role
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.validators import TYPE_SPECS
+from apps.notifications.models import Notification
+from apps.notifications.notify import (
+    emit_comment_added,
+    emit_ticket_assigned,
+    emit_ticket_created,
+    emit_ticket_resolved,
+    emit_ticket_status_changed,
+)
 from apps.org.models import Campus, ServiceItem, Trade
 from apps.sla.models import PRIORITY_LEVELS, Priority
 from apps.tickets.constants import (
@@ -28,10 +38,32 @@ from apps.tickets.constants import (
     PENDING_REASON_LABELS,
     TERMINAL_STATUSES,
 )
-from apps.tickets.models import Ticket, TicketComment, TicketLog
+from apps.tickets.models import Ticket, TicketAttachment, TicketComment, TicketLog
 from apps.tickets.phone import normalise_phone
 
 User = get_user_model()
+
+# Split by when it is written: a live job reports progress, a finished one closes out.
+PROGRESS_NOTES = [
+    "On site. Isolated the fault, working through it now.",
+    "Started — need to get behind the panel to reach it.",
+    "Assessed. Straightforward once the area is clear.",
+    "Attended. Bringing the right fitting back this afternoon.",
+]
+
+COMPLETION_NOTES = [
+    "Fault traced and repaired. Tested and working.",
+    "Parts replaced, area cleaned up.",
+    "Repaired on site — no further action needed.",
+    "Replaced the unit. Left the old one at the store.",
+]
+
+# The only demo comment with a recipient: a technician's own notifies nobody.
+SUPERVISOR_NOTES = [
+    "Any movement on this one? The occupant has chased twice.",
+    "Please close this out today if the part has landed.",
+    "Checking in — flag it to me if you are blocked.",
+]
 
 PENDING_NOTES = {
     "material_not_in_store": "Replacement parts not in the store.",
@@ -67,8 +99,8 @@ CAMPUSES = [
     ("Baringo", "BAR", "Kabarnet"),
 ]
 
-# (name, code) — global trades, available at every campus running Maintenance.
-SUB_SECTIONS = [
+# Global: all five run at every campus.
+TRADES = [
     ("Carpentry", "CARP"),
     ("Masonry", "MAS"),
     ("Painting", "PAINT"),
@@ -118,73 +150,73 @@ SERVICE_ITEMS = {
 }
 
 
-# campus_code → [(name, facility_type_code, facility_code)]
+# campus_code → [(name, facility_type_code)]
 FACILITIES = {
     "NRB": [
-        ("Staff Quarters A", "residential", "NRB-SQA"),
-        ("Staff Quarters B", "residential", "NRB-SQB"),
-        ("Standby Generator", "equipment", "NRB-GEN"),
-        ("Borehole Pump", "equipment", "NRB-PUMP"),
-        ("Habel Nyamu Library", "office_block", "NRB-HNL"),
-        ("Administration Block", "office_block", "NRB-ADMIN"),
-        ("Convention Center", "office_block", "NRB-CC"),
-        ("eLITI", "office_block", "NRB-ELITI"),
-        ("Conference Center", "building", "NRB-CONF"),
-        ("Maasai Mara", "building", "NRB-MM"),
-        ("Gate House", "building", "NRB-GH"),
-        ("Margaret Kobia", "hostel", "NRB-MK"),
-        ("Gateere", "hostel", "NRB-GTR"),
-        ("Wamalwa", "hostel", "NRB-WMW"),
-        ("Sawe", "hostel", "NRB-SAWE"),
-        ("Mekatilili", "hostel", "NRB-MEK"),
-        ("Kamoche", "building", "NRB-KAM"),
-        ("Maandalizi", "building", "NRB-MAAN"),
-        ("Gas Point", "grounds", "NRB-GAS"),
-        ("Sacho", "office_block", "NRB-SACHO"),
-        ("Field", "grounds", "NRB-FIELD"),
-        ("Mt. Kenya", "office_block", "NRB-MTK"),
+        ("Staff Quarters A", "residential"),
+        ("Staff Quarters B", "residential"),
+        ("Standby Generator", "equipment"),
+        ("Borehole Pump", "equipment"),
+        ("Habel Nyamu Library", "office_block"),
+        ("Administration Block", "office_block"),
+        ("Convention Center", "office_block"),
+        ("eLITI", "office_block"),
+        ("Conference Center", "building"),
+        ("Maasai Mara", "building"),
+        ("Gate House", "building"),
+        ("Margaret Kobia", "hostel"),
+        ("Gateere", "hostel"),
+        ("Wamalwa", "hostel"),
+        ("Sawe", "hostel"),
+        ("Mekatilili", "hostel"),
+        ("Kamoche", "building"),
+        ("Maandalizi", "building"),
+        ("Gas Point", "grounds"),
+        ("Sacho", "office_block"),
+        ("Field", "grounds"),
+        ("Mt. Kenya", "office_block"),
     ],
     "MSA": [
-        ("Car Park", "grounds", "MSA-PARK"),
-        ("Staff Quarters", "residential", "MSA-SQ"),
-        ("Standby Generator", "equipment", "MSA-GEN"),
-        ("Water Pump", "equipment", "MSA-PUMP"),
-        ("Administration Block", "office_block", "MSA-ADMIN"),
-        ("Galana", "hostel", "MSA-GAL"),
-        ("Ultra Modern", "building", "MSA-UM"),
+        ("Car Park", "grounds"),
+        ("Staff Quarters", "residential"),
+        ("Standby Generator", "equipment"),
+        ("Water Pump", "equipment"),
+        ("Administration Block", "office_block"),
+        ("Galana", "hostel"),
+        ("Ultra Modern", "building"),
     ],
     "MTG": [
-        ("Car Park", "grounds", "MTG-PARK"),
-        ("Staff Quarters", "residential", "MTG-SQ"),
-        ("Standby Generator", "equipment", "MTG-GEN"),
-        ("Kitchen Boiler", "equipment", "MTG-BOIL"),
-        ("Mwalughanje", "hostel", "MTG-MWA"),
-        ("Administration Block", "office_block", "MTG-ADMIN"),
-        ("Dining Hall", "building", "MTG-DIN"),
-        ("Kitchen", "building", "MTG-KIT"),
-        ("Customer Care", "office_block", "MTG-CARE"),
+        ("Car Park", "grounds"),
+        ("Staff Quarters", "residential"),
+        ("Standby Generator", "equipment"),
+        ("Kitchen Boiler", "equipment"),
+        ("Mwalughanje", "hostel"),
+        ("Administration Block", "office_block"),
+        ("Dining Hall", "building"),
+        ("Kitchen", "building"),
+        ("Customer Care", "office_block"),
     ],
     "EMB": [
-        ("Car Park", "grounds", "EMB-PARK"),
-        ("Staff Quarters", "residential", "EMB-SQ"),
-        ("Standby Generator", "equipment", "EMB-GEN"),
-        ("Borehole Pump", "equipment", "EMB-PUMP"),
-        ("Jumuiya", "hostel", "EMB-JUM"),
-        ("Kiambere", "hostel", "EMB-KIA"),
-        ("Administration Block", "office_block", "EMB-ADMIN"),
-        ("Procurement", "building", "EMB-PROC"),
-        ("Gate House", "building", "EMB-GH"),
-        ("Kitchen", "building", "EMB-KIT"),
+        ("Car Park", "grounds"),
+        ("Staff Quarters", "residential"),
+        ("Standby Generator", "equipment"),
+        ("Borehole Pump", "equipment"),
+        ("Jumuiya", "hostel"),
+        ("Kiambere", "hostel"),
+        ("Administration Block", "office_block"),
+        ("Procurement", "building"),
+        ("Gate House", "building"),
+        ("Kitchen", "building"),
     ],
     "BAR": [
-        ("Car Park", "grounds", "BAR-PARK"),
-        ("Staff Quarters", "residential", "BAR-SQ"),
-        ("Standby Generator", "equipment", "BAR-GEN"),
-        ("Gate House", "building", "BAR-GH"),
-        ("Administration Block", "office_block", "BAR-ADMIN"),
-        ("Library", "office_block", "BAR-LIB"),
-        ("Kipsunya", "building", "BAR-KIP"),
-        ("Koilagen", "building", "BAR-KOI"),
+        ("Car Park", "grounds"),
+        ("Staff Quarters", "residential"),
+        ("Standby Generator", "equipment"),
+        ("Gate House", "building"),
+        ("Administration Block", "office_block"),
+        ("Library", "office_block"),
+        ("Kipsunya", "building"),
+        ("Koilagen", "building"),
     ],
 }
 
@@ -284,14 +316,16 @@ class Command(BaseCommand):
 
             self._seed_admin(password)
             self._seed_director(password)
-            self._seed_supervisors(campuses, password)
+            posts = self._seed_supervisors(campuses, password)
             self._seed_technicians(campuses, trades, password)
             requesters = self._seed_requesters(campuses, password)
 
             if options["no_demo"]:
                 self.stdout.write("  Demo tickets: skipped (--no-demo)")
             else:
-                self._seed_demo_tickets(campuses, trades, requesters, priorities)
+                self._seed_demo_tickets(
+                    campuses, trades, requesters, priorities, posts
+                )
                 self._run_escalations()
 
         self._print_demo_logins()
@@ -309,6 +343,15 @@ class Command(BaseCommand):
         self._same_keys(STATUS_WEIGHTS, ALL_STATUSES, "demo status weights")
         self._same_keys(PENDING_NOTES, PENDING_REASON_CODES, "hold-reason notes")
         self._same_keys(LOCATION_VALUES, TYPE_SPECS, "demo location values")
+
+        # One name is one email is one account, so the pool cannot be reused.
+        needed = sum(len(codes) for codes in TRADE_STAFFING.values())
+        if needed > len(TECHNICIAN_NAMES):
+            raise CommandError(
+                f"TRADE_STAFFING needs {needed} technicians but TECHNICIAN_NAMES "
+                f"has {len(TECHNICIAN_NAMES)}. Add {needed - len(TECHNICIAN_NAMES)} "
+                f"more name(s); they cannot be reused."
+            )
 
         # The same two orderings `sla.serializers` refuses over the API. Seeding
         # around the serializer must not be the way an inverted pair gets in.
@@ -412,7 +455,7 @@ class Command(BaseCommand):
 
     def _seed_trades(self):
         trades = {}
-        for name, code in SUB_SECTIONS:
+        for name, code in TRADES:
             trades[code] = Trade.objects.get_or_create(
                 name=name, defaults={"code": code}
             )[0]
@@ -433,14 +476,11 @@ class Command(BaseCommand):
         types = {ft.code: ft for ft in FacilityType.objects.all()}
         count = 0
         for campus_code, entries in FACILITIES.items():
-            for name, type_code, facility_code in entries:
+            for name, type_code in entries:
                 Facility.objects.get_or_create(
                     campus=campuses[campus_code],
                     name=name,
-                    defaults={
-                        "code": facility_code,
-                        "facility_type": types[type_code],
-                    },
+                    defaults={"facility_type": types[type_code]},
                 )
                 count += 1
         self.stdout.write(f"  Facility: {count}")
@@ -526,6 +566,8 @@ class Command(BaseCommand):
         self.stdout.write("  manager: 1 (director)")
 
     def _seed_supervisors(self, campuses, password):
+        """Create both posts per campus. Returns `{campus_code: (hod, hos)}`."""
+        posts = {}
         for campus_code, ((hod_first, hod_last), (hos_first, hos_last)) in SUPERVISORS.items():
             campus = campuses[campus_code]
 
@@ -535,7 +577,10 @@ class Command(BaseCommand):
             hos = self._make_user(hos_first, hos_last, password, campus)
             self._set_role(hos, "hos", campus=campus)
 
+            posts[campus_code] = (hod, hos)
+
         self.stdout.write(f"  hod: {len(SUPERVISORS)}   hos: {len(SUPERVISORS)}")
+        return posts
 
     def _seed_technicians(self, campuses, trades, password):
         """One technician per staffed trade, plus a multi-trade finisher at Nairobi.
@@ -548,11 +593,7 @@ class Command(BaseCommand):
         for campus_code, trade_codes in TRADE_STAFFING.items():
             campus = campuses[campus_code]
             for trade_code in trade_codes:
-                try:
-                    first, last = next(names)
-                except StopIteration:
-                    names = iter(TECHNICIAN_NAMES)
-                    first, last = next(names)
+                first, last = next(names)
                 user = self._make_user(first, last, password, campus)
                 self._set_role(
                     user,
@@ -596,7 +637,7 @@ class Command(BaseCommand):
         return requesters
 
 
-    def _seed_demo_tickets(self, campuses, trades, requesters, priorities):
+    def _seed_demo_tickets(self, campuses, trades, requesters, priorities, posts):
         if Ticket.objects.exists():
             self.stdout.write("  Demo tickets: skipped (tickets already exist)")
             return
@@ -633,6 +674,11 @@ class Command(BaseCommand):
             if (campus_code, trade_code) not in staffed_pairs
         ]
 
+        # Everyone raises tickets, not only the `user` role (invariant 5).
+        staff_raisers = {
+            code: [hod, hos] for code, (hod, hos) in posts.items()
+        }
+
         created = 0
         for index in range(DEMO_TICKET_COUNT):
             # Every sixth ticket lands in an unstaffed trade, so the "routed
@@ -641,7 +687,11 @@ class Command(BaseCommand):
             campus_code, trade_code = rng.choice(pool)
             campus = campuses[campus_code]
             trade = trades[trade_code]
-            requester = rng.choice(requesters)
+            # One in eight is raised by a member of staff at that campus.
+            if index % 8 == 3 and staff_raisers.get(campus_code):
+                requester = rng.choice(staff_raisers[campus_code])
+            else:
+                requester = rng.choice(requesters)
             item = rng.choice(items_by_trade[trade_code])
             status = rng.choice(statuses)
 
@@ -666,20 +716,34 @@ class Command(BaseCommand):
                 description=f"{item.name} reported by {display_name(requester)}.",
             )
 
-            self._write_history(ticket, technician, created_at, rng)
+            self._write_history(
+                ticket, technician, created_at, rng,
+                self._hos(posts, campus_code), now,
+            )
             created += 1
 
         created += self._seed_chronic_faults(
             campuses, trades, requesters, priorities, technicians,
-            facilities_by_campus, items_by_trade, rng, now,
+            facilities_by_campus, items_by_trade, rng, now, posts,
         )
+        self._seed_attachments(rng)
         self.stdout.write(
             f"  Demo tickets: {created} over the last {DEMO_WINDOW_DAYS} days"
         )
+        self.stdout.write(
+            f"  Notifications: {Notification.objects.count()}   "
+            f"Comments: {TicketComment.objects.count()}"
+        )
+
+    @staticmethod
+    def _hos(posts, campus_code):
+        """The HOS at a campus, or None if the post is vacant."""
+        post = posts.get(campus_code)
+        return post[1] if post else None
 
     def _seed_chronic_faults(
         self, campuses, trades, requesters, priorities, technicians,
-        facilities_by_campus, items_by_trade, rng, now,
+        facilities_by_campus, items_by_trade, rng, now, posts,
     ):
         """A handful of buildings with the same fault, over and over.
 
@@ -726,18 +790,60 @@ class Command(BaseCommand):
                     facility=facility, rng=rng,
                     description=f"{item.name} reported at {facility.name}.",
                 )
-                self._write_history(ticket, technician, created_at, rng)
+                self._write_history(
+                    ticket, technician, created_at, rng,
+                    self._hos(posts, campus_code), now,
+                )
                 created += 1
         return created
 
+    def _seed_attachments(self, rng):
+        """Put a generated site photo on every twelfth ticket.
+
+        Generated, not shipped: a binary does not belong in the repo.
+        """
+        from PIL import Image, ImageDraw
+
+        tickets = list(
+            Ticket.objects.select_related("raised_by", "assigned_to").order_by("pk")
+        )[::12]
+
+        count = 0
+        for ticket in tickets:
+            uploader = ticket.raised_by
+            if ticket.assigned_to_id and rng.random() < 0.4:
+                uploader = ticket.assigned_to
+
+            colour = rng.choice(["#8b5e34", "#4a5568", "#7b3f3f", "#3f5a4a"])
+            image = Image.new("RGB", (640, 480), colour)
+            ImageDraw.Draw(image).text(
+                (24, 24), f"{ticket.ticket_no}\n{ticket.service_item.name}"
+            )
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=70, optimize=True)
+            payload = buffer.getvalue()
+
+            attachment = TicketAttachment(
+                ticket=ticket,
+                original_name=f"{ticket.ticket_no.lower()}-site-photo.jpg",
+                mime_type="image/jpeg",
+                stored_size=len(payload),
+                uploaded_by=uploader,
+            )
+            attachment.file.save(
+                f"{ticket.ticket_no}.jpg", ContentFile(payload), save=False
+            )
+            attachment.save()
+            TicketAttachment.objects.filter(pk=attachment.pk).update(
+                created_at=ticket.created_at + timedelta(minutes=rng.randint(1, 240))
+            )
+            count += 1
+
+        self.stdout.write(f"  Attachments: {count}")
+
     def _create_ticket(self, *, requester, campus, trade, item, priority,
                        status, technician, created_at, facility, rng, description):
-        """Create one demo ticket and back-date it.
-
-        Both generators above need exactly this, and they had a copy each —
-        including their own hand-rolled SLA arithmetic, which is what
-        Priority.due_dates() exists to prevent a second definition of.
-        """
+        """Create one demo ticket and back-date it to `created_at`."""
         response_due_at, resolution_due_at = priority.due_dates(created_at)
         ticket = Ticket.objects.create(
             raised_by=requester,
@@ -785,12 +891,42 @@ class Command(BaseCommand):
         TicketLog.objects.filter(pk=log.pk).update(created_at=when)
         return log
 
-    def _write_history(self, ticket, technician, created_at, rng):
-        """Give each ticket a log trail consistent with the status it landed on."""
+    @staticmethod
+    def _notify(when, emit, *args, **kwargs):
+        """Run a real emitter, then stamp its rows with the moment they describe.
+
+        Through the emitters so the demo recipients are exactly production's.
+        """
+        high_water = (
+            Notification.objects.order_by("-pk").values_list("pk", flat=True).first()
+            or 0
+        )
+        emit(*args, **kwargs)
+        Notification.objects.filter(pk__gt=high_water).update(created_at=when)
+
+    def _write_comment(self, ticket, author, when, body):
+        """Write one comment with the trail row and notification the view writes."""
+        comment = TicketComment.objects.create(
+            ticket=ticket, author=author, body=body
+        )
+        TicketComment.objects.filter(pk=comment.pk).update(created_at=when)
+        self._log(
+            ticket, when, event_type="comment_added",
+            actor=author, to_value=str(comment.pk),
+        )
+        self._notify(when, emit_comment_added, ticket, comment)
+        return comment
+
+    def _write_history(self, ticket, technician, created_at, rng, hos, now):
+        """Write the trail, working log and feed the ticket's status implies.
+
+        Every moment is stamped as it happened and clamped to `now`.
+        """
         self._log(
             ticket, created_at, event_type="created",
             actor=ticket.raised_by, to_value=ticket.ticket_no,
         )
+        self._notify(created_at, emit_ticket_created, ticket)
         if ticket.status == "open":
             return
 
@@ -799,21 +935,31 @@ class Command(BaseCommand):
             assigned_at = created_at + response_window * rng.uniform(0.1, 0.9)
         else:
             assigned_at = created_at + response_window * rng.uniform(1.2, 3.0)
+        assigned_at = min(assigned_at, now)
+
+        # Two ways a ticket reaches a technician, and the trail says which.
+        claimed = rng.random() < 0.4
         self._log(
-            ticket, assigned_at, event_type="assigned", actor=None,
+            ticket, assigned_at, event_type="assigned",
+            actor=technician if claimed else hos,
             to_value=display_name(technician),
         )
-        started_at = assigned_at + timedelta(minutes=rng.randint(5, 240))
-        if ticket.status in ("in_progress", "pending") + TERMINAL_STATUSES:
-            self._log(
-                ticket, started_at, event_type="status_changed", actor=technician,
-                from_value="assigned", to_value="in_progress",
-            )
+        self._notify(assigned_at, emit_ticket_assigned, ticket, previous_assignee=None)
+
+        if ticket.status == "assigned":
+            return
+
+        started_at = min(assigned_at + timedelta(minutes=rng.randint(5, 240)), now)
+        self._log(
+            ticket, started_at, event_type="status_changed", actor=technician,
+            from_value="assigned", to_value="in_progress",
+        )
+
         if ticket.status == "pending":
             # Weighted: a maintenance section is stopped by parts far more often than by
             # anything else.
             reason = rng.choices(list(PENDING_NOTES), weights=[30, 24, 16, 14, 9, 7])[0]
-            paused_at = created_at + timedelta(hours=rng.randint(1, 12))
+            paused_at = min(created_at + timedelta(hours=rng.randint(1, 12)), now)
             Ticket.objects.filter(pk=ticket.pk).update(
                 paused_at=paused_at,
                 pending_reason=reason,
@@ -824,6 +970,8 @@ class Command(BaseCommand):
                 from_value="in_progress", to_value="pending",
                 reason=f"{PENDING_REASON_LABELS[reason]} — {PENDING_NOTES[reason]}",
             )
+
+        resolved_at = None
         if ticket.status in TERMINAL_STATUSES:
             # Relative to the ticket's own SLA window: a flat draw ignores priority, so
             # only 7% of resolved tickets met their deadline and every gauge read 0%.
@@ -832,37 +980,74 @@ class Command(BaseCommand):
                 resolved_at = created_at + window * rng.uniform(0.2, 0.95)
             else:
                 resolved_at = created_at + window * rng.uniform(1.1, 2.5)
+            # A Low ticket has a three-day window; a recent one would settle tomorrow.
+            resolved_at = min(resolved_at, now)
             Ticket.objects.filter(pk=ticket.pk).update(resolved_at=resolved_at)
+
+        self._write_working_log(
+            ticket, technician, hos, started_at, resolved_at, rng, now
+        )
+
+        if resolved_at is not None:
             self._log(
                 ticket, resolved_at, event_type="resolved", actor=technician,
                 from_value="in_progress", to_value="resolved",
             )
-            TicketComment.objects.create(
-                ticket=ticket, author=technician,
-                body=rng.choice([
-                    "Fault traced and repaired. Tested and working.",
-                    "Parts replaced, area cleaned up.",
-                    "Repaired on site — no further action needed.",
-                ]),
-            )
+            self._notify(resolved_at, emit_ticket_resolved, ticket)
+
+        # `TicketFeedbackView` accepts a rating from either terminal status.
+        rated_at = resolved_at
         if ticket.status == "closed":
-            closed_at = resolved_at + timedelta(hours=rng.randint(2, 48))
+            closed_at = min(resolved_at + timedelta(hours=rng.randint(2, 48)), now)
             Ticket.objects.filter(pk=ticket.pk).update(closed_at=closed_at)
             self._log(
                 ticket, closed_at, event_type="closed", actor=ticket.raised_by,
                 from_value="resolved", to_value="closed",
             )
-            if rng.random() < 0.7:
-                rating = rng.choice([3, 4, 4, 5, 5, 5])
-                Ticket.objects.filter(pk=ticket.pk).update(
-                    rating=rating,
-                    rating_comment=rng.choice(
-                        ["", "", "Quick turnaround, thank you.", "Well handled."]
-                    ),
-                    rated_at=closed_at,
-                )
-                # `TicketFeedbackView` logs the rating, so the demo trail does too.
-                self._log(
-                    ticket, closed_at, event_type="rated",
-                    actor=ticket.raised_by, to_value=str(rating),
-                )
+            self._notify(closed_at, emit_ticket_status_changed, ticket)
+            rated_at = closed_at
+
+        if rated_at is not None and rng.random() < 0.7:
+            rating = rng.choice([3, 4, 4, 5, 5, 5])
+            Ticket.objects.filter(pk=ticket.pk).update(
+                rating=rating,
+                rating_comment=rng.choice(
+                    ["", "", "Quick turnaround, thank you.", "Well handled."]
+                ),
+                rated_at=rated_at,
+            )
+            # `TicketFeedbackView` logs the rating, so the demo trail does too.
+            self._log(
+                ticket, rated_at, event_type="rated",
+                actor=ticket.raised_by, to_value=str(rating),
+            )
+
+    def _write_working_log(
+        self, ticket, technician, hos, started_at, resolved_at, rng, now
+    ):
+        """Comment the worked ticket, always before it settles.
+
+        Comments close permanently when the ticket does, so the moment matters.
+        """
+        if resolved_at is not None:
+            when = resolved_at - timedelta(minutes=rng.randint(5, 90))
+            when = max(when, started_at + timedelta(minutes=1))
+            self._write_comment(
+                ticket, technician, when, rng.choice(COMPLETION_NOTES)
+            )
+            return
+
+        # Still live: a progress note, and now and then the HOS chasing it.
+        self._write_comment(
+            ticket,
+            technician,
+            min(started_at + timedelta(minutes=rng.randint(10, 180)), now),
+            rng.choice(PROGRESS_NOTES),
+        )
+        if hos is not None and rng.random() < 0.35:
+            self._write_comment(
+                ticket,
+                hos,
+                min(started_at + timedelta(hours=rng.randint(4, 30)), now),
+                rng.choice(SUPERVISOR_NOTES),
+            )

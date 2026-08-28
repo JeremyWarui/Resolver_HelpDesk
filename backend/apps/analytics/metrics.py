@@ -58,10 +58,8 @@ BUCKETS = {"day": TruncDay, "week": TruncWeek, "month": TruncMonth}
 
 DEFAULT_DAYS = 30
 
-# The person's name, built the way `accounts.identity.display_name_parts` builds
-# it, because a technician is named on the Tickets sheet of the same workbook
-# and one report must not call the same person two different things. Blank names
-# collapse to "" through Trim, which NullIf turns into the username fallback.
+# The name as `accounts.identity.display_name_parts` builds it, so one person is
+# not called two things. Trim collapses blanks to "", NullIf falls back to username.
 _TECHNICIAN_NAME = Coalesce(
     NullIf(
         Trim(
@@ -277,17 +275,10 @@ def group(qs, window: dict, dimensions) -> list:
 
 
 def bottlenecks(qs) -> list:
-    """What is on hold right now, by reason.
+    """What is on hold right now, by reason, with the oldest hold in each.
 
-    Deliberately a snapshot, and deliberately not windowed. `pending_reason` is
-    cleared the moment work resumes, so this is what is blocked at the instant
-    it is asked, never what was blocked last month. Turning that into a record
-    is the report's job: run `reports/generate/` at the end of a period and the
-    workbook is the history.
-
-    `since` is the oldest hold in the group, because the count alone is not
-    actionable — three jobs waiting on a part is routine, three that have been
-    waiting since March is a supplier problem.
+    A snapshot, never windowed: `pending_reason` clears when work resumes, so
+    no hold history is kept. Do not add a history column without deciding that.
     """
     rows = (
         qs.filter(status="pending")

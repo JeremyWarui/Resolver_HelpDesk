@@ -1,11 +1,10 @@
 """
-The two reporting endpoints: the figures as JSON, and the same figures as a
-workbook.
+The reporting endpoint: every figure the system reports, as JSON.
 
-Both start from `scoped_for`, which is the only place either of them decides
-whose tickets they are looking at. Scope derives from the role on the JWT and
-is never taken from a query param: a supervisor does not tell the server which
-campus they run.
+It starts from `scoped_for`, which is the only place it decides whose tickets
+it is looking at. Scope derives from the role on the JWT and is never taken
+from a query param: a supervisor does not tell the server which campus they
+run.
 """
 
 from rest_framework.permissions import IsAuthenticated
@@ -19,7 +18,6 @@ from apps.tickets.scope import scoped_ticket_qs
 
 from .metrics import bottlenecks, group, resolve_window, totals, trend
 from .role_config import resolve_group_by
-from .workbook import build_workbook, workbook_response, workbook_window
 
 
 def scoped_for(request):
@@ -65,20 +63,3 @@ class AnalyticsView(ReportingView):
                 "trend": trend(qs, window, window["bucket"]),
             }
         )
-
-
-class GenerateReportView(ReportingView):
-    """GET /reports/generate/ — the same figures as an Excel download."""
-
-    def get(self, request):
-        _, qs = scoped_for(request)
-        # Filters narrow, never widen. Applied after scoping, so an id the
-        # caller may not see matches nothing rather than reaching past them.
-        # A non-numeric id is ignored rather than raised: it came off a query
-        # string, and it can only ever have narrowed the export.
-        technician_id = request.query_params.get("technician_id")
-        if technician_id and technician_id.isdigit():
-            qs = qs.filter(assigned_to_id=int(technician_id))
-
-        window = workbook_window(request.query_params, qs)
-        return workbook_response(build_workbook(qs, window))
