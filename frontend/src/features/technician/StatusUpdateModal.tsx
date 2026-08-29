@@ -6,9 +6,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { DialogActions } from '@/components/shared/forms/DialogActions';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -21,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/shared/ticket/StatusBadge';
 import { updateTicketStatus } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
-import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
 import { VALID_NEXT_STATUS } from '@/constants/tickets';
 
@@ -76,9 +75,8 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      // The code and the note travel as themselves. They used to be joined
-      // into one string, which read fine on the timeline and left the question
-      // "how much work is stopped, and by what" unanswerable.
+      // The code and the note travel as separate fields, so a hold can be
+      // counted by reason.
       const updated = await updateTicketStatus(
         ticket.id,
         selectedStatus,
@@ -174,22 +172,6 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
             />
           </div>
 
-          {/* Attachments section — placeholder only */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                Attachments
-              </span>
-              <span className="text-xs font-medium text-primary uppercase tracking-wide">
-                Optional
-              </span>
-              <div className="flex-1 border-t border-border" />
-            </div>
-            <div className="flex items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-4 py-5 text-sm text-muted-foreground">
-              Add photo or file
-            </div>
-          </div>
-
           {/* Pending reason — required only when moving to pending */}
           {needsPendingReason && (
             <>
@@ -234,14 +216,13 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
-            {submitting ? 'Saving…' : 'Save update'}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={handleClose}
+          onSubmit={handleSubmit}
+          pending={submitting}
+          disabled={!canSubmit}
+          submitLabel="Save update"
+        />
       </DialogContent>
     </Dialog>
   );

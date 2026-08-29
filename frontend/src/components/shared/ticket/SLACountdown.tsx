@@ -1,10 +1,8 @@
-// SLACountdown — live SLA deadline countdown with a colour-shifting progress bar.
-// Color shifts: ok (>50% remaining) → warning (10-50%) → breach (overdue/<10%).
-// Used in the TicketTable sla variant and the TicketDetailPage sidebar.
+// The live countdown to a ticket's resolution target: a bar that fills as the
+// time is spent, colouring ok → warning → breach as it goes.
 //
-// The progress bar fills left-to-right as time is consumed.
-// Colour uses --sla-* tokens directly via inline style (shadcn Progress pins to bg-primary
-// so we render the bar manually for dynamic colour support).
+// The bar is rendered by hand rather than with shadcn's Progress, which pins
+// its fill to bg-primary and cannot take a colour that shifts with the value.
 
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -34,34 +32,30 @@ const SLA_COLOR: Record<SLAState, string> = {
   breach:  'var(--sla-breach)',
 };
 
-export interface SLACountdownProps {
+interface SLACountdownProps {
   dueDate: string | null | undefined;
   createdAt?: string;
-  /** Explicitly set paused state. */
+  /** A held ticket's clock is frozen, so the countdown stops with it. Callers
+   *  pass `!!ticket.paused_at`, which is the same fact the server pauses on. */
   isPaused?: boolean;
-  /** Ticket status — automatically pauses when 'pending'. */
-  status?: string;
   compact?: boolean;
   className?: string;
 }
 
-export function SLACountdown({ dueDate, createdAt, isPaused = false, status, compact = false, className }: SLACountdownProps) {
+export function SLACountdown({ dueDate, createdAt, isPaused = false, compact = false, className }: SLACountdownProps) {
   const [now, setNow] = useState(() => Date.now());
 
-  // Paused when explicitly set OR when ticket is in pending status (SLA clock frozen)
-  const effectivelyPaused = isPaused || status === 'pending';
-
   useEffect(() => {
-    if (effectivelyPaused) return;
+    if (isPaused) return;
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
-  }, [effectivelyPaused]);
+  }, [isPaused]);
 
   if (!dueDate) {
     return <span className="text-xs text-muted-foreground">No SLA</span>;
   }
 
-  if (effectivelyPaused) {
+  if (isPaused) {
     if (compact) {
       return (
         <div className={cn('flex items-center gap-1.5', className)}>

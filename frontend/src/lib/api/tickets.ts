@@ -1,25 +1,15 @@
-import apiClient from './client';
+import apiClient, { type Page } from './client';
 import type {
+  AssignedUser,
   Ticket,
   TicketsResponse,
   CreateTicketPayload,
-  UpdateTicketPayload,
   TicketsParams,
   TicketTimelineEvent,
 } from '@/types';
 
-// ── Cursor-pagination types ───────────────────────────────────────────────────
-
-export interface CursorMeta {
-  nextCursor: string | null;
-  prevCursor: string | null;
-  total: number;
-}
-
-export interface CursorResponse<T> {
-  results: T[];
-  meta: CursorMeta;
-}
+/** The comment and log feeds are cursor-paged, so `count` comes back null. */
+export type Feed<T> = Page<T>;
 
 export interface TicketLog {
   id: number;
@@ -36,9 +26,7 @@ export interface TicketComment {
   id: number;
   author: { id: number; username: string; full_name: string };
   body: string;
-  visibility: 'public' | 'internal';
   created_at: string;
-  updated_at: string;
 }
 
 // ── List & detail ─────────────────────────────────────────────────────────────
@@ -62,24 +50,18 @@ export interface PendingReasonOption {
 }
 
 export interface TicketFilterOptions {
-  sections: TicketFilterOption[];
-  /** Trades — Plumbing, Electrical, Carpentry, … */
-  sub_sections: TicketFilterOption[];
+  campuses: TicketFilterOption[];
+  trades: TicketFilterOption[];
   technicians: TicketFilterOption[];
   requesters: TicketFilterOption[];
-  /**
-   * The hold vocabulary. Static rather than scoped, unlike the lists above,
-   * but served here so the client never keeps its own copy — the last one
-   * drifted against a backend field that did not exist.
-   */
+  /** The hold vocabulary, served here so the client keeps no copy of its own. */
   pending_reasons: PendingReasonOption[];
 }
 
 /**
- * Sections / trades / technicians / requesters that appear in the caller's
- * role-scoped tickets — used to populate the tickets-table filter dropdowns.
- * Scoped server-side by JWT role (admin = all, manager = department, hod/hos =
- * their sections), so the options always match what the filters can return.
+ * What the tickets-table dropdowns may offer, built from the caller's own
+ * scoped tickets — so an option can never come back empty or name someone
+ * they cannot see.
  */
 export async function getTicketFilterOptions(): Promise<TicketFilterOptions> {
   const { data } = await apiClient.get<TicketFilterOptions>('/tickets/filter-options/');
@@ -95,16 +77,6 @@ export async function getTicketById(id: number): Promise<Ticket> {
 
 export async function createTicket(payload: CreateTicketPayload): Promise<Ticket> {
   const { data } = await apiClient.post<Ticket>('/tickets/', payload);
-  return data;
-}
-
-// ── Mutate ────────────────────────────────────────────────────────────────────
-
-export async function updateTicket(
-  id: number,
-  payload: UpdateTicketPayload
-): Promise<Ticket> {
-  const { data } = await apiClient.patch<Ticket>(`/tickets/${id}/`, payload);
   return data;
 }
 
@@ -161,10 +133,10 @@ export async function updateTicketStatus(
 export async function getComments(
   ticketId: number,
   cursor?: string | null
-): Promise<CursorResponse<TicketComment>> {
+): Promise<Feed<TicketComment>> {
   const params: Record<string, string> = {};
   if (cursor) params.cursor = cursor;
-  const { data } = await apiClient.get<CursorResponse<TicketComment>>(
+  const { data } = await apiClient.get<Feed<TicketComment>>(
     `/tickets/${ticketId}/comments/`,
     { params }
   );
@@ -173,27 +145,11 @@ export async function getComments(
 
 export async function addComment(
   ticketId: number,
-  body: string,
-  visibility: 'public' | 'internal' = 'public'
+  body: string
 ): Promise<TicketComment> {
   const { data } = await apiClient.post<TicketComment>(
     `/tickets/${ticketId}/comments/`,
-    { body, visibility }
-  );
-  return data;
-}
-
-// ── Logs ──────────────────────────────────────────────────────────────────────
-
-export async function getLogs(
-  ticketId: number,
-  cursor?: string | null
-): Promise<CursorResponse<TicketLog>> {
-  const params: Record<string, string> = {};
-  if (cursor) params.cursor = cursor;
-  const { data } = await apiClient.get<CursorResponse<TicketLog>>(
-    `/tickets/${ticketId}/logs/`,
-    { params }
+    { body }
   );
   return data;
 }
@@ -216,16 +172,22 @@ export async function addFeedback(
 //
 // Fetches TicketLog and TicketComment in parallel and merges them into a unified
 // TicketTimelineEvent[] sorted ascending by created_at.
-// Internal comments are included here; callers (TicketTimeline) filter by role.
+//
+// The two legs have different audiences. The log is the trail of what happened
+// to the ticket and its raiser may read it; comments are the staff working log
+// and the raiser is refused. So the comment leg degrades to [] rather than
+// rejecting — under Promise.all a 403 there would take the whole timeline with
+// it, and the requester would be told nothing at all about their own ticket.
 
 export async function getTicketTimeline(ticketId: number): Promise<TicketTimelineEvent[]> {
   const [logsRes, commentsRes] = await Promise.all([
     apiClient
-      .get<CursorResponse<TicketLog> | TicketLog[]>(`/tickets/${ticketId}/logs/`)
-      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as CursorResponse<TicketLog>).results ?? [])),
+      .get<Feed<TicketLog> | TicketLog[]>(`/tickets/${ticketId}/logs/`)
+      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as Feed<TicketLog>).results ?? [])),
     apiClient
-      .get<CursorResponse<TicketComment> | TicketComment[]>(`/tickets/${ticketId}/comments/`)
-      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as CursorResponse<TicketComment>).results ?? [])),
+      .get<Feed<TicketComment> | TicketComment[]>(`/tickets/${ticketId}/comments/`)
+      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as Feed<TicketComment>).results ?? []))
+      .catch(() => [] as TicketComment[]),
   ]);
 
   const logEvents: TicketTimelineEvent[] = (logsRes as TicketLog[]).map((log) => ({
@@ -249,7 +211,6 @@ export async function getTicketTimeline(ticketId: number): Promise<TicketTimelin
     event_type: 'comment' as TicketTimelineEvent['event_type'],
     actor: c.author,
     note: c.body,
-    data: { visibility: c.visibility },
     created_at: c.created_at,
   }));
 
@@ -282,21 +243,15 @@ export interface TicketAttachmentRow {
   id: number;
   original_name: string;
   mime_type: string;
-  original_size: number;
   stored_size: number;
-  size_saved_pct: number | null;
   url: string;
-  uploaded_by: { id: number; full_name: string } | null;
+  uploaded_by: AssignedUser | null;
   created_at: string;
 }
 
 export async function getAttachments(ticketId: number): Promise<TicketAttachmentRow[]> {
   const { data } = await apiClient.get<TicketAttachmentRow[]>(`/tickets/${ticketId}/attachments/`);
   return Array.isArray(data) ? data : [];
-}
-
-export async function deleteAttachment(ticketId: number, attachmentId: number): Promise<void> {
-  await apiClient.delete(`/tickets/${ticketId}/attachments/${attachmentId}/`);
 }
 
 export async function uploadAttachments(ticketId: number, files: File[]): Promise<void> {
@@ -307,17 +262,18 @@ export async function uploadAttachments(ticketId: number, files: File[]): Promis
   });
 }
 
-// ── Feedback list (role-scoped: technician=own, HOS/HOD/Manager/Admin=full scope) ──
-
+/** A rated ticket, as the Feedback tab lists it. Scoped server-side. */
 export interface TicketFeedbackRow {
   id: number;
   ticket_no: string;
   service_item: string;
-  section: string;
-  assigned_to: { id: number; username: string; first_name: string; last_name: string; full_name: string } | null;
+  campus: string;
+  trade: string;
+  assigned_to: AssignedUser | null;
   resolved_at: string | null;
   rating: number;
   comment: string;
+  /** When it was rated. */
   created_at: string;
 }
 
@@ -328,37 +284,8 @@ export interface TicketFeedbackResponse {
   results: TicketFeedbackRow[];
 }
 
-export interface TicketFeedbackParams {
-  rating?: number;
-  date_from?: string;
-  date_to?: string;
-  page?: number;
-}
-
-export async function getFeedback(params?: TicketFeedbackParams): Promise<TicketFeedbackResponse> {
-  const { data } = await apiClient.get<TicketFeedbackResponse>('/tickets/feedback/', { params });
+export async function getFeedback(): Promise<TicketFeedbackResponse> {
+  const { data } = await apiClient.get<TicketFeedbackResponse>('/tickets/feedback/');
   return data;
 }
 
-// ── Default export ────────────────────────────────────────────────────────────
-
-const ticketsService = {
-  getTickets,
-  getTicketFilterOptions,
-  getTicketById,
-  createTicket,
-  updateTicket,
-  assignTicket,
-  updateTicketStatus,
-  addFeedback,
-  getComments,
-  addComment,
-  getLogs,
-  uploadAttachments,
-  closeTicket,
-  reopenTicket,
-  claimTicket,
-  getFeedback,
-};
-
-export default ticketsService;

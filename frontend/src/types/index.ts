@@ -1,17 +1,7 @@
-// Central export file for all types
+// Every domain type, in one import. `@/types` is the only path components use;
+// the modules below are an internal split by subject, not an entry point.
 export * from './ticket.types';
 export * from './user.types';
-export * from './shared.types';
-export * from './facility.types';
-export * from './technician.types';
-export type { NestedRef, SectionHead } from './section.types';
+export * from './org.types';
 export * from './analytics.types';
-export type {
-	Campus,
-	Department,
-	DepartmentType,
-	Section,
-	SectionType,
-	CampusDepartment,
-} from './organisationStructure';
-export * from './catalogue';
+export * from './shared.types';

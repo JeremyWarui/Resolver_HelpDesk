@@ -1,12 +1,9 @@
 /**
- * Recharts tooltips, defined once.
+ * The three Recharts tooltip shapes, and the card they share.
  *
- * There were ten definitions of these across seven files — three genuinely
- * different shapes, each copied two to four times, all sharing the same card
- * styling written out by hand every time. Duplicated tooltips drift silently:
- * they only appear on hover, never side by side, so one gaining a colour dot
- * or losing a border goes unnoticed until someone screenshots two charts for
- * the same report.
+ * One definition each, because a tooltip only appears on hover and never
+ * beside another one — so two copies can drift for months before anyone puts
+ * two charts in the same report and notices.
  */
 
 interface TooltipEntry {
@@ -15,7 +12,7 @@ interface TooltipEntry {
   color?: string;
 }
 
-export interface ChartTooltipProps {
+interface ChartTooltipProps {
   active?: boolean;
   payload?: TooltipEntry[];
   label?: string;

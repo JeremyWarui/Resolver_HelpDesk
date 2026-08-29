@@ -19,11 +19,11 @@
  * TanStack still dedupes these two across every consumer of the sidebar.
  */
 import { useQuery } from '@tanstack/react-query';
-import ticketsService from '@/lib/api/tickets';
+import { getTickets } from '@/lib/api/tickets';
 import { useAuthStore } from '@/stores/authStore';
-import { useRoleContext } from '@/lib/auth/roleContext';
+import { useRole } from '@/lib/auth/permissions';
 
-export interface NavCounts {
+interface NavCounts {
   escalated: number;
   pending: number;
 }
@@ -39,7 +39,7 @@ export function useNavCounts(enabled = true): NavCounts {
   // whole (campus, trade) pool, so counting it here would badge a number the
   // page cannot show. The narrowing lives here rather than at the call site so
   // the count and the page cannot drift apart.
-  const { role } = useRoleContext();
+  const role = useRole();
   const userId = useAuthStore((s) => s.user?.id);
   const ownWorkOnly = role === 'technician';
   const escalatedParams = {
@@ -49,7 +49,7 @@ export function useNavCounts(enabled = true): NavCounts {
   };
   const escalated = useQuery({
     queryKey: ['nav-count', 'escalated', escalatedParams],
-    queryFn: () => ticketsService.getTickets(escalatedParams),
+    queryFn: () => getTickets(escalatedParams),
     enabled: enabled && !(ownWorkOnly && !userId),
     staleTime: STALE_MS,
   });
@@ -61,7 +61,7 @@ export function useNavCounts(enabled = true): NavCounts {
   };
   const pending = useQuery({
     queryKey: ['nav-count', 'pending', pendingParams],
-    queryFn: () => ticketsService.getTickets(pendingParams),
+    queryFn: () => getTickets(pendingParams),
     enabled: enabled && !(ownWorkOnly && !userId),
     staleTime: STALE_MS,
   });

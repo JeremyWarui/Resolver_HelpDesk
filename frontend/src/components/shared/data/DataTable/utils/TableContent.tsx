@@ -31,6 +31,8 @@ interface TableContentProps<TData> {
   pageIndex: number;
   handlePageSizeChange: (size: number) => void;
   handlePageChange: (page: number) => void;
+  /** What one row is. This table is not only ever a ticket table. */
+  noun: { one: string; many: string };
 }
 
 export function RenderTableContent<TData>({
@@ -47,6 +49,7 @@ export function RenderTableContent<TData>({
   pageIndex,
   handlePageSizeChange,
   handlePageChange,
+  noun,
 }: TableContentProps<TData>) {
   // Type guard to check if row has id property
   const getRowId = (row: TData): number | null => {
@@ -127,21 +130,12 @@ export function RenderTableContent<TData>({
         <div className="flex items-center space-x-6">
           <div className="text-sm text-muted-foreground">
             {(() => {
-              if (actualTotalItems > 0) {
-                // Client-side pagination: show range (e.g., "Showing 1-10 of 25 tickets")
-                const startItem = (pageIndex * pageSize) + 1;
-                const endItem = Math.min((pageIndex + 1) * pageSize, actualTotalItems);
-                
-                if (actualTotalItems <= pageSize) {
-                  // Single page: just show total
-                  return `${actualTotalItems} ticket(s) found`;
-                } else {
-                  // Multi-page: show range
-                  return `Showing ${startItem}-${endItem} of ${actualTotalItems} tickets`;
-                }
-              } else {
-                return "No tickets found";
-              }
+              if (actualTotalItems === 0) return `No ${noun.many} found`;
+              const word = actualTotalItems === 1 ? noun.one : noun.many;
+              if (actualTotalItems <= pageSize) return `${actualTotalItems} ${word} found`;
+              const first = pageIndex * pageSize + 1;
+              const last = Math.min((pageIndex + 1) * pageSize, actualTotalItems);
+              return `Showing ${first}-${last} of ${actualTotalItems} ${noun.many}`;
             })()}
           </div>
           <div className="flex items-center space-x-2">

@@ -2,28 +2,7 @@ import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNotifications } from '@/hooks/useNotifications';
 import { timeAgo } from '@/utils/date';
-
-const EVENT_COLOR: Record<string, string> = {
-  ticket_created:        'bg-blue-100 text-blue-700',
-  ticket_assigned:       'bg-yellow-100 text-yellow-700',
-  ticket_status_changed: 'bg-purple-100 text-purple-700',
-  ticket_escalated:      'bg-red-100 text-red-700',
-  ticket_resolved:       'bg-green-100 text-green-700',
-  comment_added:         'bg-indigo-100 text-indigo-700',
-  sla_warning:           'bg-orange-100 text-orange-700',
-  sla_breach:            'bg-red-100 text-red-700',
-};
-
-const EVENT_LABEL: Record<string, string> = {
-  ticket_created:        'New Ticket',
-  ticket_assigned:       'Assigned',
-  ticket_status_changed: 'Status',
-  ticket_escalated:      'Escalated',
-  ticket_resolved:       'Resolved',
-  comment_added:         'Comment',
-  sla_warning:           'SLA Warning',
-  sla_breach:            'SLA Breach',
-};
+import { NOTIFICATION_EVENTS, UNKNOWN_NOTIFICATION_TINT } from '@/constants/notifications';
 
 export function MobileNotifications() {
   const {
@@ -87,11 +66,11 @@ export function MobileNotifications() {
               <div className="flex items-start justify-between gap-2 mb-1">
                 <span className={cn(
                   'text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0',
-                  EVENT_COLOR[n.eventType] ?? 'bg-gray-100 text-gray-600'
+                  NOTIFICATION_EVENTS[n.event_type]?.tint ?? UNKNOWN_NOTIFICATION_TINT
                 )}>
-                  {EVENT_LABEL[n.eventType] ?? n.eventType}
+                  {NOTIFICATION_EVENTS[n.event_type]?.label ?? n.event_type}
                 </span>
-                <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(n.createdAt)}</span>
+                <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(n.created_at)}</span>
               </div>
               <p className="text-sm font-medium text-foreground leading-snug">{n.title}</p>
               <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>

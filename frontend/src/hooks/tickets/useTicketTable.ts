@@ -1,13 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useTickets } from './useTickets';
-import useUpdateTicket from './useUpdateTicket';
-import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
-import { extractWritableFields } from '@/utils/ticketHelpers';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket, TicketsParams } from '@/types';
 import { ALL_TICKET_STATUSES } from '@/constants/tickets';
 
 export interface UseTicketTableConfig {
-  role: 'admin' | 'user' | 'technician' | 'hos' | 'hod' | 'manager';
   currentUserId?: number;
   defaultStatusFilter?: string;
   defaultPageSize?: number;
@@ -21,8 +18,6 @@ export interface UseTicketTableResult {
   // Pagination
   pageIndex: number;
   pageSize: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
   setPageIndex: (index: number) => void;
   setPageSize: (size: number) => void;
 
@@ -31,56 +26,30 @@ export interface UseTicketTableResult {
   tradeFilter: number | null;
   technicianFilter: number | null;
   userFilter: number | null;
-  overdueFilter: boolean;
   setStatusFilter: (status: string) => void;
-  setTradeFilter: (subSection: number | null) => void;
+  setTradeFilter: (trade: number | null) => void;
   setTechnicianFilter: (technician: number | null) => void;
   setUserFilter: (user: number | null) => void;
   setOverdueFilter: (overdue: boolean) => void;
 
-  // Dialog State
+  /** Which row is highlighted, and the handler that sets it. */
   selectedTicket: Ticket | null;
-  isTicketDialogOpen: boolean;
   setSelectedTicket: (ticket: Ticket | null) => void;
-  setIsTicketDialogOpen: (open: boolean) => void;
 
   // Data
   tickets: Ticket[];
   totalTickets: number;
   /** Trades in the caller's scope — the ticket-table filter's options. */
   trades: Array<{ id: number; name: string }>;
-  tableData: Ticket[];
 
-  // Loading States
   loading: boolean;
-  ticketsLoading: boolean;
 
   // Actions
   handleViewTicket: (ticket: Ticket) => void;
-  handleTicketUpdate: (updatedTicket: Ticket) => Promise<Ticket | undefined>;
-  handlePageChange: (newPageIndex: number) => void;
-  handlePageSizeChange: (newPageSize: number) => void;
-  updateTicket: (ticket: Ticket) => Promise<Ticket>;
-  refetch: () => void;
 
   // Constants
   allStatuses: string[];
-  commonTableProps: {
-    searchPlaceholder: string;
-    emptyStateMessage: string;
-    emptyStateDescription: string;
-    defaultSorting: { id: string; desc: boolean }[];
-    manualPagination: boolean;
-  };
 }
-
-const COMMON_TABLE_PROPS = {
-  searchPlaceholder: 'Search by ID or title...',
-  emptyStateMessage: 'No tickets found',
-  emptyStateDescription: 'Try changing your filters or check back later',
-  defaultSorting: [{ id: 'updated_at', desc: true }],
-  manualPagination: true,
-};
 
 export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResult => {
   const {
@@ -118,8 +87,8 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     resetToFirstPage();
   }, [resetToFirstPage]);
 
-  const setTradeFilter = useCallback((subSection: number | null) => {
-    setTradeFilterRaw(subSection);
+  const setTradeFilter = useCallback((trade: number | null) => {
+    setTradeFilterRaw(trade);
     resetToFirstPage();
   }, [resetToFirstPage]);
 
@@ -138,148 +107,76 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     resetToFirstPage();
   }, [resetToFirstPage]);
 
-  // Dialog state
+  // Which row is highlighted, read back as DataTable's `selectedRowId`.
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [isTicketDialogOpen, setIsTicketDialogOpen] = useState(false);
 
   // ==================== DATA FETCHING ====================
   const ticketParams = useMemo((): TicketsParams => ({
     page: pageIndex + 1,
     page_size: pageSize,
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-    ...(tradeFilter ? { sub_section: tradeFilter } : {}),
+    ...(tradeFilter ? { trade: tradeFilter } : {}),
     ...(technicianFilter ? { assigned_to: technicianFilter } : {}),
     ...(userFilter ? { raised_by: userFilter } : {}),
     // Server-side, like every other filter here: the table is paginated, so
-    // narrowing the page the client happens to hold would filter 20 rows and
-    // call it the answer. The flag used to be held in state and read by
-    // nothing, which is why the Overdue pill listed everything.
+    // narrowing the page the client holds would filter 20 rows and call it
+    // the answer.
     ...(overdueFilter ? { overdue: '1' as const } : {}),
     ...(fixedParams ?? {}),
   }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, fixedParams]);
 
-  const {
-    tickets: fetchedTickets,
-    totalTickets: fetchedTotalTickets,
-    nextPage,
-    prevPage,
-    loading: ticketsLoading,
-    refetch,
-  } = useTickets(
+  const { tickets, totalTickets, loading } = useTickets(
     ticketParams,
     skipUntilUserId && currentUserId === undefined,
   );
 
-  const hasNextPage = !!nextPage;
-  const hasPrevPage = !!prevPage;
-
-  const tickets = fetchedTickets;
-  const totalTickets = fetchedTotalTickets;
-
-  const { subSections: trades } = useTicketFilterOptions();
-
-  const { updateTicket } = useUpdateTicket();
-
-  // ==================== DATA TRANSFORMATION ====================
-  const tableData = useMemo(
-    () =>
-      tickets.map((ticket) => ({
-        ...ticket,
-        // Must match what the columns actually render, or the box empties the
-        // table instead of filtering it. A ticket has no title field, so the
-        // Title column shows `service_item.name` — leaving it out meant typing
-        // a service name matched nothing on all four pages that come through
-        // here. Same expression as `TicketTable`, which got this right.
-        searchField: [ticket.ticket_no, ticket.service_item?.name, ticket.description]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-      })),
-    [tickets],
-  );
+  const { trades } = useTicketFilterOptions();
 
   // ==================== HANDLERS ====================
+  // The rows themselves are mapped in `TicketTable`, which adds the hidden
+  // `searchField` every consumer of this hook renders through.
   const handleViewTicket = useCallback((ticket: Ticket) => {
     setSelectedTicket(ticket);
-    setIsTicketDialogOpen(true);
-  }, []);
-
-  const handleTicketUpdate = useCallback(async (updatedTicket: Ticket) => {
-    try {
-      const updatePayload = {
-        id: updatedTicket.id,
-        ...extractWritableFields(updatedTicket),
-      };
-      const result = await updateTicket(updatePayload);
-      refetch();
-      setIsTicketDialogOpen(false);
-      return result;
-    } catch (error) {
-      console.error('Failed to update ticket:', error);
-    }
-  }, [updateTicket, refetch]);
-
-  const handlePageChange = useCallback((newPageIndex: number) => {
-    setPageIndexRaw(newPageIndex);
-  }, []);
-
-  const handlePageSizeChange = useCallback((newPageSize: number) => {
-    setPageSizeRaw(newPageSize);
-    setPageIndexRaw(0);
   }, []);
 
   const setPageIndex = useCallback((index: number) => {
-    handlePageChange(index);
-  }, [handlePageChange]);
+    setPageIndexRaw(index);
+  }, []);
+
+  // Resizing restarts the listing: page 4 of 10-row pages is off the end of
+  // the same list cut into 50s.
+  const setPageSize = useCallback((size: number) => {
+    setPageSizeRaw(size);
+    setPageIndexRaw(0);
+  }, []);
 
   // ==================== RETURN ====================
   return {
-    // Pagination
     pageIndex,
     pageSize,
-    hasNextPage,
-    hasPrevPage,
     setPageIndex,
-    setPageSize: handlePageSizeChange,
+    setPageSize,
 
-    // Filters
     statusFilter,
     tradeFilter,
     technicianFilter,
     userFilter,
-    overdueFilter,
     setStatusFilter,
     setTradeFilter,
     setTechnicianFilter,
     setUserFilter,
     setOverdueFilter,
 
-    // Dialog
     selectedTicket,
-    isTicketDialogOpen,
     setSelectedTicket,
-    setIsTicketDialogOpen,
 
-    // Data
     tickets,
     totalTickets,
     trades,
-    tableData,
+    loading,
 
-    // Loading
-    loading: ticketsLoading,
-    ticketsLoading,
-
-    // Actions
     handleViewTicket,
-    handleTicketUpdate,
-    handlePageChange,
-    handlePageSizeChange,
-    updateTicket,
-    refetch,
 
-    // Constants
     allStatuses: ALL_TICKET_STATUSES,
-    commonTableProps: COMMON_TABLE_PROPS,
   };
 };

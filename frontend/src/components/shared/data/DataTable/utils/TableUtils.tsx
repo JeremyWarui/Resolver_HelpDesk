@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+ 
 import { type ColumnDef } from "@tanstack/react-table";
 import { Eye, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { PriorityBadge } from "@/components/shared/ticket/PriorityBadge";
 import { SLACountdown } from "@/components/shared/ticket/SLACountdown";
 import type { Ticket } from "@/types";
 import { sortableHeader } from './sortableHeader';
+import { relativeTime } from '@/utils/date';
 
 // Utility function to truncate text — guards against undefined/null values
 const truncateText = (text: string | undefined | null, maxLength: number) => {
@@ -17,44 +18,18 @@ const truncateText = (text: string | undefined | null, maxLength: number) => {
   return text.slice(0, maxLength) + "...";
 };
 
-// Utility function to format relative time
-const formatRelativeTime = (dateString: string) => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInMs = now.getTime() - date.getTime();
-  const diffInHours = diffInMs / (1000 * 60 * 60);
-
-  if (diffInHours < 24) {
-    // Singular at 1, and "Just now" under a minute — this rendered "1 hours
-    // ago" and, for a ticket seconds old, "0 minutes ago".
-    if (diffInHours < 1) {
-      const mins = Math.floor(diffInMs / (1000 * 60));
-      if (mins < 1) return 'Just now';
-      return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
-    }
-    const hrs = Math.floor(diffInHours);
-    return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} ago`;
-  }
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
 // Column definitions
-export const ticketNoColumn = <T,>(header: string = "Ticket ID"): ColumnDef<T> => ({
+export const ticketNoColumn = (header: string = "Ticket ID"): ColumnDef<Ticket> => ({
   accessorKey: "ticket_no",
   header: sortableHeader(header),
   cell: ({ row }) => <div>{row.getValue("ticket_no")}</div>,
 });
 
-export const ticketTitleColumn = <T,>(header: string = "Service"): ColumnDef<T> => ({
+export const ticketTitleColumn = (header: string = "Service"): ColumnDef<Ticket> => ({
   // Tickets have no "title" field — use service_item.name as the display label.
   id: "title",
   accessorFn: (row) => {
-    const t = row as unknown as Ticket;
-    return t?.service_item?.name ?? t?.description ?? '';
+    return row.service_item?.name ?? row.description ?? '';
   },
   header,
   cell: ({ row }) => {
@@ -71,7 +46,7 @@ export const ticketTitleColumn = <T,>(header: string = "Service"): ColumnDef<T> 
   maxSize: 180,
 });
 
-export const descriptionColumn = <T,>(header: string = "Description"): ColumnDef<T> => ({
+export const descriptionColumn = (header: string = "Description"): ColumnDef<Ticket> => ({
   accessorKey: "description",
   header,
   cell: ({ row }) => {
@@ -89,26 +64,24 @@ export const descriptionColumn = <T,>(header: string = "Description"): ColumnDef
 /**
  * Where the job is.
  *
- * Reads `location`, not a top-level `facility` — a Ticket has never had one, so
- * this column printed an em dash on every row of every table. It was hidden in
- * every variant, which is why nobody saw it; making it visible on Pending Work
- * is what surfaced it.
+ * Reads `location`, not a top-level `facility`: a Ticket carries the place
+ * under `location`, and the facility sits inside it.
  *
- * Half the location types have no Facility row by design (`building_dropdown:
- * false` in the backend's TYPE_SPECS — staff quarters, equipment, grounds), so
- * a null facility is normal rather than missing data. Those fall back to the
- * type name, with `values` carrying the detail that identifies the place.
+ * Every location names a facility off the register — `validate_location` in
+ * apps/facilities/validators.py refuses a null one for every type — so the
+ * fallbacks below are defensive rather than a supported shape. `values` carries
+ * the extra fields that type asks for, and identifies the spot within it.
  */
-export const facilityColumn = <T,>(header: string = "Location"): ColumnDef<T> => ({
+export const facilityColumn = (header: string = "Location"): ColumnDef<Ticket> => ({
   id: "facility",
   accessorFn: (row) => {
-    const loc = (row as unknown as Ticket).location;
+    const loc = row.location;
     if (!loc) return '';
     return loc.facility?.name ?? loc.facility_type?.name ?? '';
   },
   header,
   cell: ({ row }) => {
-    const loc = (row.original as unknown as Ticket).location;
+    const loc = row.original.location;
     const primary = loc?.facility?.name ?? loc?.facility_type?.name;
     if (!primary) return <div className="text-muted-foreground text-xs">—</div>;
     // e.g. {floor: "2", room: "204"} → "2, 204". Order comes from the server,
@@ -133,42 +106,24 @@ export const facilityColumn = <T,>(header: string = "Location"): ColumnDef<T> =>
   enableSorting: false,
 });
 
-/**
- * Trade (sub_section) — Plumbing, Electrical, Carpentry, …
- *
- * The column ticket tables should carry instead of `section`. Maintenance is
- * the only section type, so the section column printed the same word on every
- * row of every table; the trade is what distinguishes one ticket from the next.
- */
-export const tradeColumn = <T,>(header: string = "Trade"): ColumnDef<T> => ({
+/** Trade — Plumbing, Electrical, Carpentry, … The column that tells one
+ *  ticket from the next; every ticket in the system is Maintenance. */
+export const tradeColumn = (header: string = "Trade"): ColumnDef<Ticket> => ({
   id: "tradeName",
-  accessorFn: (row) => {
-    const r = row as Record<string, unknown>;
-    const s = r.sub_section as { name?: string } | undefined;
-    return s?.name ?? '';
-  },
+  accessorFn: (row) => row.trade?.name ?? '',
   header: sortableHeader(header),
   cell: ({ row }) => <div>{(row.getValue("tradeName") as string) || "N/A"}</div>,
 });
 
-export const raisedByColumn = <T,>(header: string = "Raised By"): ColumnDef<T> => ({
+export const raisedByColumn = (header: string = "Raised By"): ColumnDef<Ticket> => ({
   id: "raised_by",
-  accessorFn: (row) => {
-    const r = row as Record<string, unknown>;
-    const rb = r.raised_by;
-    if (typeof rb === 'string') return rb;
-    if (rb && typeof rb === 'object') {
-      const u = rb as { full_name?: string; username?: string };
-      return u.full_name || u.username || '';
-    }
-    return '';
-  },
+  accessorFn: (row) => row.raised_by?.full_name || row.raised_by?.username || '',
   header,
   cell: ({ row }) => <div>{(row.getValue("raised_by") as string) || "N/A"}</div>,
   enableSorting: false,
 });
 
-export const statusColumn = <T,>(header: string = "Status"): ColumnDef<T> => ({
+export const statusColumn = (header: string = "Status"): ColumnDef<Ticket> => ({
   accessorKey: "status",
   header: sortableHeader(header),
   // The escalation marker rides along with the status rather than taking a
@@ -176,7 +131,7 @@ export const statusColumn = <T,>(header: string = "Status"): ColumnDef<T> => ({
   // an escalated job legible to the technician holding it and to the HOS on
   // their ordinary Tickets list — neither of whom could see it before.
   cell: ({ row }) => {
-    const ticket = row.original as unknown as Ticket;
+    const ticket = row.original;
     return (
       <div className="flex flex-wrap items-center gap-1">
         <StatusBadge status={row.getValue("status") as Ticket["status"]} />
@@ -186,29 +141,12 @@ export const statusColumn = <T,>(header: string = "Status"): ColumnDef<T> => ({
   },
 });
 
-export const priorityColumn = <T,>(header: string = "Priority"): ColumnDef<T> => ({
+export const priorityColumn = (header: string = "Priority"): ColumnDef<Ticket> => ({
   accessorKey: "priority",
   header,
   cell: ({ row }) => (
     <PriorityBadge priority={row.getValue("priority") as Ticket["priority"]} />
   ),
-  enableSorting: false,
-});
-
-export const dueDateColumn = <T,>(header: string = "Due By"): ColumnDef<T> => ({
-  accessorKey: "resolution_due_at",
-  header,
-  cell: ({ row }) => {
-    const due = row.getValue("resolution_due_at") as string | null | undefined;
-    if (!due) return <span className="text-xs text-muted-foreground">—</span>;
-    const date = new Date(due);
-    const isOverdue = date < new Date();
-    return (
-      <span className={`text-xs ${isOverdue ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-        {date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}
-      </span>
-    );
-  },
   enableSorting: false,
 });
 
@@ -233,40 +171,36 @@ export const slaCountdownColumn = (header: string = "SLA"): ColumnDef<Ticket> =>
   size: 140,
 });
 
-export const createdAtColumn = <T,>(header: string = "Created"): ColumnDef<T> => ({
+export const createdAtColumn = (header: string = "Created"): ColumnDef<Ticket> => ({
   accessorKey: "created_at",
   header: sortableHeader(header),
   cell: ({ row }) => {
     const createdAt = row.getValue("created_at") as string;
     const date = new Date(createdAt);
-    return <div title={date.toLocaleString()}>{formatRelativeTime(createdAt)}</div>;
+    return <div title={date.toLocaleString()}>{relativeTime(createdAt)}</div>;
   },
 });
 
-export const updatedAtColumn = <T,>(header: string = "Updated"): ColumnDef<T> => ({
+export const updatedAtColumn = (header: string = "Updated"): ColumnDef<Ticket> => ({
   accessorKey: "updated_at",
   header: sortableHeader(header),
   cell: ({ row }) => {
     const updatedAt = row.getValue("updated_at") as string;
     if (!updatedAt) return <div>N/A</div>;
     const date = new Date(updatedAt);
-    return <div title={date.toLocaleString()}>{formatRelativeTime(updatedAt)}</div>;
+    return <div title={date.toLocaleString()}>{relativeTime(updatedAt)}</div>;
   },
 });
 
-export const assignedToColumn = <T,>(header: string = "Assigned To"): ColumnDef<T> => ({
+export const assignedToColumn = (header: string = "Assigned To"): ColumnDef<Ticket> => ({
   accessorKey: "assigned_to",
   header,
   cell: ({ row }) => {
-    const assignedTo = row.getValue("assigned_to");
-    if (!assignedTo) return <div className="text-muted-foreground">Unassigned</div>;
-    if (typeof assignedTo === 'object') {
-      const u = assignedTo as { full_name?: string; name?: string; username?: string };
-      const display = u.full_name || u.name || u.username;
-      return <div>{display ?? 'Unassigned'}</div>;
-    }
-    if (typeof assignedTo === 'string') return <div>{assignedTo}</div>;
-    return <div className="text-muted-foreground">Unassigned</div>;
+    const who = row.original.assigned_to;
+    const display = who?.full_name || who?.username;
+    return display
+      ? <div>{display}</div>
+      : <div className="text-muted-foreground">Unassigned</div>;
   },
   enableSorting: false,
 });
@@ -274,12 +208,12 @@ export const assignedToColumn = <T,>(header: string = "Assigned To"): ColumnDef<
 // ─── Pending work ─────────────────────────────────────────────────────────────
 
 /** Why the job is stopped. Label comes from the server — no vocabulary here. */
-export const pendingReasonColumn = <T,>(header: string = "Reason"): ColumnDef<T> => ({
+export const pendingReasonColumn = (header: string = "Reason"): ColumnDef<Ticket> => ({
   id: "pending_reason",
-  accessorFn: (row) => (row as unknown as Ticket).pending_reason_display ?? "",
+  accessorFn: (row) => row.pending_reason_display ?? "",
   header,
   cell: ({ row }) => {
-    const t = row.original as unknown as Ticket;
+    const t = row.original;
     if (!t.pending_reason_display) return <div className="text-muted-foreground">—</div>;
     return (
       // The width cap is what makes `truncate` mean anything: a table cell
@@ -308,15 +242,13 @@ export const pendingReasonColumn = <T,>(header: string = "Reason"): ColumnDef<T>
  * actionable part, and it is paired with the number so colour never carries the
  * meaning on its own.
  */
-export const pendingForColumn = <T,>(header: string = "Pending for"): ColumnDef<T> => ({
+export const pendingForColumn = (header: string = "Pending for"): ColumnDef<Ticket> => ({
   id: "pending_for",
-  accessorFn: (row) => {
-    const pausedAt = (row as unknown as Ticket).paused_at;
-    return pausedAt ? Date.now() - new Date(pausedAt).getTime() : 0;
-  },
+  accessorFn: (row) =>
+    row.paused_at ? Date.now() - new Date(row.paused_at).getTime() : 0,
   header,
   cell: ({ row }) => {
-    const pausedAt = (row.original as unknown as Ticket).paused_at;
+    const pausedAt = row.original.paused_at;
     if (!pausedAt) return <div className="text-muted-foreground">—</div>;
     const days = Math.floor((Date.now() - new Date(pausedAt).getTime()) / 86_400_000);
     const tone =
@@ -338,10 +270,10 @@ export const pendingForColumn = <T,>(header: string = "Pending for"): ColumnDef<
  * clears it. Making them open the ticket to do that is four clicks to undo one
  * fact they already know.
  */
-export function resumeActionColumn<T>(options: {
-  onResume: (ticket: T) => void;
-  onChangeReason: (ticket: T) => void;
-}): ColumnDef<T> {
+export function resumeActionColumn(options: {
+  onResume: (ticket: Ticket) => void;
+  onChangeReason: (ticket: Ticket) => void;
+}): ColumnDef<Ticket> {
   return {
     id: "resume_actions",
     header: "Actions",
@@ -375,39 +307,12 @@ export function resumeActionColumn<T>(options: {
   };
 }
 
-export const searchFieldColumn = <T,>(header: string = "Search Field"): ColumnDef<T> => ({
+// Always hidden. It exists only so DataTable's search box has a column to
+// filter on — `TicketTable` builds the value it matches against.
+export const searchFieldColumn = (): ColumnDef<Ticket> => ({
   accessorKey: "searchField",
-  header,
   enableHiding: true,
 });
-
-// Action columns for different user roles
-export function technicianViewColumn<T>(options: {
-  setSelectedTicket: (ticket: T | null) => void;
-  setIsTicketDialogOpen: (open: boolean) => void;
-}): ColumnDef<T> {
-  return {
-    id: "actions",
-    header: "Actions",
-    cell: ({ row }) => {
-      const ticket = row.original;
-      return (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            options.setSelectedTicket(ticket);
-            options.setIsTicketDialogOpen(true);
-          }}
-        >
-          <Eye className="mr-1 h-4 w-4" />
-          View
-        </Button>
-      );
-    },
-  };
-}
 
 // Actions column — only for user my-tickets variant.
 // Shows "Rate & close" for resolved unrated tickets; "Rated" badge once feedback exists;

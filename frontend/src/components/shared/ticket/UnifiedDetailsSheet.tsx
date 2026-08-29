@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -19,14 +18,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
-import { DETAILS_SHEET_CONFIG, type DetailSheetField, type DetailSheetFieldType } from '@/constants/detailsSheetConfig';
-import { useSections } from '@/hooks/sections/useSections';
-import { useUpdateUser } from '@/hooks/users/useUpdateUser';
+import { DETAILS_SHEET_CONFIG, type DetailSheetField, type DetailSheetFieldType } from '@/components/shared/ticket/detailsSheetConfig';
 import { facilitiesService } from '@/lib/api/organizations';
-import { useFacilityTypes } from '@/hooks/facilities/useFacilityTypes';
-import type { Technician, Section, Facility } from '@/types';
+import { updateUser } from '@/lib/api/users';
+import { useFacilityTypes } from '@/hooks/useCatalogue';
+import type { Technician, Facility } from '@/types';
 
-type Entity = Technician | Section | Facility;
+type Entity = Technician | Facility;
 
 type EntityFieldValue = string | number | number[] | null | undefined;
 
@@ -38,8 +36,8 @@ interface EditedValues {
   [key: string]: string | undefined;
 }
 
-// Entity is a union of unrelated shapes (Technician | Section | Facility); the details
-// config addresses their fields by name, so a single narrowing point is needed here.
+// Entity is a union of unrelated shapes and the config addresses their fields
+// by name, so the narrowing happens once, here.
 function getEntityField(entity: Entity, fieldName: string): EntityFieldValue {
   return (entity as unknown as Record<string, EntityFieldValue>)[fieldName];
 }
@@ -53,6 +51,10 @@ interface UnifiedDetailsSheetProps {
   onOpenChange: (open: boolean) => void;
   entity: Entity | null;
   entityType: 'technician' | 'facility';
+  /** Offer the edit form. Admin only: `FacilityViewSet` is IsAdminOrReadOnly
+   *  and `UserDetailView` is IsAdminGroup, so for every other role the Save
+   *  button can only ever come back 403. */
+  canEdit?: boolean;
   onUpdated?: () => void;
 }
 
@@ -61,23 +63,26 @@ export function UnifiedDetailsSheet({
   onOpenChange,
   entity,
   entityType,
+  canEdit = false,
   onUpdated,
 }: UnifiedDetailsSheetProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [isUpdating, setIsUpdating] = useState(false);
   const [editedValues, setEditedValues] = useState<EditedValues>({});
 
-  const { sections } = useSections();
   const { facilityTypes } = useFacilityTypes();
-  const { updateUser } = useUpdateUser();
   const config = DETAILS_SHEET_CONFIG[entityType];
 
-  // For technician section display
-  const techSections = entityType === 'technician' && entity ? (entity as Technician).sections || [] : [];
-  const technicianSectionNames = techSections.map(id => {
-    const s = sections.find(sec => sec.id === id);
-    return s ? s.name : String(id);
-  });
+  /** The entity's own values, as the edit form's starting point. */
+  function initialEditValues(): EditedValues {
+    const values: EditedValues = {};
+    if (!entity) return values;
+    config.editFields.forEach((field) => {
+      const raw = getEntityField(entity, field.name);
+      values[field.name] = raw != null ? String(raw) : '';
+    });
+    return values;
+  }
 
   // Reset edit state when the entity (or its config) changes. Adjusted during
   // render — per React's "you might not need an effect" guidance — rather than
@@ -87,14 +92,7 @@ export function UnifiedDetailsSheet({
   if (entity !== prevEntity || config !== prevConfig) {
     setPrevEntity(entity);
     setPrevConfig(config);
-    if (entity) {
-      const initialValues: EditedValues = {};
-      config.editFields.forEach(field => {
-        const raw = getEntityField(entity, field.name);
-        initialValues[field.name] = raw != null ? String(raw) : '';
-      });
-      setEditedValues(initialValues);
-    }
+    if (entity) setEditedValues(initialEditValues());
   }
 
   if (!entity) return null;
@@ -109,16 +107,15 @@ export function UnifiedDetailsSheet({
     setIsUpdating(true);
     try {
       if (entityType === 'technician') {
-        // Only the email is writable here: name and username follow it, and
-        // section membership is a role assignment, not a user field — the
-        // server has never read `sections` off this endpoint.
+        // Only the email is writable here: name and username follow it, and a
+        // trade link is a role assignment, not a user field — the server has
+        // never read one off this endpoint.
         await updateUser(entity.id, {
           email: asString(editedValues.email),
         });
       } else if (entityType === 'facility') {
         await facilitiesService.updateFacility(entity.id, {
           name: asString(editedValues.name),
-          code: asString(editedValues.code),
           facility_type: Number(editedValues.facility_type),
         });
       }
@@ -155,8 +152,8 @@ export function UnifiedDetailsSheet({
 
   // Render field value in view mode
   const renderViewField = (fieldName: string, fieldType: DetailSheetFieldType): React.ReactNode => {
-    if (fieldType === 'sections') {
-      return technicianSectionNames.join(', ') || 'None';
+    if (fieldType === 'trades') {
+      return (entity as Technician).trade_names?.join(', ') || 'None';
     }
     return getEntityField(entity, fieldName) || '—';
   };
@@ -171,35 +168,6 @@ export function UnifiedDetailsSheet({
           placeholder={field.placeholder}
           className="flex-1"
         />
-      );
-    }
-    if (field.type === 'textarea') {
-      return (
-        <Textarea
-          value={asString(editedValues[field.name])}
-          onChange={(e) => setEditedValues({ ...editedValues, [field.name]: e.target.value })}
-          placeholder={field.placeholder}
-          rows={3}
-        />
-      );
-    }
-    if (field.type === 'select') {
-      return (
-        <Select
-          value={asString(editedValues[field.name])}
-          onValueChange={(value) => setEditedValues({ ...editedValues, [field.name]: value })}
-        >
-          <SelectTrigger className="flex-1">
-            <SelectValue placeholder={field.placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options?.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value.toString()}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       );
     }
     if (field.type === 'facility-type') {
@@ -260,8 +228,8 @@ export function UnifiedDetailsSheet({
                 </div>
               </div>
 
-              {/* EDIT FORM - Only visible in edit mode */}
-              {mode === 'edit' && (
+              {/* The edit form, and the buttons that open and close it. */}
+              {canEdit && mode === 'edit' && (
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
                     Edit Details
@@ -269,7 +237,7 @@ export function UnifiedDetailsSheet({
                   <div className="bg-white border rounded-lg divide-y">
                     {config.editFields.map((field, idx) => (
                       <div key={idx} className="px-6 py-4">
-                        <div className={field.type === 'textarea' ? 'space-y-2' : 'flex items-center gap-4'}>
+                        <div className="flex items-center gap-4">
                           <label className="text-sm font-medium text-gray-700 min-w-30">
                             {field.label}:
                           </label>
@@ -283,7 +251,7 @@ export function UnifiedDetailsSheet({
                   <Button
                     onClick={handleSaveChanges}
                     disabled={isUpdating}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    className="w-full"
                   >
                     {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Changes
@@ -291,38 +259,15 @@ export function UnifiedDetailsSheet({
                 </div>
               )}
 
-              {/* Edit Button - Only in view mode */}
-              {mode === 'view' && (
+              {canEdit && (
                 <div className="flex justify-end">
-                  <Button
-                    onClick={() => setMode('edit')}
-                    className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Edit Details
-                  </Button>
-                </div>
-              )}
-
-              {/* Cancel Edit Button - Only in edit mode */}
-              {mode === 'edit' && (
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => {
-                      setMode('view');
-                      // Reset values
-                      if (entity) {
-                        const resetValues: EditedValues = {};
-                        config.editFields.forEach(field => {
-                          const raw = getEntityField(entity, field.name);
-                          resetValues[field.name] = raw != null ? String(raw) : '';
-                        });
-                        setEditedValues(resetValues);
-                      }
-                    }}
-                    variant="ghost"
-                  >
-                    Cancel
-                  </Button>
+                  {mode === 'view' ? (
+                    <Button onClick={() => setMode('edit')}>Edit Details</Button>
+                  ) : (
+                    <Button onClick={() => { setMode('view'); setEditedValues(initialEditValues()); }} variant="ghost">
+                      Cancel
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

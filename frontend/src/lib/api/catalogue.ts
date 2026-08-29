@@ -1,35 +1,20 @@
-import apiClient from './client';
-import type { ServiceItem, SubSection } from '@/types/catalogue';
+import apiClient, { rows } from './client';
+import type { ServiceItem, Trade } from '@/types';
+import type { Facility } from '@/types';
 
-// ── Campus-filtered catalogue tree ───────────────────────────────────────────
+// ── Catalogue tree ───────────────────────────────────────────────────────────
 //
-// `GET /catalog/?campus=<id>` returns the trades that campus actually runs,
-// with their service items nested. Campus is required: the catalogue is not
-// global, and a campus with no Maintenance section offers nothing.
+// `GET /catalog/` returns the active trades with their service items nested.
+// It takes no campus: all five trades run at every campus, so there is nothing
+// for a campus to narrow.
 
-export type CatalogItem = Pick<ServiceItem, 'id' | 'name' | 'description' | 'is_active'>;
+export type CatalogItem = Pick<ServiceItem, 'id' | 'name' | 'is_active'>;
 
-export type CatalogSubSection = SubSection & { items: CatalogItem[] };
+export type CatalogTrade = Trade & { items: CatalogItem[] };
 
-/** A facility as the ticket wizard needs it. Each row names its own type, so
- *  one campus-wide call is enough to draw both the type tiles and the facility
- *  dropdown — there is no separate /facility-types/ fetch, and no further
- *  request as the requester clicks between tiles. */
-export interface CampusFacility {
-  id: number;
-  name: string;
-  code: string;
-  /** FK id of the facility type — what the create payload sends. */
-  facility_type: number;
-  /** Type code, e.g. "office_block" — what the client groups on. */
-  type: string;
-  facility_type_name: string;
-}
-
-/** A facility type as the admin facility form needs it. The wizard can get away
- *  with reading `facility_type` off an existing facility on the campus; creating
- *  the *first* facility of a type has no such row to read, so the admin form
- *  asks for the list itself. */
+/** A facility type. The wizard reads `facility_type` off an existing facility
+ *  on the campus; creating the first facility of a type has no such row, so the
+ *  admin form asks for the list itself. */
 export interface FacilityTypeRow {
   id: number;
   name: string;
@@ -38,49 +23,44 @@ export interface FacilityTypeRow {
 
 export async function getFacilityTypes(): Promise<FacilityTypeRow[]> {
   const { data } = await apiClient.get('/facility-types/');
-  return Array.isArray(data) ? data : (data.results ?? data);
+  return rows<FacilityTypeRow>(data);
 }
 
-export async function getCatalog(campusId: number): Promise<CatalogSubSection[]> {
-  const { data } = await apiClient.get('/catalog/', { params: { campus: campusId } });
-  return Array.isArray(data) ? data : (data.results ?? data);
+export async function getCatalog(): Promise<CatalogTrade[]> {
+  const { data } = await apiClient.get('/catalog/');
+  return rows<CatalogTrade>(data);
 }
 
-export async function getCampusFacilities(campusId: number): Promise<CampusFacility[]> {
+/** Every facility on one campus. Each row names its own type, so this one call
+ *  draws both the type tiles and the facility dropdown. */
+export async function getCampusFacilities(campusId: number): Promise<Facility[]> {
   const { data } = await apiClient.get('/facilities/', { params: { campus: campusId } });
-  return Array.isArray(data) ? data : (data.results ?? data);
+  return rows<Facility>(data);
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
-export const getSubSections = (params?: {
-  section_type?: number;
-  is_active?: boolean;
-}) => apiClient.get<SubSection[]>(`/sub-sections/`, { params });
+export const getTrades = () => apiClient.get<Trade[]>(`/trades/`);
 
-// ── Sub-section CRUD ──────────────────────────────────────────────────────────
+// ── Trade CRUD ──────────────────────────────────────────────────────────
 
-export const createSubSection = (data: {
-  section_type: number;
+export const createTrade = (data: {
   name: string;
   code: string;
-  description?: string;
   is_active?: boolean;
-  location_details?: boolean;
-}) => apiClient.post<SubSection>(`/sub-sections/`, data);
+}) => apiClient.post<Trade>(`/trades/`, data);
 
-export const updateSubSection = (id: number, data: Partial<SubSection>) =>
-  apiClient.patch<SubSection>(`/sub-sections/${id}/`, data);
+export const updateTrade = (id: number, data: Partial<Trade>) =>
+  apiClient.patch<Trade>(`/trades/${id}/`, data);
 
-export const deleteSubSection = (id: number) =>
-  apiClient.delete(`/sub-sections/${id}/`);
+export const deleteTrade = (id: number) =>
+  apiClient.delete(`/trades/${id}/`);
 
 // ── Service item CRUD ─────────────────────────────────────────────────────────
 
 export const createServiceItem = (data: {
-  sub_section: number;
+  trade: number;
   name: string;
-  description?: string;
   is_active?: boolean;
 }) => apiClient.post<ServiceItem>(`/service-items/`, data);
 

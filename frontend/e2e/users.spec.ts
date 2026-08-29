@@ -1,12 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, uniqueSuffix, USERS } from './helpers';
 
-// Smoke test for the Users admin page — the safety net for the UsersPage
-// decomposition. Creates a user, edits them, deletes them (self-cleaning).
+// The Users admin page: create, edit, delete, self-cleaning.
 //
-// The email is the whole identity: nothing here types a name or a username,
-// and the edit step proves that changing the address renames the account,
-// which is the one behaviour a hand-set name would quietly break.
+// The email is the whole identity — nothing here types a name or a username —
+// and the edit step proves that changing the address renames the account.
 test('users CRUD: create, search, edit, delete', async ({ page }) => {
   const suffix = uniqueSuffix();
   const email = `e2e.${suffix}@example.test`;
@@ -23,12 +21,12 @@ test('users CRUD: create, search, edit, delete', async ({ page }) => {
   // ── Create ─────────────────────────────────────────────────────────────────
   await page.getByRole('button', { name: 'Add User' }).click();
   const form = page.getByRole('dialog');
-  await expect(form.getByText('Add User')).toBeVisible();
+  await expect(form.getByText('Add user')).toBeVisible();
   await form.getByPlaceholder('you@ksg.ac.ke').fill(email);
   await form.getByText('Select campus').click();
   await page.getByRole('option').first().click();
   await form.getByPlaceholder('Minimum 8 characters').fill('E2ePlaywright123!');
-  await form.getByRole('button', { name: 'Create User' }).click();
+  await form.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(form).toBeHidden({ timeout: 20_000 });
 
   // ── Search finds the new user, under the derived username ──────────────────
@@ -39,9 +37,9 @@ test('users CRUD: create, search, edit, delete', async ({ page }) => {
   // ── Edit: a new address renames the account ────────────────────────────────
   await row.getByTitle('Edit user').click();
   const editForm = page.getByRole('dialog');
-  await expect(editForm.getByText('Edit User')).toBeVisible();
+  await expect(editForm.getByText('Edit user')).toBeVisible();
   await editForm.getByPlaceholder('you@ksg.ac.ke').fill(emailEdited);
-  await editForm.getByRole('button', { name: 'Update' }).click();
+  await editForm.getByRole('button', { name: 'Save changes' }).click();
   await expect(editForm).toBeHidden({ timeout: 20_000 });
   await page.getByPlaceholder('Search...').fill(usernameEdited);
   await expect(page.getByRole('row', { name: new RegExp(usernameEdited) })).toBeVisible();
@@ -57,12 +55,10 @@ test('users CRUD: create, search, edit, delete', async ({ page }) => {
   });
 });
 
-// A person has one campus: the one they chose when they registered
-// (UserProfile.campus). A role assignment also resolves to a campus, and for
-// every scoped role the two agree — which is why the Users page reading the
-// role campus went unnoticed. It does not agree for a plain requester, whose
-// role carries no campus at all, so they showed "—" in the Campus column and
-// disappeared from the table the moment any campus was selected.
+// A person has one campus: the one they chose when they registered. A role
+// assignment also resolves to a campus, and for every scoped role the two
+// agree — but a plain requester's role carries no campus at all, so the column
+// and the filter must read the home campus, not the role's.
 test('the campus column and filter show the campus a requester chose', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/dashboard/users');

@@ -1,22 +1,15 @@
-import apiClient from './client';
+import apiClient, { fetchAll } from './client';
 import type {
   User,
   CreateUserPayload,
   UpdateUserPayload,
-  UsersResponse,
   RoleAssignment,
   CreateRoleAssignmentPayload,
 } from '@/types';
 
-export interface UserListParams {
-  role?: string;
-  page?: number;
-  page_size?: number;
-}
-
-export async function getUsers(_params?: UserListParams): Promise<UsersResponse> {
-  const { data } = await apiClient.get<UsersResponse>('/users/');
-  return data;
+/** Every account. The admin table filters and sorts the whole list in the page. */
+export function getUsers(): Promise<User[]> {
+  return fetchAll<User>('/users/');
 }
 
 export async function createUser(payload: CreateUserPayload): Promise<User> {
@@ -49,13 +42,3 @@ export async function createRoleAssignment(
   return data;
 }
 
-const usersService = {
-  getUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  getRoleAssignments,
-  createRoleAssignment,
-};
-
-export default usersService;

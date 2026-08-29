@@ -1,33 +1,15 @@
 import { useState } from 'react';
 import { RefreshCw, WifiOff, ClipboardList, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useMobileTickets } from './useMobileTickets';
+import { useTickets } from '@/hooks/tickets/useTickets';
+import { useAuthStore } from '@/stores/authStore';
+import { StatusBadge } from '@/components/shared/ticket/StatusBadge';
+import { statusPills } from '@/constants/tickets';
 import type { Ticket } from '@/types';
 import { timeAgo } from '@/utils/date';
 
-export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  open:        { label: 'Open',        color: 'bg-blue-100 text-blue-700' },
-  assigned:    { label: 'Assigned',    color: 'bg-yellow-100 text-yellow-700' },
-  in_progress: { label: 'In Progress', color: 'bg-purple-100 text-purple-700' },
-  pending:     { label: 'On Hold',     color: 'bg-orange-100 text-orange-700' },
-  resolved:    { label: 'Resolved',    color: 'bg-green-100 text-green-700' },
-  closed:      { label: 'Closed',      color: 'bg-gray-100 text-gray-600' },
-};
-
-const PRIORITY_DOT: Record<string, string> = {
-  critical: 'bg-red-500',
-  high:     'bg-orange-500',
-  medium:   'bg-yellow-400',
-  low:      'bg-green-400',
-};
-
-const FILTERS = [
-  { key: 'all',         label: 'All' },
-  { key: 'assigned',    label: 'Assigned' },
-  { key: 'in_progress', label: 'In Progress' },
-  { key: 'pending',     label: 'On Hold' },
-  { key: 'resolved',    label: 'Resolved' },
-];
+// `open` means unassigned, so it is never one of a technician's own tickets.
+const FILTERS = statusPills(['assigned', 'in_progress', 'pending', 'resolved']);
 
 interface Props {
   onSelect: (ticket: Ticket) => void;
@@ -36,7 +18,13 @@ interface Props {
 
 export function MobileTicketList({ onSelect, isOnline }: Props) {
   const [filter, setFilter] = useState('all');
-  const { data: tickets = [], isLoading, refetch, isFetching } = useMobileTickets();
+  const userId = useAuthStore((s) => s.user?.id);
+  // The same query the desktop technician pages run, so a status changed on
+  // one surface is already changed on the other.
+  const { tickets, loading: isLoading, refetch } = useTickets(
+    { assigned_to: userId, page_size: 50 },
+    !userId,
+  );
 
   // Counts per filter for badges
   const counts = {
@@ -99,10 +87,10 @@ export function MobileTicketList({ onSelect, isOnline }: Props) {
         </span>
         <button
           onClick={() => refetch()}
-          disabled={isFetching || !isOnline}
+          disabled={isLoading || !isOnline}
           className="flex items-center gap-1 text-xs text-muted-foreground disabled:opacity-40"
         >
-          <RefreshCw className={cn('h-3 w-3', isFetching && 'animate-spin')} />
+          <RefreshCw className={cn('h-3 w-3', isLoading && 'animate-spin')} />
           Refresh
         </button>
       </div>
@@ -130,11 +118,8 @@ export function MobileTicketList({ onSelect, isOnline }: Props) {
 }
 
 function TicketCard({ ticket, onSelect }: { ticket: Ticket; onSelect: (t: Ticket) => void }) {
-  const st = STATUS_CONFIG[ticket.status] ?? STATUS_CONFIG.open;
-  const priorityName = (ticket.priority as unknown as { name?: string })?.name?.toLowerCase() ?? '';
-  const priorityDot = PRIORITY_DOT[priorityName] ?? '';
-  const isBreaching = (ticket as unknown as { is_breaching?: boolean }).is_breaching;
-  const locationFacility = (ticket.location as unknown as { facility?: { name?: string } } | null)?.facility?.name;
+  const isBreaching = ticket.is_breaching;
+  const locationFacility = ticket.location?.facility?.name;
 
   return (
     <button
@@ -147,9 +132,6 @@ function TicketCard({ ticket, onSelect }: { ticket: Ticket; onSelect: (t: Ticket
       {/* Top row — ticket no + status */}
       <div className="flex items-center justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          {priorityDot && (
-            <span className={cn('h-2 w-2 rounded-full shrink-0', priorityDot)} />
-          )}
           <span className="text-[11px] font-mono text-muted-foreground shrink-0">
             {ticket.ticket_no}
           </span>
@@ -157,22 +139,20 @@ function TicketCard({ ticket, onSelect }: { ticket: Ticket; onSelect: (t: Ticket
             <AlertCircle className="h-3 w-3 text-red-500 shrink-0" />
           )}
         </div>
-        <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0', st.color)}>
-          {st.label}
-        </span>
+        <StatusBadge status={ticket.status} className="shrink-0 text-[10px] px-2 py-0.5" />
       </div>
 
       {/* Title */}
       <p className="text-sm font-medium text-foreground line-clamp-2 mb-2 leading-snug">
-        {(ticket.service_item as unknown as { name?: string })?.name ?? ticket.description}
+        {ticket.service_item?.name ?? ticket.description}
       </p>
 
-      {/* Bottom row — section / location + time */}
+      {/* Bottom row — trade / location + time */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
         <span className="truncate">
           {locationFacility
-            ? `${(ticket.section as unknown as { name?: string })?.name ?? ''} · ${locationFacility}`
-            : (ticket.section as unknown as { name?: string })?.name ?? '—'}
+            ? `${ticket.trade?.name ?? ''} · ${locationFacility}`
+            : ticket.trade?.name ?? '—'}
         </span>
         <span className="shrink-0 ml-2">{timeAgo(ticket.created_at)}</span>
       </div>

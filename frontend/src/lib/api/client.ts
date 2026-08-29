@@ -121,3 +121,43 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
+
+/** A DRF page. `count` is null on the cursor-paged feeds. */
+export interface Page<T> {
+  count: number | null;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+/** The rows of a list response, whether it pages or returns a bare array. */
+export function rows<T>(data: T[] | Page<T>): T[] {
+  return Array.isArray(data) ? data : (data.results ?? []);
+}
+
+/**
+ * Every row of a paged list, following `next` to the end.
+ *
+ * For the lists a page renders whole — facilities in the wizard's dropdown,
+ * users in the admin table. Stopping at the first page hands the caller a
+ * silent subset.
+ */
+export async function fetchAll<T>(
+  path: string,
+  params?: Record<string, unknown>,
+): Promise<T[]> {
+  const all: T[] = [];
+  // `next` is an absolute URL carrying the page and any filters, so the params
+  // go with the first request only.
+  let url: string | null = path;
+  let query = params;
+
+  while (url) {
+    const { data }: { data: T[] | Page<T> } = await apiClient.get(url, { params: query });
+    all.push(...rows<T>(data));
+    url = Array.isArray(data) ? null : (data.next ?? null);
+    query = undefined;
+  }
+
+  return all;
+}

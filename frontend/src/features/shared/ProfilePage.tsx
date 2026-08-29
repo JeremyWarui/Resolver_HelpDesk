@@ -1,19 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
-import { ROLE_LABELS } from '@/features/admin/Users/constants';
-import type { UserRole } from '@/types';
+import { ROLE_LABELS } from '@/constants/roles';
 
-// Department is scoped for technician/hos/hod; section only goes one level
-// deeper, for the two roles actually tied to a single section (SoT §1.3).
-const DEPARTMENT_ROLES: UserRole[] = ['technician', 'hos', 'hod'];
-const SECTION_ROLES: UserRole[] = ['technician', 'hos'];
-
+/** The signed-in account, read-only. Two campuses: where they are based, and
+ *  what their role covers. */
 export function ProfilePage() {
-  const { user } = useAuth();
+  const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
 
   if (!user) return null;
@@ -30,11 +26,8 @@ export function ProfilePage() {
   if (user.home_campus_name) {
     rows.push({ label: 'Campus', value: user.home_campus_name });
   }
-  if (DEPARTMENT_ROLES.includes(user.role) && user.primary_department_name) {
-    rows.push({ label: 'Department', value: user.primary_department_name });
-  }
-  if (SECTION_ROLES.includes(user.role) && user.section_name) {
-    rows.push({ label: 'Section', value: user.section_name });
+  if (user.primary_campus_name) {
+    rows.push({ label: 'Covers', value: user.primary_campus_name });
   }
 
   return (

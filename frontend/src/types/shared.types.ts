@@ -1,42 +1,27 @@
-// Shared types from Phase 2.4 — additive to existing types
-// These do NOT replace existing types (UserRole, Ticket, etc.) — they extend the type system
-// for the new shared component layer (FilterPills, TicketTable variants, permissions, etc.)
+// Types shared by the component layer: permissions, table variants, filter
+// pills and the notification feed.
 
-import type { UserRole } from './user.types';
-
-// ─── Role aliases ─────────────────────────────────────────────────────────────
-// The plan uses `Role`; the codebase uses `UserRole`. Both are valid.
-export type Role = UserRole;
-
-// ─── Permission map ───────────────────────────────────────────────────────────
-
+/**
+ * What a role may do to a ticket it can already see. Guards the buttons on the
+ * ticket detail; the API is the authoritative layer.
+ *
+ * Actions only. Which *sections* a role reaches is `ROLE_NAV`; stating it here
+ * too would be a second copy nothing checks against the first.
+ */
 export interface PermissionMap {
-  canCreateTicket: boolean;
   canAssignTicket: boolean;
   canReassignTicket: boolean;
   canUpdateTicketStatus: boolean;
   canCloseTicket: boolean;
   canReopenTicket: boolean;
-  canRateTicket: boolean;
-  canViewDeptQueue: boolean;
-  canViewOrgAnalytics: boolean;
-  canViewSLATracking: boolean;
-  canExportReports: boolean;
-  canConfigureSystem: boolean;
-  canManageUsers: boolean;
 }
-
-// ─── Ticket table variants ────────────────────────────────────────────────────
 
 export type TicketTableVariant =
   | 'queue'       // HOS/HOD/Technician — full columns, bulk actions, filter bar
-  | 'compact'     // Dashboard preview widgets — fewer columns, no bulk
   | 'sla'         // SLA tracking — replaces date cols with countdown bar
   | 'admin'       // Admin view — all columns including internal fields
   | 'my-tickets'  // User's own ticket history — mid-density
   | 'pending';    // Work on hold — why, for how long, and who to ask
-
-// ─── Filter pills ─────────────────────────────────────────────────────────────
 
 export interface FilterPill {
   key: string;
@@ -46,23 +31,7 @@ export interface FilterPill {
            | 'open' | 'assigned' | 'in_progress' | 'pending' | 'resolved' | 'closed';
 }
 
-// ─── Paginated response shapes ────────────────────────────────────────────────
-
-// Current DRF offset pagination shape
-export interface DRFPaginatedResponse<T> {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
-}
-
-// Future cursor pagination shape (matches backend plan Phase B)
-// ─── Ticket priority ──────────────────────────────────────────────────────────
-// ─── Paginated response alias (plan name for DRFPaginatedResponse) ─────────────
-// ─── Technician summary (used by TechnicianPicker and workload views) ─────────
-// ─── Generic KPI metrics ──────────────────────────────────────────────────────
-// ─── Notification types ───────────────────────────────────────────────────────
-
+/** Mirrors `Notification.EVENT_TYPES`. */
 export type NotificationEventType =
   | 'ticket_created'
   | 'ticket_assigned'
@@ -70,29 +39,15 @@ export type NotificationEventType =
   | 'comment_added'
   | 'ticket_resolved'
   | 'ticket_escalated'
-  | 'sla_warning'
   | 'sla_breach';
 
 export interface AppNotification {
-  id: string;
-  eventType: NotificationEventType;
+  id: number;
+  event_type: NotificationEventType;
   title: string;
   body: string;
-  ticketId: string | null;
+  ticket_id: number | null;
   read: boolean;
-  createdAt: string;
+  created_at: string;
 }
 
-// ─── Bulk actions (for TicketTable queue/admin variants) ──────────────────────
-
-// ─── API error shape ──────────────────────────────────────────────────────────
-
-// ─── Scope (derived from the signed-in user for role-scoped queries) ─────────
-
-export interface UserScope {
-  userId: number;
-  role: UserRole;
-  campusId: number | null;
-  departmentId: number | null;
-  sectionIds: number[];
-}

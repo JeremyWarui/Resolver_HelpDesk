@@ -3,40 +3,23 @@ import { loginAsAdmin, uniqueSuffix } from './helpers';
 
 // Service Catalogue CRUD, end to end against the real backend.
 //
-// The catalogue is still three levels, but the middle one changed in the port:
-// Section Type → **Trade** (`org.SubSection`) → Service Item, where it used to
-// be Section Type → Service Category (`catalog.ServiceCategory`, now deleted).
-// This spec drove the old shape and could never have passed here.
+// Two levels, matching `org`: Trade → ServiceItem. Nothing sits above a trade —
+// Maintenance is the only section there is.
 //
-// Self-cleaning: deleting the section type cascades to the trade and item
-// created under it.
-test('catalogue CRUD: section type → trade → item, edit, cascade delete', async ({ page }) => {
+// Self-cleaning: the item goes first, then the trade it hung off. Neither has
+// tickets against it, so neither trips the PROTECT on Ticket.service_item.
+test('catalogue CRUD: trade, service item, edit, delete', async ({ page }) => {
   const suffix = uniqueSuffix();
-  const typeName = `E2E Type ${suffix}`;
-  const typeNameEdited = `${typeName} v2`;
   const tradeName = `E2E Trade ${suffix}`;
+  const tradeNameEdited = `${tradeName} v2`;
   const itemName = `E2E Item ${suffix}`;
 
   await loginAsAdmin(page);
   await page.goto('/dashboard/catalogue');
 
-  // The first department auto-selects; the page is ready when the CTA renders.
-  await expect(page.getByRole('button', { name: 'Add Section Type' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New Trade' })).toBeVisible();
 
-  // ── Create a section type (department is preset from the active tab) ───────
-  await page.getByRole('button', { name: 'Add Section Type' }).click();
-  const stDialog = page.getByRole('dialog');
-  await expect(stDialog.getByText('New Section Type')).toBeVisible();
-  await stDialog.getByPlaceholder('e.g. Software Support').fill(typeName);
-  await stDialog.getByPlaceholder('e.g. SW').fill(`E${suffix.slice(-4)}`);
-  await stDialog.getByRole('button', { name: 'Create Section Type' }).click();
-  await expect(stDialog).toBeHidden();
-
-  const typeRow = page.locator('div.group', { hasText: typeName });
-  await expect(typeRow).toBeVisible();
-
-  // ── Select it and add a trade ─────────────────────────────────────────────
-  await typeRow.getByRole('button', { name: typeName }).click();
+  // ── Create a trade ────────────────────────────────────────────────────────
   await page.getByRole('button', { name: 'New Trade' }).click();
   const tradeDialog = page.getByRole('dialog');
   await expect(tradeDialog.getByText('New Trade')).toBeVisible();
@@ -59,23 +42,28 @@ test('catalogue CRUD: section type → trade → item, edit, cascade delete', as
   await expect(itemDialog).toBeHidden();
   await expect(tradeCard.getByText(itemName)).toBeVisible();
 
-  // ── Edit the section type (hover reveals the row actions) ─────────────────
-  await typeRow.hover();
-  await typeRow.locator('button').nth(1).click(); // pencil
+  // ── Rename the trade ──────────────────────────────────────────────────────
+  await tradeCard.getByRole('button').first().click(); // pencil
   const editDialog = page.getByRole('dialog');
-  await expect(editDialog.getByText('Edit Section Type')).toBeVisible();
-  await editDialog.getByPlaceholder('e.g. Software Support').fill(typeNameEdited);
-  await editDialog.getByRole('button', { name: 'Save Changes' }).click();
+  await expect(editDialog.getByText('Edit Trade')).toBeVisible();
+  await editDialog.getByRole('textbox', { name: 'Trade Name *' }).fill(tradeNameEdited);
+  await editDialog.getByRole('button', { name: 'Update' }).click();
   await expect(editDialog).toBeHidden();
 
-  const editedRow = page.locator('div.group', { hasText: typeNameEdited });
-  await expect(editedRow).toBeVisible();
+  const editedCard = page.locator('div.border.rounded-lg', { hasText: tradeNameEdited });
+  await expect(editedCard.getByRole('heading', { name: tradeNameEdited })).toBeVisible();
 
-  // ── Delete it — cascades to the trade and item (cleanup) ──────────────────
-  await editedRow.hover();
-  await editedRow.locator('button').nth(2).click(); // trash
-  const confirm = page.getByRole('alertdialog');
-  await expect(confirm.getByText(`Delete "${typeNameEdited}"?`)).toBeVisible();
-  await confirm.getByRole('button', { name: 'Delete' }).click();
-  await expect(page.locator('div.group', { hasText: typeNameEdited })).toHaveCount(0);
+  // ── Delete the item, then the trade (cleanup) ─────────────────────────────
+  const itemRow = editedCard.locator('div.rounded-md', { hasText: itemName });
+  await itemRow.getByRole('button').nth(1).click(); // trash
+  const itemConfirm = page.getByRole('alertdialog');
+  await expect(itemConfirm.getByText('Delete service item?')).toBeVisible();
+  await itemConfirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(editedCard.getByText(itemName)).toHaveCount(0);
+
+  await editedCard.getByRole('button').nth(1).click(); // trash
+  const tradeConfirm = page.getByRole('alertdialog');
+  await expect(tradeConfirm.getByText('Delete trade?')).toBeVisible();
+  await tradeConfirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.locator('div.border.rounded-lg', { hasText: tradeNameEdited })).toHaveCount(0);
 });

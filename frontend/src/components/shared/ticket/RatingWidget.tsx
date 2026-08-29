@@ -1,7 +1,8 @@
-// RatingWidget — 1–5 star rating + optional comment, submitted with Close.
-// Used when a user confirms resolution of their ticket (Rate & Close).
-// Reopen is a separate standalone action on the ticket detail page (QA B2c).
-// RatingStars is the shared read-only display for submitted feedback (QA D3).
+// The requester's verdict on a resolved ticket: 1–5 stars and an optional
+// comment, submitted together with the close.
+//
+// `RatingStars` is the read-only counterpart, for showing a rating that has
+// already been given. Reopening is a separate action on the ticket detail.
 
 import { useState } from 'react';
 import { Star } from 'lucide-react';
@@ -54,17 +55,14 @@ interface RatingWidgetProps {
   onSubmit: (payload: RatingSubmitPayload) => Promise<void> | void;
   submitting?: boolean;
   className?: string;
-  /** Only render when the ticket is resolved/closed and the viewer is the raiser. */
-  isResolved?: boolean;
-  isRaiser?: boolean;
 }
 
-export function RatingWidget({ onSubmit, submitting = false, className, isResolved = true, isRaiser = true }: RatingWidgetProps) {
+/** Whether a ticket may be rated at all is the caller's decision — this only
+ *  ever mounts inside `RatingModal`, which the "Rate & close" action opens. */
+export function RatingWidget({ onSubmit, submitting = false, className }: RatingWidgetProps) {
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState('');
-
-  if (!isResolved || !isRaiser) return null;
 
   const canSubmit = rating > 0;
 

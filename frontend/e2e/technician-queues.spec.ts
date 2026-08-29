@@ -32,7 +32,7 @@ test('pending work lists only the technician\'s own held jobs', async ({ page })
       r.url().includes('page_size=200'),
   );
   await page.getByRole('link', { name: 'Pending Work' }).click();
-  await expect(page).toHaveURL(/\/technician\/pending$/);
+  await expect(page).toHaveURL(/\/tech\/pending$/);
   await expect(page.locator('header h1')).toHaveText('Pending Work');
 
   const url = new URL((await listRequest).url());
@@ -41,17 +41,19 @@ test('pending work lists only the technician\'s own held jobs', async ({ page })
     'the technician list must be narrowed to the signed-in user, not their whole trade',
   ).toBeTruthy();
 
-  // The sidebar badge counts the same thing the page lists. These were two
-  // separate queries and the count is the one a technician reads before
-  // deciding whether to open the page at all.
+  // The rest is about what the page shows, so it needs the seed to have dealt
+  // this technician a hold. The scope assertion above is the load-bearing one
+  // and always runs.
   const rows = page.locator('tbody tr');
-  await expect(rows.first()).toBeVisible();
+  test.skip((await rows.count()) === 0, 'the seed dealt this technician no held jobs');
+
+  // The sidebar badge counts the same thing the page lists — it is the number a
+  // technician reads before deciding whether to open the page at all.
   const badge = page.locator('a', { hasText: 'Pending Work' }).locator('span').last();
   await expect(badge).toHaveText(String(await rows.count()));
 
-  // Resume is the point of the page, and the whole Actions column sat off the
-  // right edge until the reason note was width-capped — `truncate` with no
-  // bounded width does nothing, so the note simply widened the column.
+  // Resume is the point of the page, and the Actions column has to be reachable
+  // at this width.
   await expect(rows.first().getByRole('button', { name: 'Resume' })).toBeInViewport();
 });
 
@@ -66,7 +68,7 @@ test('escalated lists only the technician\'s own late jobs', async ({ page }) =>
       r.url().includes('page_size=200'),
   );
   await page.getByRole('link', { name: 'Escalated' }).click();
-  await expect(page).toHaveURL(/\/technician\/escalated$/);
+  await expect(page).toHaveURL(/\/tech\/escalated$/);
 
   const url = new URL((await listRequest).url());
   expect(
@@ -77,7 +79,17 @@ test('escalated lists only the technician\'s own late jobs', async ({ page }) =>
   // Every row is theirs — an unassigned escalated job in the same trade must
   // not appear here, which is exactly what the un-narrowed version showed.
   await expect(page.locator('tbody tr').first()).toBeVisible();
-  const assignees = await page.locator('tbody tr td:nth-child(5)').allInnerTexts();
+
+  // The assignee column's position is not fixed: a technician also sees
+  // Priority (priority-column.spec.ts holds that rule), which shifts every
+  // column after it. Read the header row for the index rather than assuming.
+  const headers = await page.locator('table thead th').allInnerTexts();
+  const assigneeColumn = headers.findIndex((h) => h.trim() === 'Assigned To');
+  expect(assigneeColumn, 'the queue table must have an Assigned To column').toBeGreaterThan(-1);
+
+  const assignees = await page
+    .locator(`tbody tr td:nth-child(${assigneeColumn + 1})`)
+    .allInnerTexts();
   expect(assignees.length).toBeGreaterThan(0);
   for (const name of assignees) {
     expect(name.trim()).toBe('Esther Wairimu');

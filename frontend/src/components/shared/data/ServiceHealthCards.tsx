@@ -1,65 +1,47 @@
-import { ShieldCheck, Star, AlertTriangle } from 'lucide-react';
-import { useAnalytics } from '@/hooks/analytics';
+import { ShieldCheck, Star } from 'lucide-react';
+import { useAnalytics } from '@/hooks/useAnalytics';
 import MetricCard from '@/components/shared/data/MetricCard';
 import type { AnalyticsParams } from '@/types';
 
 interface Props {
   params?: AnalyticsParams;
-  /** Show the "Service Health" heading above the cards (default true). */
-  heading?: boolean;
 }
 
-/**
- * Service-health KPI row — Resolution SLA, Response SLA, CSAT, Overdue.
- * Self-fetching (scoped server-side by JWT). Reused by the Reports landing and
- * the role dashboards.
+/** Resolution SLA, response SLA and rating for the caller's scope.
  *
- * Never rendered for a technician: the Reports landing puts this whole block
- * behind `!isTechnician` (their overview is MyPerformancePanel), and no
- * technician reaches RoleDashboardView. That matters because the unified
- * envelope answers a technician with `individual`/`sectional` instead of
- * `headline` — which is why reading `headline` here is safe.
- */
-export default function ServiceHealthCards({ params, heading = true }: Props) {
-  // These four were two endpoints, each re-running the whole ~40-query
-  // aggregate() to slice out two scalars the envelope already carries.
-  const { data: envelope } = useAnalytics(params);
-  const headline = envelope?.headline ?? null;
+ *  No Overdue card: `TicketStatsCards` renders one directly above this row on
+ *  the reports page, off the same `totals.overdue`. The same figure twice on
+ *  one screen reads as two measurements that happen to agree. */
+export default function ServiceHealthCards({ params }: Props) {
+  const { data } = useAnalytics(params);
+  const totals = data?.totals;
 
   return (
     <div>
-      {heading && <h2 className="text-lg font-semibold mb-4 text-foreground">Service Health</h2>}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <h2 className="text-lg font-semibold mb-4 text-foreground">Service Health</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MetricCard
-          title="Resolution SLA %"
-          value={headline?.resolution_sla_pct != null ? `${headline.resolution_sla_pct.toFixed(1)}%` : '—'}
-          description="SLA compliance for resolution"
+          title="Resolution SLA"
+          value={totals?.resolution_sla_pct != null ? `${totals.resolution_sla_pct.toFixed(1)}%` : '—'}
+          description="Settled within target"
           icon={<ShieldCheck className="h-6 w-6 text-status-resolved" />}
           iconBgColor="bg-status-resolved/10"
           className="bg-card"
         />
         <MetricCard
-          title="Response SLA %"
-          value={headline?.response_sla_pct != null ? `${headline.response_sla_pct.toFixed(1)}%` : '—'}
-          description="SLA compliance for first response"
+          title="Response SLA"
+          value={totals?.response_sla_pct != null ? `${totals.response_sla_pct.toFixed(1)}%` : '—'}
+          description="Assigned within target"
           icon={<ShieldCheck className="h-6 w-6 text-blue-600" />}
           iconBgColor="bg-blue-100"
           className="bg-card"
         />
         <MetricCard
-          title="CSAT"
-          value={headline?.csat != null ? `${headline.csat.toFixed(1)} / 5` : '—'}
-          description="Customer satisfaction score"
+          title="Rating"
+          value={totals?.rating_avg != null ? `${totals.rating_avg.toFixed(1)} / 5` : '—'}
+          description={`${totals?.rating_count ?? 0} rated`}
           icon={<Star className="h-6 w-6 text-purple-600" />}
           iconBgColor="bg-purple-100"
-          className="bg-card"
-        />
-        <MetricCard
-          title="Overdue"
-          value={headline?.breached ?? 0}
-          description="Live and past target"
-          icon={<AlertTriangle className="h-6 w-6 text-status-escalated" />}
-          iconBgColor="bg-status-escalated/10"
           className="bg-card"
         />
       </div>

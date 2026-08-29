@@ -1,9 +1,7 @@
-/* eslint-disable react-refresh/only-export-components */
-// PriorityBadge — drives every priority colour through the
-// --priority-* CSS tokens defined in index.css.
-// Priority is now a server entity object {id, name, rank, ...}.
+ // The priority pill. Every colour is a --priority-* CSS token from index.css,
+// and priority itself is a server entity: {id, name, rank, …}.
 
-import { cn } from '@/lib/utils';
+import { TokenPill } from './TokenPill';
 import type { Priority } from '@/types';
 
 const PRIORITY_LABEL: Record<string, string> = {
@@ -20,15 +18,6 @@ const PRIORITY_CSS_BASE: Record<string, string> = {
   critical: '--priority-critical',
 };
 
-function getPriorityStyle(priorityName: string): React.CSSProperties {
-  const base = PRIORITY_CSS_BASE[priorityName.toLowerCase()] ?? '--priority-low';
-  return {
-    backgroundColor: `var(${base}-bg)`,
-    color:           `var(${base}-text)`,
-    borderColor:     `var(${base}-border)`,
-  };
-}
-
 interface PriorityBadgeProps {
   priority: Priority | string | undefined | null;
   className?: string;
@@ -38,16 +27,11 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
   if (!priority) return null;
 
   const name = typeof priority === 'string' ? priority : priority.name;
+  const key = name.toLowerCase();
 
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border whitespace-nowrap',
-        className,
-      )}
-      style={getPriorityStyle(name)}
-    >
-      {PRIORITY_LABEL[name.toLowerCase()] ?? name}
-    </span>
+    <TokenPill token={PRIORITY_CSS_BASE[key] ?? '--priority-low'} className={className}>
+      {PRIORITY_LABEL[key] ?? name}
+    </TokenPill>
   );
 }

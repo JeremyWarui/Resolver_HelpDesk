@@ -1,5 +1,10 @@
-// Re-export utilities from the utils folder
-// This file exists to maintain compatibility with shadcn/ui components
-// that expect utilities at @/lib/utils
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-export { cn } from '@/utils/cn';
+/** Merge Tailwind class names, last conflicting utility winning.
+ *
+ *  Lives here because `@/lib/utils` is the path shadcn components import,
+ *  and every caller in this app followed them. */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}

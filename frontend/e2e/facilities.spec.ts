@@ -1,17 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin, uniqueSuffix } from './helpers';
 
-// The admin "New Facility" dialog could never create a facility. The form
-// collected facility_code / type / status / location — of those, `code` is the
-// real field name, `type` and `status` are read-only SerializerMethodFields,
-// and `location` is not a column — while never sending `facility_type`, the
-// one required FK. Every submit answered
-// 400 {"facility_type": ["This field is required."]} behind a generic
-// "Failed to create facility" toast.
-//
-// tsc was green throughout: the payload type simply described a different API
-// than the one being called. Only driving the form catches it, which is why
-// this spec exists rather than a type-level assertion.
+// The admin "New Facility" dialog sends what FacilitySerializer accepts: a
+// name, a campus and the facility_type FK. tsc cannot see a payload that
+// describes a different API than the one being called, so this drives the form.
 test('a facility can actually be created', async ({ page }) => {
   const name = `E2E Block ${uniqueSuffix()}`;
 
@@ -24,13 +16,11 @@ test('a facility can actually be created', async ({ page }) => {
   await expect(form.getByText('New Facility')).toBeVisible();
 
   await form.getByPlaceholder('e.g. Admin Block A').fill(name);
-  await form.getByPlaceholder('e.g. AB01').fill(`E2E${uniqueSuffix().slice(-4)}`);
 
   await form.getByText('Select campus').click();
   await page.getByRole('option').first().click();
 
-  // The type list comes from GET /facility-types/ and carries the FK id. The
-  // form used to offer hardcoded type *codes*, which the serializer ignores.
+  // The type list comes from GET /facility-types/ and carries the FK id.
   await form.getByText('Select type').click();
   await page.getByRole('option').first().click();
 
@@ -49,16 +39,15 @@ test('a facility can actually be created', async ({ page }) => {
   const body = await response.json();
 
   await expect(form).toBeHidden({ timeout: 20_000 });
-  await page.getByPlaceholder('Search by ID or name...').fill(name);
-  const row = page.getByRole('row', { name: new RegExp(name) });
-  await expect(row).toBeVisible();
+  await page.getByPlaceholder('Search facilities…').fill(name);
+  const row = page.getByRole('listitem').filter({ hasText: name });
+  await expect(row).toBeVisible({ timeout: 20_000 });
 
   // ── Edit ───────────────────────────────────────────────────────────────────
-  // The facility branch of handleSaveChanges was an empty TODO that fell
-  // through to `toast.success('Facility updated successfully')`, so the sheet
-  // reported a save it had not made and the list refetched the old values.
+  // The sheet must actually PATCH, not report a save it never made.
   const renamed = `${name} Renamed`;
-  await row.getByRole('button', { name: 'View' }).click();
+  // The name is the button; the rest of the row is not a click target.
+  await row.getByRole('button').first().click();
   const sheet = page.getByRole('dialog');
   await sheet.getByRole('button', { name: 'Edit Details' }).click();
 

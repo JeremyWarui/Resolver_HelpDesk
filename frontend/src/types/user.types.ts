@@ -6,24 +6,22 @@ export type UserRole =
   | 'manager'
   | 'admin';
 
+/** Two campuses, and they are different facts. `home_campus_*` is where the
+ *  person is based and routes the tickets they raise. `primary_campus_*` is
+ *  what their role oversees, and is null for a manager, an admin and a plain
+ *  requester. */
 export interface User {
   id: number;
   username: string;
   first_name: string;
   last_name: string;
+  full_name: string;
   email: string;
-  /** ISO timestamp — only populated on the admin user list (UserAdminSerializer), not on the logged-in user's own auth object. */
+  /** Admin user list only (UserAdminSerializer), not the signed-in user's own object. */
   date_joined?: string;
   role: UserRole;
-  sections: number[];
-  section_names?: string[];
   primary_campus_id: number | null;
-  primary_department_id: number | null;
-  primary_department_name?: string | null;
-  /** The active role assignment's single section (technician/hos only). */
-  section_name?: string | null;
-  /** The user's home campus (UserProfile.campus) — independent of role scope;
-   * used to route tickets they raise themselves as a requester. */
+  primary_campus_name: string | null;
   home_campus_id: number | null;
   home_campus_name: string | null;
 }
@@ -48,18 +46,14 @@ export interface RoleAssignment {
   role: UserRole;
   campus_id: number | null;
   campus_name: string | null;
-  department_id: number | null;
-  department_name: string | null;
-  section_id: number | null;
-  section_name: string | null;
-  /** Technician only — the trades they work in that section. */
-  sub_section_ids: number[];
+  /** Technician only — the trades they work at that campus. */
+  trade_ids: number[];
   assigned_by_username: string | null;
   assigned_at: string;
   /** Present only on the POST response, and only when this assignment took a
-   *  supervisor post off someone. One person holds a post (SOT §3b), so filling
-   *  it demotes the incumbent to requester — a bigger change than the admin
-   *  asked for, and one they cannot see on a screen that no longer names him. */
+   *  supervisor post off someone. One person holds a post, so filling it
+   *  demotes the incumbent to requester, which is more than the admin asked
+   *  for and is not visible on a screen that stops naming them. */
   displaced?: {
     id: number;
     full_name: string;
@@ -69,17 +63,16 @@ export interface RoleAssignment {
 }
 
 /** POST /users/{id}/role-assignments/ — a user has one role, so this replaces
- *  whatever they had.
+ *  whatever they held.
  *
- *  `sub_section_ids` is technician-only and REQUIRED for technicians — the
- *  server syncs the SectionTechnician rows from it, and a technician with a
- *  role but no trades would see no tickets at all. */
+ *  `campus_id` is required for a technician, an HOS and an HOD, and refused for
+ *  the rest. `trade_ids` is technician-only and required: the server writes the
+ *  TechnicianTrade rows from it, and a technician with no trade sees no
+ *  tickets at all. */
 export interface CreateRoleAssignmentPayload {
   role: UserRole;
   campus_id?: number | null;
-  department_id?: number | null;
-  section_id?: number | null;
-  sub_section_ids?: number[];
+  trade_ids?: number[];
 }
 
 export interface UsersResponse {
@@ -87,4 +80,13 @@ export interface UsersResponse {
   next: string | null;
   previous: string | null;
   results: User[];
+}
+
+/** A technician as `/technicians/` serves them: the user row plus the trades
+ *  they work. Their scope is the (campus, trade) pair — `primary_campus_id`
+ *  and one of `trade_ids` — so neither half is ever read alone. */
+export interface Technician extends User {
+  role: 'technician';
+  trade_ids: number[];
+  trade_names: string[];
 }

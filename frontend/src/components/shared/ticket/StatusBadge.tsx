@@ -1,20 +1,15 @@
 /* eslint-disable react-refresh/only-export-components */
-// StatusBadge — canonical status badge for all ticket displays.
-// Replaces getStatusBadgeVariant (TicketDetailsUtils.tsx) which used hardcoded
-// Tailwind classes. This component drives every status colour through the
-// --status-* CSS tokens defined in index.css via color-mix().
-//
-// Migration: replace Badge + getStatusBadgeVariant with <StatusBadge status={...} />
-// For table cells that can't use JSX directly, import getStatusStyle() instead.
+// The status pill, and the badge-colour helper the stat cards share with it.
+// Every colour is a --status-* CSS token, defined in index.css.
 
-import { cn } from '@/lib/utils';
 import { STATUS_LABELS } from '@/constants/tickets';
+import { TokenPill } from './TokenPill';
 import type { Ticket } from '@/types';
 
-export type TicketStatusValue = Ticket['status'];
+type TicketStatusValue = Ticket['status'];
 
-// Maps each status to its CSS variable base name (without suffix).
-// The -bg / -text / -border triplets are defined in index.css.
+// Each status names its CSS variable base; the -bg / -text / -border triplets
+// live in index.css.
 const STATUS_CSS_BASE: Record<TicketStatusValue, string> = {
   open:        '--status-open',
   assigned:    '--status-assigned',
@@ -24,19 +19,9 @@ const STATUS_CSS_BASE: Record<TicketStatusValue, string> = {
   closed:      '--status-closed',
 };
 
-function getStatusStyle(status: string): React.CSSProperties {
-  const base = STATUS_CSS_BASE[status as TicketStatusValue] ?? '--status-closed';
-  return {
-    backgroundColor: `var(${base}-bg)`,
-    color:           `var(${base}-text)`,
-    borderColor:     `var(${base}-border)`,
-  };
-}
-
-// Semantic color name → CSS variable token mapping for stat card badges.
-// Use this anywhere a badge carries a named color (blue/green/red/etc.)
-// rather than a ticket status string.
-// Maps color names to [background, text] CSS variable pairs.
+// Semantic colour name → CSS variable pair, for a badge that carries a named
+// colour rather than a ticket status.
+// Maps colour names to [background, text] CSS variable pairs.
 const BADGE_COLOR_TOKEN: Record<string, [string, string]> = {
   blue:   ['--status-open-bg',      '--status-open-text'],
   green:  ['--status-resolved-bg',  '--status-resolved-text'],
@@ -52,21 +37,10 @@ export function getBadgeStyle(color: string): React.CSSProperties {
   return { backgroundColor: `var(${bg})`, color: `var(${text})` };
 }
 
-interface StatusBadgeProps {
-  status: TicketStatusValue;
-  className?: string;
-}
-
-export function StatusBadge({ status, className }: StatusBadgeProps) {
+export function StatusBadge({ status, className }: { status: TicketStatusValue; className?: string }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border whitespace-nowrap',
-        className,
-      )}
-      style={getStatusStyle(status)}
-    >
+    <TokenPill token={STATUS_CSS_BASE[status] ?? '--status-closed'} className={className}>
       {STATUS_LABELS[status] ?? status.replace(/_/g, ' ')}
-    </span>
+    </TokenPill>
   );
 }

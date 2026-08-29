@@ -1,5 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,15 +12,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { User, Mail, Lock, UserPlus, CheckCircle, Shield, Settings, Zap, Users, BarChart2, MapPin } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, MapPin, CheckCircle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { getPublicCampuses, clearSession, type PublicCampus } from '@/lib/api/auth';
 import { deriveIdentity } from '@/utils/identity';
-
-interface RegisterFormProps {
-  onSuccess?: () => void;
-  onSwitchToLogin?: () => void;
-}
+import { AuthShell } from './AuthShell';
 
 const registerSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -31,7 +28,8 @@ const registerSchema = z.object({
   path: ["confirmPassword"],
 });
 
-export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin }) => {
+export const RegisterForm: React.FC = () => {
+  const navigate = useNavigate();
   const { register, isLoading } = useAuth();
   const [campuses, setCampuses] = React.useState<PublicCampus[]>([]);
   const [registeredEmail, setRegisteredEmail] = React.useState<string | null>(null);
@@ -85,49 +83,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchT
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Column - Info */}
-      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 relative overflow-hidden">
-        <div className="absolute inset-0 bg-green-600 opacity-90" />
-        <div className="relative z-10 flex flex-col justify-center px-12 py-12">
-          <div className="max-w-md">
-            <h2 className="text-3xl font-bold text-white mb-6">
-              Join Resolver
-            </h2>
-            <p className="text-green-100 text-lg leading-relaxed mb-8">
-              Create your account and start submitting requests in minutes. Resolver tracks every request from submission to resolution — so nothing falls through the cracks.
-            </p>
-
-            <div className="space-y-5">
-              {[
-                { icon: CheckCircle, title: 'Quick Setup',         desc: 'Register and submit your first request in minutes — no configuration required on your end' },
-                { icon: Shield,      title: 'Role-Based Access',   desc: 'JWT-secured with purpose-built views for requesters, technicians, supervisors and management' },
-                { icon: Settings,    title: 'Request Tracking',    desc: 'Every request is logged, assigned and followed through to resolution with a full audit trail' },
-                { icon: Zap,         title: 'SLA & Escalation',    desc: 'Automatic SLA timers and escalation paths keep resolution times in check' },
-                { icon: Users,       title: 'Multi-Org Routing',   desc: 'Scales across multiple sites — requests route automatically to the right team' },
-                { icon: BarChart2,   title: 'Analytics & Reports', desc: 'Real-time dashboards and exportable reports give teams full visibility into performance' },
-              ].map(({ icon: Icon, title, desc }) => (
-                <div key={title} className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-semibold text-sm leading-snug">{title}</h3>
-                    <p className="text-green-100 text-xs leading-relaxed mt-0.5">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white to-transparent opacity-5 rounded-full transform translate-x-32 -translate-y-32" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-white to-transparent opacity-5 rounded-full transform -translate-x-24 translate-y-24" />
-      </div>
-
-      {/* Right Column - Form */}
-      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-lg shadow-xl border-0">
+    <>
+      <AuthShell
+        accent="green"
+        heading="Join Resolver"
+        blurb="Create your account and raise your first request in minutes. Resolver follows every request from submission to resolution."
+      >
+        <Card className="w-full shadow-xl border-0">
           <CardHeader className="space-y-4 pb-8">
             <div className="flex justify-center">
               <div className="w-14 h-14 bg-gradient-to-br from-green-600 to-green-700 rounded-xl flex items-center justify-center shadow-lg">
@@ -264,56 +226,49 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchT
 
             <div className="pt-6">
               <Separator className="mb-6" />
-              {onSwitchToLogin && (
-                <div className="text-center pb-4">
-                  <span className="text-sm text-gray-600">Already have an account? </span>
-                  <button
-                    type="button"
-                    onClick={onSwitchToLogin}
-                    className="text-sm font-medium text-green-600 hover:text-green-500 transition-colors"
-                  >
-                    Sign in instead
-                  </button>
-                </div>
-              )}
+              <div className="text-center pb-4">
+                <span className="text-sm text-gray-600">Already have an account? </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/login')}
+                  className="text-sm font-medium text-green-600 hover:text-green-500 transition-colors"
+                >
+                  Sign in instead
+                </button>
+              </div>
             </div>
           </CardContent>
         </Card>
-      </div>
+      </AuthShell>
 
-      <Dialog open={registeredEmail !== null} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-              <CheckCircle className="h-6 w-6 text-green-600" />
-            </div>
-            <DialogTitle className="text-center">Account Created</DialogTitle>
-            <DialogDescription className="text-center">
-              Your account is ready. Sign in with the email address below and the password you just set.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-lg border bg-muted/40 py-3 text-center">
-            <p className="text-xs text-muted-foreground mb-1">Sign in with</p>
-            <p className="text-lg font-semibold tracking-wide">{registeredEmail}</p>
+    <Dialog open={registeredEmail !== null} onOpenChange={() => {}}>
+      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+            <CheckCircle className="h-6 w-6 text-green-600" />
           </div>
-          <DialogFooter>
-            <Button
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-              onClick={() => {
-                setRegisteredEmail(null);
-                onSuccess?.();
-                if (onSwitchToLogin) {
-                  onSwitchToLogin();
-                } else {
-                  window.location.assign('/login');
-                }
-              }}
-            >
-              Continue to Login
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          <DialogTitle className="text-center">Account Created</DialogTitle>
+          <DialogDescription className="text-center">
+            Your account is ready. Sign in with the email address below and the password you just set.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-lg border bg-muted/40 py-3 text-center">
+          <p className="text-xs text-muted-foreground mb-1">Sign in with</p>
+          <p className="text-lg font-semibold tracking-wide">{registeredEmail}</p>
+        </div>
+        <DialogFooter>
+          <Button
+            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+            onClick={() => {
+              setRegisteredEmail(null);
+              navigate('/login');
+            }}
+          >
+            Continue to Login
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };

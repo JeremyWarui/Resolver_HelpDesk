@@ -1,34 +1,37 @@
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactNode } from "react";
 
-export interface TableHeaderProps {
+interface TableHeaderProps {
   title?: string;
   subtitle?: string;
+  titleAction?: ReactNode;
   handleSearch: (value: string) => void;
   searchValue: string;
   searchPlaceholder: string;
-  renderFilters: () => ReactNode;
-  renderColumnVisibilityDropdown: () => ReactElement;
-  isAdminVariant: boolean;
+  filters: ReactNode;
+  columnVisibilityDropdown: ReactNode;
 }
 
 export const DefaultTableHeader = ({
   title,
   subtitle,
+  titleAction,
   handleSearch,
   searchValue,
   searchPlaceholder,
-  renderFilters,
-  renderColumnVisibilityDropdown,
-  isAdminVariant,
+  filters,
+  columnVisibilityDropdown,
 }: TableHeaderProps) => {
   return (
     <>
       {title && (
-        <CardHeader className={isAdminVariant ? "px-0 pt-0 pb-2" : "px-0 pb-2"}>
-          <CardTitle className="text-lg font-semibold">{title}</CardTitle>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+        <CardHeader className="px-0 pt-0 pb-2 flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg font-semibold">{title}</CardTitle>
+            {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+          </div>
+          {titleAction}
         </CardHeader>
       )}
       <div className="flex flex-col gap-4 md:flex-row md:items-center py-2">
@@ -39,9 +42,9 @@ export const DefaultTableHeader = ({
           className="max-w-sm"
         />
         <div className="flex flex-col gap-4 md:flex-row">
-          {renderFilters()}
+          {filters}
         </div>
-        {renderColumnVisibilityDropdown()}
+        {columnVisibilityDropdown}
       </div>
     </>
   );

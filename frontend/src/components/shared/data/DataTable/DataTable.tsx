@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   type ColumnDef,
   type SortingState,
@@ -42,19 +42,19 @@ export interface FilterOption {
   onFilterChange: (value: string) => void;
 }
 
-export interface DataTableProps<TData, TValue> {
+interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   title?: string;
   subtitle?: string;
+  /** Rendered at the right of the title row — a page's "Add" button. */
+  titleAction?: ReactNode;
   searchPlaceholder?: string;
   emptyStateMessage?: string;
   emptyStateDescription?: string;
-  defaultSorting?: SortingState;
   defaultPageSize?: number;
   initialColumnVisibility?: VisibilityState;
   filterOptions?: FilterOption[];
-  variant?: "admin" | "user" | "tech";
   onRowClick?: (row: TData) => void;
   selectedRowId?: number | null;
   totalItems?: number;
@@ -62,8 +62,10 @@ export interface DataTableProps<TData, TValue> {
   manualPagination?: boolean;
   onPageChange?: (pageIndex: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
-  onColumnVisibilityChange?: (visibility: VisibilityState) => void;
   rowClassName?: (row: TData) => string;
+  /** What one row is, for the footer's count. The campus register said
+   *  "5 ticket(s) found" until this stopped being hardcoded. */
+  noun?: { one: string; many: string };
 }
 
 const DataTable = <TData, TValue>({
@@ -75,14 +77,14 @@ const DataTable = <TData, TValue>({
   // words "Data Table" on screen under their real heading.
   title,
   subtitle,
+  titleAction,
   searchPlaceholder = "Search...",
   emptyStateMessage = "No data found",
   emptyStateDescription = "Try changing your filter or check back later",
-  defaultSorting = [],
+  noun = { one: "row", many: "rows" },
   defaultPageSize = 10,
   initialColumnVisibility = {},
   filterOptions,
-  variant = "admin",
   onRowClick,
   selectedRowId,
   totalItems,
@@ -90,7 +92,6 @@ const DataTable = <TData, TValue>({
   manualPagination = false,
   onPageChange,
   onPageSizeChange,
-  onColumnVisibilityChange,
   rowClassName,
 }: DataTableProps<TData, TValue>) => {
   // TanStack Table's useReactTable() returns an interior-mutable table instance whose
@@ -98,7 +99,7 @@ const DataTable = <TData, TValue>({
   // See https://react.dev/reference/react-compiler/directives/use-no-memo
   'use no memo';
 
-  const [sorting, setSorting] = useState<SortingState>(defaultSorting);
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
   // Initialize column visibility with searchField hidden by default
@@ -109,22 +110,6 @@ const DataTable = <TData, TValue>({
   const [columnVisibility, setColumnVisibility] =
     useState<VisibilityState>(defaultVisibility);
 
-  // Callback when column visibility changes
-  const handleColumnVisibilityChange = (
-    updaterOrValue: VisibilityState | ((old: VisibilityState) => VisibilityState)
-  ) => {
-    const newVisibility =
-      typeof updaterOrValue === "function"
-        ? updaterOrValue(columnVisibility)
-        : updaterOrValue;
-    
-    setColumnVisibility(newVisibility);
-    if (onColumnVisibilityChange) {
-      onColumnVisibilityChange(newVisibility);
-    }
-  };
-
-  const [rowSelection, setRowSelection] = useState({});
   const [searchValue, setSearchValue] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(defaultPageSize);
@@ -143,8 +128,7 @@ const DataTable = <TData, TValue>({
       : undefined,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: handleColumnVisibilityChange,
-    onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -153,22 +137,12 @@ const DataTable = <TData, TValue>({
       sorting,
       columnFilters,
       columnVisibility,
-      rowSelection,
       pagination: {
         pageIndex,
         pageSize,
       },
     },
   });
-
-  // Sync table pageSize - use table methods for client-side pagination
-  useEffect(() => {
-    if (!manualPagination) {
-      // For client-side pagination, let TanStack Table control it
-      table.setPageSize(pageSize);
-      table.setPageIndex(pageIndex);
-    }
-  }, [pageSize, pageIndex, manualPagination, table]);
 
   // Reset page index when search value changes
   useEffect(() => {
@@ -204,14 +178,8 @@ const DataTable = <TData, TValue>({
     }
   };
 
-  // Determine the variant and corresponding layout
-  const isAdminVariant = variant === "admin";
-
-  // Extract filter rendering to a function to avoid duplication
-  const renderFilters = () => {
-    return (
-      Array.isArray(filterOptions) &&
-      filterOptions.map((filter, index) => (
+  const filters = Array.isArray(filterOptions)
+    ? filterOptions.map((filter, index) => (
         <Select
           key={`filter-${index}-${filter.label}`}
           onValueChange={filter.onFilterChange}
@@ -229,11 +197,9 @@ const DataTable = <TData, TValue>({
           </SelectContent>
         </Select>
       ))
-    );
-  };
+    : null;
 
-  //render column visibility dropdown
-  const renderColumnVisibilityDropdown = () => (
+  const columnVisibilityDropdown = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
@@ -263,15 +229,16 @@ const DataTable = <TData, TValue>({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+
   const headerProps = {
     title,
     subtitle,
+    titleAction,
     handleSearch,
     searchValue,
     searchPlaceholder,
-    renderFilters,
-    renderColumnVisibilityDropdown,
-    isAdminVariant,
+    filters,
+    columnVisibilityDropdown,
   };
 
   // Build tableContentProps for the RenderTableContent component
@@ -289,11 +256,12 @@ const DataTable = <TData, TValue>({
     loading,
     emptyStateMessage,
     emptyStateDescription,
+    noun,
   };
 
   return (
-    <Card className={`w-full`}>
-      <CardContent className={isAdminVariant ? "pt-7" : "p-6"}>
+    <Card className="w-full">
+      <CardContent className="pt-7">
         {/* Use custom header or default header component */}
         <DefaultTableHeader {...headerProps} />
 

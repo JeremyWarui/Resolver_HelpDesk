@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-interface UseInViewOptions {
-  rootMargin?: string;
-}
+// Start mounting this far before the element reaches the viewport, so the
+// content is ready by the time it is scrolled to.
+const ROOT_MARGIN = "300px";
 
 // "Freeze once visible" — once the element has intersected, keeps returning
 // true even after it scrolls back out, so callers can mount-once-and-keep.
-export function useInView<T extends Element>({ rootMargin = "300px" }: UseInViewOptions = {}) {
+export function useInView<T extends Element>() {
   const ref = useRef<T | null>(null);
   const [isInView, setIsInView] = useState(false);
 
@@ -22,12 +22,12 @@ export function useInView<T extends Element>({ rootMargin = "300px" }: UseInView
           observer.disconnect();
         }
       },
-      { rootMargin }
+      { rootMargin: ROOT_MARGIN }
     );
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isInView, rootMargin]);
+  }, [isInView]);
 
   return { ref, isInView };
 }

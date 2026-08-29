@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { DialogActions } from '@/components/shared/forms/DialogActions';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import * as catalogueService from '@/lib/api/catalogue';
-import type { ServiceItem, SubSection } from '@/types/catalogue';
+import type { ServiceItem, Trade } from '@/types';
 
 // Mounted only while open — state initializes from props on mount.
 //
@@ -16,23 +15,22 @@ import type { ServiceItem, SubSection } from '@/types/catalogue';
 // catalogue entry and nowhere near the same urgency. The HOS decides it per
 // ticket, when they assign it.
 export function ItemForm({
-  subSectionId,
-  subSections,
+  tradeId,
+  trades,
   editing,
   onSaved,
   onClose,
 }: {
-  subSectionId?: number;
-  subSections: SubSection[];
+  tradeId?: number;
+  trades: Trade[];
   editing?: ServiceItem | null;
   onSaved: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(editing?.name ?? '');
-  const [description, setDescription] = useState(editing?.description ?? '');
   const [selectedSubId, setSelectedSubId] = useState<string>(() => {
-    if (editing?.sub_section) return String(editing.sub_section);
-    return subSectionId ? String(subSectionId) : '';
+    if (editing?.trade) return String(editing.trade);
+    return tradeId ? String(tradeId) : '';
   });
   const [isActive, setIsActive] = useState(editing?.is_active ?? true);
   const [saving, setSaving] = useState(false);
@@ -44,16 +42,14 @@ export function ItemForm({
       if (editing) {
         await catalogueService.updateServiceItem(editing.id, {
           name: name.trim(),
-          description: description.trim(),
-          sub_section: Number(selectedSubId),
+          trade: Number(selectedSubId),
           is_active: isActive,
         });
         toast.success('Item updated');
       } else {
         await catalogueService.createServiceItem({
-          sub_section: Number(selectedSubId),
+          trade: Number(selectedSubId),
           name: name.trim(),
-          description: description.trim(),
           is_active: isActive,
         });
         toast.success('Item created');
@@ -85,7 +81,7 @@ export function ItemForm({
                 <SelectValue placeholder="Select trade" />
               </SelectTrigger>
               <SelectContent>
-                {subSections.map(sub => (
+                {trades.map(sub => (
                   <SelectItem key={sub.id} value={String(sub.id)}>{sub.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -105,18 +101,6 @@ export function ItemForm({
               className="h-10"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-desc" className="text-sm font-medium">Description</Label>
-            <Textarea
-              id="item-desc"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Service details..."
-              rows={2}
-              className="resize-none"
-            />
-          </div>
-
           <div className="pt-1">
             <div className="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 border border-gray-200">
               <Label htmlFor="item-active" className="text-sm font-medium cursor-pointer flex-1 mb-0">Active</Label>
@@ -130,12 +114,12 @@ export function ItemForm({
             </div>
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : editing ? 'Update' : 'Create'}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={onClose}
+          onSubmit={handleSave}
+          pending={saving}
+          submitLabel={editing ? 'Update' : 'Create'}
+        />
       </DialogContent>
     </Dialog>
   );

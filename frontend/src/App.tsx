@@ -1,12 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import { Toaster } from "./components/ui/sonner";
-import { AuthWrapper } from "./app/auth/AuthWrapper";
 import { ProtectedRoute } from "./app/auth/ProtectedRoute";
 import { LoginForm } from "./app/auth/LoginForm";
 import { RegisterForm } from "./app/auth/RegisterForm";
 import { DashboardShell } from "./app/dashboard/DashboardShell";
-import { NotFoundPage } from "./app/errors/NotFoundPage";
+import { NotFoundPage } from "./app/NotFoundPage";
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 // Lazy load main layout components for better code splitting
@@ -14,8 +13,7 @@ const MobileShell = lazy(() => import("./features/technician/mobile/MobileShell"
 const AdminLayout = lazy(() => import("./features/admin/AdminLayout"));
 const UserLayout = lazy(() => import("./features/user/UserLayout"));
 const TechnicianLayout = lazy(() => import("./features/technician/TechnicianLayout"));
-const HOSLayout = lazy(() => import("./features/hos/HOSLayout"));
-const HODLayout = lazy(() => import("./features/hod/HODLayout"));
+const SupervisorLayout = lazy(() => import("./features/shared/SupervisorLayout"));
 const ManagerLayout = lazy(() => import("./features/manager/ManagerLayout"));
 const ProfilePage = lazy(() => import("./features/shared/ProfilePage").then(m => ({ default: m.ProfilePage })));
 
@@ -30,32 +28,13 @@ const App = () => {
   // Register/update service worker automatically
   useRegisterSW({ immediate: true });
 
-  const handleAuthSuccess = () => {};
-
   return (
     <Router>
       <Suspense fallback={<RouteLoading />}>
         <Routes>
           {/* Public Authentication Routes */}
-          <Route
-            path="/login"
-            element={
-              <LoginForm
-                onSuccess={handleAuthSuccess}
-                onSwitchToRegister={() => window.location.href = '/register'}
-              />
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <RegisterForm
-                onSuccess={handleAuthSuccess}
-                onSwitchToLogin={() => window.location.href = '/login'}
-              />
-            }
-          />
-          <Route path="/auth" element={<AuthWrapper />} />
+          <Route path="/login" element={<LoginForm />} />
+          <Route path="/register" element={<RegisterForm />} />
 
           {/* Protected Dashboard Routes — DashboardShell wires WebSocket for all roles */}
           <Route element={<DashboardShell />}>
@@ -76,7 +55,7 @@ const App = () => {
               }
             />
             <Route
-              path="/technician/*"
+              path="/tech/*"
               element={
                 <ProtectedRoute requiredRoles={['technician']}>
                   <TechnicianLayout />
@@ -84,10 +63,10 @@ const App = () => {
               }
             />
             <Route
-              path="/section-head/*"
+              path="/hos/*"
               element={
                 <ProtectedRoute requiredRoles={['hos']}>
-                  <HOSLayout />
+                  <SupervisorLayout role="hos" />
                 </ProtectedRoute>
               }
             />
@@ -95,12 +74,12 @@ const App = () => {
               path="/hod/*"
               element={
                 <ProtectedRoute requiredRoles={['hod']}>
-                  <HODLayout />
+                  <SupervisorLayout role="hod" />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/manager/*"
+              path="/director/*"
               element={
                 <ProtectedRoute requiredRoles={['manager']}>
                   <ManagerLayout />

@@ -1,56 +1,31 @@
 import { toast } from 'sonner';
-import type { FieldValues, UseFormSetError, Path } from 'react-hook-form';
-
-interface HandleDRFErrorOptions<T extends FieldValues> {
-  setError?: UseFormSetError<T>;
-  fallbackMessage?: string;
-}
 
 /**
- * Handles DRF (Django REST Framework) error responses.
- * Parses error.response.data and calls toast.error() for non-field errors
- * and optionally calls setError() for field-specific errors in forms.
+ * Turn a DRF error response into a toast.
+ *
+ * DRF answers a bad write with `{field: ["message"], ...}`, sometimes under
+ * `non_field_errors` or `detail`. Every message in the body is shown, so a
+ * serializer that rejects two fields does not silently report one.
+ *
+ * Toasts only: a form that wants field-level errors calls `form.setError`
+ * itself, where it knows its own field names.
  */
-export function handleDRFError<T extends FieldValues>(
+export function handleDRFError(
   error: unknown,
-  options: HandleDRFErrorOptions<T> = {}
+  options: { fallbackMessage?: string } = {},
 ): void {
-  const { setError, fallbackMessage = 'An error occurred' } = options;
+  const { fallbackMessage = 'An error occurred' } = options;
+  const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data;
 
-  try {
-    const err = error as { response?: { data?: Record<string, unknown> } };
-
-    if (!err?.response?.data) {
-      toast.error(fallbackMessage);
-      return;
-    }
-
-    const data = err.response.data;
-    let foundField = false;
-
-    Object.keys(data).forEach((key) => {
-      const val = data[key];
-      const message = Array.isArray(val) ? val.join(' ') : String(val);
-
-      // Non-field errors show as toast
-      if (key === 'non_field_errors' || key === 'detail') {
-        toast.error(message);
-      } else if (setError) {
-        // Field errors set on form if setError provided
-        try {
-          setError(key as Path<T>, { type: 'server', message });
-          foundField = true;
-        } catch {
-          // Silently ignore if field doesn't exist in form
-        }
-      }
-    });
-
-    // Show fallback if no errors were processed
-    if (!foundField && setError) {
-      toast.error(fallbackMessage);
-    }
-  } catch {
+  if (!data || typeof data !== 'object') {
     toast.error(fallbackMessage);
+    return;
   }
+
+  const messages = Object.values(data)
+    .map((val) => (Array.isArray(val) ? val.join(' ') : String(val)))
+    .filter(Boolean);
+
+  if (messages.length === 0) toast.error(fallbackMessage);
+  else messages.forEach((message) => toast.error(message));
 }

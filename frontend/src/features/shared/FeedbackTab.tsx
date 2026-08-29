@@ -3,7 +3,7 @@ import { MessageSquare, Star } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
-import { useFeedback } from '@/hooks/tickets/useFeedback';
+import { useFeedback } from '@/hooks/tickets/useTickets';
 import type { UserRole } from '@/types';
 import { formatDateTimeLocal } from '@/utils/date';
 
@@ -20,7 +20,7 @@ const SUBTITLES: Partial<Record<UserRole, string>> = {
  * canonical DataTable — feedback is a flat, non-hierarchical read-only list,
  * and this is the closest existing visual precedent for it. Scope (own vs
  * section vs department) is entirely server-derived — no params are sent. */
-export function FeedbackTab({ role }: { role: UserRole }) {
+function FeedbackTab({ role }: { role: UserRole }) {
   const { feedback, loading, error } = useFeedback();
 
   // Summary is derived from the rows on screen rather than from
@@ -108,9 +108,7 @@ export function FeedbackTab({ role }: { role: UserRole }) {
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Ticket meta left, stars right, comment beneath only when there
-                  is one. The comment used to own a fixed half of every card,
-                  so most rows spent half their width saying "No comment left". */}
+              {/* Ticket meta left, stars right, comment beneath only when there is one. */}
               {feedback.map((row) => (
                 <div
                   key={row.id}

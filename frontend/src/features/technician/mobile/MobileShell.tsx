@@ -58,7 +58,7 @@ export function MobileShell() {
 
   const handleLogout = () => {
     clearUser();
-    navigate('/auth', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   const showingDetail = tab === 'tickets' && selectedTicket;

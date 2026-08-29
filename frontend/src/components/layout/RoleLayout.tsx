@@ -1,17 +1,15 @@
 import type { ReactNode } from 'react';
 import type { User } from '@/types';
 import { AppSidebar } from './AppSidebar';
-import FullScreenLoading from '@/components/shared/feedback/FullScreenLoading';
 import { NotificationCenter } from '@/components/shared/feedback/NotificationCenter';
 
 interface RoleLayoutProps {
   title: string;
   currentUser?: User | null;
-  loading?: boolean;
   children: ReactNode;
 }
 
-export function RoleLayout({ title, currentUser, loading = false, children }: RoleLayoutProps) {
+export function RoleLayout({ title, currentUser, children }: RoleLayoutProps) {
   const displayName = currentUser
     ? (currentUser.first_name
         ? `${currentUser.first_name} ${currentUser.last_name ?? ''}`.trim()
@@ -20,7 +18,6 @@ export function RoleLayout({ title, currentUser, loading = false, children }: Ro
 
   return (
     <div className="flex h-screen bg-background">
-      {loading && <FullScreenLoading message="Loading your dashboard..." />}
       <AppSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top header bar */}

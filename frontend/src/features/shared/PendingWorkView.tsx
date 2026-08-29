@@ -1,17 +1,12 @@
 /**
- * Pending Work — what is stopped, why, and for how long.
+ * Pending Work — what is stopped, why, and for how long. A worklist: every row
+ * is actionable, and resume clears the hold in one click.
  *
- * One component, two faces, because two roles ask different questions of the
- * same fact:
- *
- *   HOS / HOD  → a worklist. "Which jobs are stopped and who do I chase?"
- *                Rows are actionable: resume clears the hold in one click.
- *   Manager    → the shape. "What is stopping my organisation's work?"
- *                No ticket numbers — a director does not chase ticket 0009,
- *                they chase the reason three quarters of the rows share.
- *
- * Built as one view rather than two pages so the two can never disagree: they
- * read the same scoped rows over the same request.
+ * Operational roles only. The manager reads holds on the reports page instead,
+ * where `analytics.bottlenecks` counts them server-side — this page groups the
+ * one page of rows it fetched, so as a standalone figure it would start
+ * disagreeing with the reports page the moment a section held more than
+ * `page_size` jobs.
  *
  * No new endpoint. `GET /tickets/?status=pending` is already role-scoped
  * server-side and already pre-loads the facility, trade and assignee in a
@@ -24,41 +19,31 @@ import { AlertCircle, PauseCircle } from 'lucide-react';
 import { useTickets } from '@/hooks/tickets/useTickets';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import ChartCard from '@/components/shared/data/ChartCard';
+import MetricCard from '@/components/shared/data/MetricCard';
 import { ResumeWorkModal } from '@/components/shared/ticket/ResumeWorkModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/stores/authStore';
 import type { Ticket } from '@/types';
 
-export type PendingWorkRole = 'manager' | 'hod' | 'hos' | 'technician';
+type PendingWorkRole = 'hod' | 'hos' | 'technician';
 
 interface Props {
   role: PendingWorkRole;
   onTicketSelect?: (id: number) => void;
 }
 
-const COPY: Record<PendingWorkRole, { title: string; subtitle: string }> = {
-  manager: {
-    title: 'Pending Work',
-    subtitle: 'What is holding up maintenance across the organisation.',
-  },
-  hod: {
-    title: 'Pending Work',
-    subtitle: 'Jobs on hold across your campus — why, and for how long.',
-  },
-  hos: {
-    title: 'Pending Work',
-    subtitle: 'Jobs your section has stopped, and what each one is waiting for.',
-  },
-  // Only the technician's *own* held jobs, unlike the other three roles. The
+/** The page is called the same thing for everyone; only what it covers differs. */
+const SUBTITLE: Record<PendingWorkRole, string> = {
+  hod: 'Jobs on hold across your campus — why, and for how long.',
+  hos: 'Jobs your section has stopped, and what each one is waiting for.',
+  // Only the technician's *own* held jobs, unlike the other two roles. The
   // difference is that this page acts: `TicketStatusUpdateView` lets a
   // technician change status only on tickets assigned to them — section scope
   // alone is view-only — so listing a section-mate's held job here would put a
   // Resume button on a row the server answers 403 for.
-  technician: {
-    title: 'Pending Work',
-    subtitle: 'Your jobs that are stopped, why, and for how long. Resume one when the thing it was waiting for arrives.',
-  },
+  technician:
+    'Your jobs that are stopped, why, and for how long. Resume one when the thing it was waiting for arrives.',
 };
 
 /** Stable reference: a fresh array each render would re-memo the column map. */
@@ -92,8 +77,6 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
   );
   const [acting, setActing] = useState<{ ticket: Ticket; mode: 'resume' | 'change' } | null>(null);
 
-  const isManager = role === 'manager';
-
   // Grouped in the browser rather than fetched: these are the same rows already
   // on screen, so a second round trip to count them would be a request that can
   // disagree with the table beside it.
@@ -123,8 +106,8 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
   return (
     <main className="flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4">
       <div>
-        <h1 className="text-lg font-semibold text-foreground">{COPY[role].title}</h1>
-        <p className="text-sm text-muted-foreground">{COPY[role].subtitle}</p>
+        <h1 className="text-lg font-semibold text-foreground">Pending Work</h1>
+        <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
       </div>
 
       {loading ? (
@@ -146,48 +129,24 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
           {/* The two numbers worth leading with. Not a five-card strip: this
               page answers one question and padding it would bury the answer. */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Jobs on hold
-                </p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">{total}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Held over a week
-                </p>
-                <p className="mt-1 flex items-baseline gap-2">
-                  <span
-                    className="text-3xl font-semibold tabular-nums"
-                    style={{ color: stalled ? 'var(--status-escalated-text)' : undefined }}
-                  >
-                    {stalled}
-                  </span>
-                  {longest && longest.days >= 7 && (
-                    <span className="text-sm text-muted-foreground">
-                      longest {longest.days} days
-                    </span>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
+            <MetricCard title="Jobs on hold" value={total} />
+            <MetricCard
+              title="Held over a week"
+              value={stalled}
+              tone={stalled ? 'alert' : 'default'}
+              description={
+                longest && longest.days >= 7 ? `longest ${longest.days} days` : undefined
+              }
+            />
           </div>
 
-          {/* Why work is pending — the shape, for everyone. It leads for the
-              manager and follows the worklist for the section heads, but it is
-              the same figure either way. Counts are printed beside every bar:
-              the bar is the comparison, the number is the fact, and neither
-              relies on colour to carry meaning. */}
+          {/* The shape of the worklist below it, off the same rows, so the
+              two can never disagree. Counts are printed beside every bar: the
+              bar is the comparison, the number is the fact, and neither relies
+              on colour to carry meaning. */}
           <ChartCard
             title="Why work is pending"
-            description={
-              isManager
-                ? 'Each bar is a decision — stores, procurement, or capacity.'
-                : 'What your held jobs are waiting for.'
-            }
+            description="What your held jobs are waiting for."
           >
             <div className="space-y-2.5">
               {byReason.map((r) => (
@@ -212,34 +171,27 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
             </div>
           </ChartCard>
 
-          {/* The worklist. Withheld from the manager on purpose — they act on
-              the pattern above, not on individual jobs, and a director who has
-              to read ticket numbers to understand their estate is being handed
-              the wrong instrument. They can still reach any ticket through the
-              tickets page if they want one. */}
-          {!isManager && (
-            <TicketTable
-              tickets={tickets}
-              variant="pending"
-              loading={loading}
-              // Every row on a technician's page is assigned to them.
-              hideColumns={isTechnician ? HIDE_FOR_TECHNICIAN : undefined}
-              title="Jobs on hold"
-              onRowClick={(t) => onTicketSelect?.(t.id)}
-              onResume={(t) => setActing({ ticket: t, mode: 'resume' })}
-              onChangeReason={(t) => setActing({ ticket: t, mode: 'change' })}
-              searchPlaceholder="Search by ticket number or job…"
-              emptyMessage="Nothing is on hold"
-              emptyDescription="Every job in your scope is being worked on or finished."
-              rowClassName={(t) =>
-                (pendingDays(t) ?? 0) >= 30
-                  ? 'border-l-2 border-status-escalated bg-status-escalated/5'
-                  : ''
-              }
-            />
-          )}
+          <TicketTable
+            tickets={tickets}
+            variant="pending"
+            loading={loading}
+            // Every row on a technician's page is assigned to them.
+            hideColumns={isTechnician ? HIDE_FOR_TECHNICIAN : undefined}
+            title="Jobs on hold"
+            onRowClick={(t) => onTicketSelect?.(t.id)}
+            onResume={(t) => setActing({ ticket: t, mode: 'resume' })}
+            onChangeReason={(t) => setActing({ ticket: t, mode: 'change' })}
+            searchPlaceholder="Search by ticket number or job…"
+            emptyMessage="Nothing is on hold"
+            emptyDescription="Every job in your scope is being worked on or finished."
+            rowClassName={(t) =>
+              (pendingDays(t) ?? 0) >= 30
+                ? 'border-l-2 border-status-escalated bg-status-escalated/5'
+                : ''
+            }
+          />
 
-          {stalled > 0 && !isManager && (
+          {stalled > 0 && (
             <p className="flex items-start gap-2 text-sm text-muted-foreground">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>

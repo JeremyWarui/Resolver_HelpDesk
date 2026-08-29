@@ -69,7 +69,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-      const existing = clients.find(c => c.url.includes('/technician') || c.url.includes('/tech/mobile'));
+      const existing = clients.find(c => c.url.includes('/tech'));
       if (existing) { existing.focus(); (existing as WindowClient).navigate(url); }
       else { self.clients.openWindow(url); }
     })

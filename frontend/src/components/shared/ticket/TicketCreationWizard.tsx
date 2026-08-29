@@ -1,25 +1,20 @@
-// TicketCreationWizard — 3-step modal for raising a maintenance ticket.
-// Step 1: trade → service item (campus-filtered — a campus only offers the
-//         trades it actually staffs)
-// Step 2: description, optional contact number, and where it is
-// Step 3: review + submit
+// Raising a ticket, in three steps: trade and service item, then the fault and
+// where it is, then review.
 //
-// Payload: { service_item, description, contact_phone?, location }. Section,
-// trade and priority are all derived server-side — the requester grades
-// nothing and routes nothing.
+// The payload is { service_item, description, contact_phone?, location }. Trade
+// and priority are derived server-side: the requester grades nothing and routes
+// nothing.
 //
-// Location is unconditional: maintenance work happens somewhere, and a ticket
-// the technician cannot find is not a ticket. What varies is which fields the
-// form asks for, and that comes from the facility type — see FACILITY_FORMS,
-// which mirrors apps/facilities/validators.py TYPE_SPECS.
+// Every ticket names a facility off the register, so the type only decides
+// which extra fields are asked for. The forms themselves live in
+// `constants/catalogue.ts`, beside the codes they are keyed by.
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ChevronLeft, ChevronRight, Check, Loader2, CheckCircle2, MapPin,
-  Hammer, BrickWall, PaintRoller, Droplets, Zap, Wrench,
-  Building2, BedDouble, Warehouse, Home, TreePine, Phone, type LucideIcon,
+  ChevronLeft, ChevronRight, Check, Loader2, CheckCircle2, MapPin, Phone,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -37,23 +32,30 @@ import {
 } from '@/components/ui/select';
 import { useAuthStore } from '@/stores/authStore';
 import { createTicket, uploadAttachments } from '@/lib/api/tickets';
-import { useCatalog, useCampusFacilities } from '@/hooks/catalog/useCatalog';
-import type { CatalogItem, CatalogSubSection } from '@/lib/api/catalogue';
-import type { FacilityTypeValue } from '@/constants/facilityTypes';
+import { useCatalog, useCampusFacilities } from '@/hooks/useCatalogue';
+import type { CatalogItem, CatalogTrade } from '@/lib/api/catalogue';
+import { tradeIcon } from '@/constants/catalogue';
+import {
+  FACILITY_FORMS,
+  FACILITY_ORDER,
+  fieldMeta,
+  type FacilityTypeValue,
+} from '@/constants/catalogue';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** Pre-fill: opens the wizard on this trade's fault list rather than the
+ *  trade tiles. The service item is always chosen here, in step 1 — the
+ *  requester's catalogue cards name a trade and stop there. */
+export interface TicketQuickStart {
+  tradeCode?: string;
+}
 
 export interface TicketCreationWizardProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
-  /** Pre-fill and skip ahead:
-   *  subSectionCode set → opens at the item list for that trade.
-   *  item set → opens at step 2 directly. */
-  quickStart?: {
-    subSectionCode?: string;
-    item?: { id: number; name: string; description?: string };
-  };
+  quickStart?: TicketQuickStart;
 }
 
 type Step = 1 | 2 | 3;
@@ -64,60 +66,6 @@ const STEP_LABELS: Record<Step, string> = {
   2: 'Provide details',
   3: 'Review & submit',
 };
-
-/** Icons by trade code. Unknown codes fall back to a spanner rather than
- *  breaking — adding a trade is a seed change, not a frontend release. */
-const TRADE_ICONS: Record<string, LucideIcon> = {
-  CARP: Hammer,
-  MAS: BrickWall,
-  PAINT: PaintRoller,
-  PLUMB: Droplets,
-  ELEC: Zap,
-};
-
-/** The location form per facility type — mirrors validators.py TYPE_SPECS.
- *  `label` is short on purpose: the six tiles sit on one row. */
-interface FacilityForm {
-  label: string;
-  Icon: LucideIcon;
-  /** Whether the type picks a named facility off the register. */
-  needsFacility: boolean;
-  required: string[];
-  optional: string[];
-}
-
-const FACILITY_FORMS: Record<FacilityTypeValue, FacilityForm> = {
-  office_block: { label: 'Office',     Icon: Building2, needsFacility: true,  required: ['floor', 'room'], optional: ['area'] },
-  hostel:       { label: 'Hostel',     Icon: BedDouble, needsFacility: true,  required: ['room_number'],   optional: ['area'] },
-  building:     { label: 'Building',   Icon: Warehouse, needsFacility: true,  required: [],                optional: ['room', 'area'] },
-  residential:  { label: 'Staff Qtrs', Icon: Home,      needsFacility: false, required: ['tenant_name'],   optional: ['unit_number'] },
-  equipment:    { label: 'Equipment',  Icon: Wrench,    needsFacility: false, required: ['asset_name'],    optional: ['asset_id', 'description'] },
-  grounds:      { label: 'Grounds',    Icon: TreePine,  needsFacility: false, required: ['zone'],          optional: ['landmark'] },
-};
-
-/** Order the tiles are drawn in, most-used first. Typed against the shared
- *  code list, so a type added there without a form here fails to compile. */
-const FACILITY_ORDER: FacilityTypeValue[] = [
-  'office_block', 'hostel', 'building', 'residential', 'equipment', 'grounds',
-];
-
-const FIELD_LABELS: Record<string, { label: string; placeholder: string }> = {
-  floor:       { label: 'Floor',       placeholder: 'e.g. Ground, 1st' },
-  room:        { label: 'Room',        placeholder: 'e.g. Room 14' },
-  area:        { label: 'Area',        placeholder: 'e.g. Boardroom' },
-  room_number: { label: 'Room number', placeholder: 'e.g. B-214' },
-  tenant_name: { label: 'Tenant name', placeholder: 'Who can let the technician in' },
-  unit_number: { label: 'Unit / house no.', placeholder: 'e.g. Q-12' },
-  asset_name:  { label: 'Asset name',  placeholder: 'e.g. Standby generator' },
-  asset_id:    { label: 'Asset ID',    placeholder: 'e.g. AST-0042' },
-  description: { label: 'Where it is', placeholder: 'e.g. Near reception' },
-  zone:        { label: 'Zone',        placeholder: 'e.g. Football pitch, parking' },
-  landmark:    { label: 'Landmark',    placeholder: 'e.g. Near gate B' },
-};
-
-function fieldMeta(name: string) {
-  return FIELD_LABELS[name] ?? { label: name.replace(/_/g, ' '), placeholder: '' };
-}
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -210,10 +158,10 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   const queryClient = useQueryClient();
 
   // Wizard state
-  const [step, setStep]                     = useState<Step>(quickStart?.item ? 2 : 1);
+  const [step, setStep]                     = useState<Step>(1);
   const [subStep, setSubStep]               = useState<SubStep>(
-    quickStart?.item || quickStart?.subSectionCode ? 'item' : 'trade');
-  const [trade, setTrade]                   = useState<CatalogSubSection | null>(null);
+    quickStart?.tradeCode ? 'item' : 'trade');
+  const [trade, setTrade]                   = useState<CatalogTrade | null>(null);
   const [item, setItem]                     = useState<CatalogItem | null>(null);
   const [description, setDescription]       = useState('');
   const [contactPhone, setContactPhone]     = useState('');
@@ -226,57 +174,39 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
 
   // Data — two queries for the whole wizard. Facilities come back once for the
   // campus and are grouped here, so clicking through the tiles costs nothing.
-  const { data: trades = [], isLoading: loading } = useCatalog(campusId);
+  const { data: trades = [], isLoading: loading } = useCatalog();
   const { data: facilities = [] } = useCampusFacilities(campusId);
 
   const form = typeCode ? FACILITY_FORMS[typeCode] : null;
 
-  /** Facility types offered: the ones that need no facility are always
-   *  available, the rest only where this campus has something to pick. */
+  /** The types this campus has something registered under. A type with no
+   *  facility here has nothing to raise a ticket against. */
   const tiles = useMemo(() => {
-    const withFacilities = new Set(facilities.map((f) => f.type));
+    const withFacilities = new Set(facilities.map((f) => f.facility_type_code));
     return FACILITY_ORDER
-      .filter((code) => !FACILITY_FORMS[code].needsFacility || withFacilities.has(code))
+      .filter((code) => withFacilities.has(code))
       .map((code) => ({ key: code, label: FACILITY_FORMS[code].label, Icon: FACILITY_FORMS[code].Icon }));
   }, [facilities]);
 
   const choices = useMemo(
-    () => facilities.filter((f) => f.type === typeCode),
-    [facilities, typeCode],
-  );
-
-  /** The facility type's server-side id, read off any facility of that type —
-   *  which is why the list is fetched whole rather than per type. */
-  const facilityTypeId = useMemo(
-    () => facilities.find((f) => f.type === typeCode)?.facility_type ?? null,
+    () => facilities.filter((f) => f.facility_type_code === typeCode),
     [facilities, typeCode],
   );
 
   // ── State sync during render (adjust-during-render pattern) ──────────────────
 
-  const [prevIsOpen, setPrevIsOpen]           = useState(isOpen);
-  const [prevQuickItemId, setPrevQuickItemId] = useState(quickStart?.item?.id);
-  const [prevQuickTrade, setPrevQuickTrade]   = useState(quickStart?.subSectionCode);
-  const [prevTrades, setPrevTrades]           = useState(trades);
+  const [prevIsOpen, setPrevIsOpen]         = useState(isOpen);
+  const [prevQuickTrade, setPrevQuickTrade] = useState(quickStart?.tradeCode);
 
-  // Reset when the dialog opens or quickStart changes
-  if (
-    prevIsOpen !== isOpen ||
-    prevQuickItemId !== quickStart?.item?.id ||
-    prevQuickTrade !== quickStart?.subSectionCode
-  ) {
+  // Reset when the dialog opens or the pre-filled trade changes
+  if (prevIsOpen !== isOpen || prevQuickTrade !== quickStart?.tradeCode) {
     setPrevIsOpen(isOpen);
-    setPrevQuickItemId(quickStart?.item?.id);
-    setPrevQuickTrade(quickStart?.subSectionCode);
+    setPrevQuickTrade(quickStart?.tradeCode);
     if (isOpen) {
-      setStep(quickStart?.item ? 2 : 1);
-      setSubStep(quickStart?.item || quickStart?.subSectionCode ? 'item' : 'trade');
+      setStep(1);
+      setSubStep(quickStart?.tradeCode ? 'item' : 'trade');
       setTrade(null); // resolved below, once the catalogue loads
-      // Pre-fill from quickStart so the service banner shows immediately; the
-      // lookup below upgrades it with the authoritative catalogue record.
-      setItem(quickStart?.item
-        ? { id: quickStart.item.id, name: quickStart.item.name, description: quickStart.item.description ?? '', is_active: true }
-        : null);
+      setItem(null);
       setDescription('');
       setContactPhone('');
       setAttachments([]);
@@ -291,25 +221,25 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   useEffect(() => {
     if (isOpen) queryClient.invalidateQueries({ queryKey: ['catalog'] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, quickStart?.item?.id, quickStart?.subSectionCode]);
+  }, [isOpen, quickStart?.tradeCode]);
 
-  // Resolve the quickStart trade and item once the catalogue is loaded.
-  if (isOpen && prevTrades !== trades && trades.length > 0) {
-    setPrevTrades(trades);
-    if (!trade) {
-      if (quickStart?.item) {
-        for (const t of trades) {
-          const found = t.items?.find((si) => si.id === quickStart.item!.id);
-          if (found) { setItem(found); setTrade(t); break; }
-        }
-      } else if (quickStart?.subSectionCode) {
-        const found = trades.find((t) => t.code === quickStart.subSectionCode);
-        if (found) setTrade(found);
-      }
-    }
+  /**
+   * Resolve the pre-filled trade as soon as the catalogue can answer for it.
+   *
+   * Gated on the trade still being unset, not on the catalogue's identity:
+   * `useQuery` hands back the same array on every render once it is cached, so
+   * comparing references only ever fired on a refetch. The first card click
+   * worked — the catalogue was still arriving — and every one after it opened
+   * the item list on a null trade, which renders "No services listed under
+   * this trade" until the invalidation round trip lands.
+   *
+   * `subStep` is the guard against re-resolving: stepping back to the trade
+   * tiles clears it, and this must not immediately undo that.
+   */
+  if (isOpen && !trade && subStep === 'item' && quickStart?.tradeCode && trades.length > 0) {
+    const found = trades.find((t) => t.code === quickStart.tradeCode);
+    if (found) setTrade(found);
   }
-
-  const handleItemSelect = useCallback((si: CatalogItem) => setItem(si), []);
 
   function setVal(key: string, val: string) {
     setLocationValues((prev) => ({ ...prev, [key]: val }));
@@ -322,8 +252,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   }
 
   const locationValid = useMemo(() => {
-    if (!form) return false;
-    if (form.needsFacility && !facilityId) return false;
+    if (!form || !facilityId) return false;
     return form.required.every((name) => !!locationValues[name]?.trim());
   }, [form, facilityId, locationValues]);
 
@@ -334,7 +263,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   }, [step, item, subStep, description, locationValid]);
 
   async function handleSubmit() {
-    if (!item || !form || !facilityTypeId) return;
+    if (!item || !form || !facilityId) return;
     setSubmitting('creating');
     try {
       // Send only the fields this type knows about — the server rejects
@@ -349,11 +278,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
         service_item: item.id,
         description: description.trim(),
         ...(contactPhone.trim() ? { contact_phone: contactPhone.trim() } : {}),
-        location: {
-          facility_type: facilityTypeId,
-          ...(form.needsFacility && facilityId ? { facility: facilityId } : {}),
-          values,
-        },
+        location: { facility: facilityId, values },
       });
       // Attachments go up after the ticket exists — the endpoint is
       // /tickets/<id>/attachments/, so there is no id to post to until now.
@@ -464,7 +389,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                         items={trades.map((t) => ({
                           key: t.code,
                           label: t.name,
-                          Icon: TRADE_ICONS[t.code] ?? Wrench,
+                          Icon: tradeIcon(t.code),
                         }))}
                       />
                     )}
@@ -485,9 +410,8 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                           <OptionCard
                             key={si.id}
                             selected={si.id === item?.id}
-                            onClick={() => handleItemSelect(si)}
+                            onClick={() => setItem(si)}
                             title={si.name}
-                            description={si.description}
                           />
                         ))}
                       </div>
@@ -583,21 +507,19 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
 
                   {form && (
                     <div className="mt-3 border-t border-border/50 pt-3 space-y-3">
-                      {form.needsFacility && (
-                        <div className="space-y-1.5">
-                          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                            {form.label} <span className="text-destructive">*</span>
-                          </Label>
-                          <Select value={facilityId ? String(facilityId) : ''} onValueChange={(v) => setFacilityId(Number(v))}>
-                            <SelectTrigger className="h-8 text-sm">
-                              <SelectValue placeholder={choices.length === 0 ? 'None listed at your campus' : 'Select one'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {choices.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {form.label} <span className="text-destructive">*</span>
+                        </Label>
+                        <Select value={facilityId ? String(facilityId) : ''} onValueChange={(v) => setFacilityId(Number(v))}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder={choices.length === 0 ? 'None listed at your campus' : 'Select one'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {choices.map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
                       {[...form.required, ...form.optional].length > 0 && (
                         <div className="grid grid-cols-2 gap-2">

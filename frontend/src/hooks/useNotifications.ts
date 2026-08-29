@@ -8,26 +8,15 @@ import {
 
 const KEY = ['notifications'] as const;
 
-/** How often to ask. A maintenance helpdesk runs on a minutes-to-hours cadence
- *  — a ticket raised now is not read by an HOS in the next four seconds — so a
- *  minute is responsive enough and costs one indexed query capped at 50 rows.
- *  The window-focus refetch does more work than the interval in practice: it
- *  covers "I came back to the tab", which is when people actually look. */
+/** How often to ask. A helpdesk runs on a minutes-to-hours cadence, so a minute
+ *  is responsive enough and costs one indexed query capped at 50 rows. */
 const POLL_MS = 60_000;
 
 /**
- * The notification feed.
+ * The notification feed. Notifications are polled, not pushed.
  *
- * This is what the WebSocket used to do. When Channels was removed the socket
- * went with it, and the bell was left reading a Zustand store that no longer
- * had a writer — permanently empty, badge stuck at zero, on every desktop page.
- * Notifications were being generated and stored correctly the whole time; only
- * the delivery was missing.
- *
- * React Query is the single source of truth here rather than a store mirroring
- * it. The store existed because the socket pushed into it; with polling there
- * is nothing to mirror, and two containers for one list is two things to keep
- * in step.
+ * React Query holds the list. A store mirroring it would be a second container
+ * for one list, and two things to keep in step.
  */
 export function useNotifications() {
   const queryClient = useQueryClient();
@@ -46,17 +35,16 @@ export function useNotifications() {
   /** Optimistic so the badge responds to the click, not to the round trip. */
   const markRead = useMutation({
     mutationFn: markReadApi,
-    onMutate: async (id: string) => {
+    onMutate: async (id: number) => {
       await queryClient.cancelQueries({ queryKey: KEY });
       const previous = queryClient.getQueryData<NotificationFeed>(KEY);
       if (previous) {
         queryClient.setQueryData<NotificationFeed>(KEY, {
-          notifications: previous.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n
+          results: previous.results.map((n) => (n.id === id ? { ...n, read: true } : n)),
+          unread_count: Math.max(
+            0,
+            previous.unread_count - (previous.results.find((n) => n.id === id)?.read ? 0 : 1),
           ),
-          unreadCount: Math.max(0, previous.unreadCount - (
-            previous.notifications.find((n) => n.id === id)?.read ? 0 : 1
-          )),
         });
       }
       return { previous };
@@ -74,8 +62,8 @@ export function useNotifications() {
       const previous = queryClient.getQueryData<NotificationFeed>(KEY);
       if (previous) {
         queryClient.setQueryData<NotificationFeed>(KEY, {
-          notifications: previous.notifications.map((n) => ({ ...n, read: true })),
-          unreadCount: 0,
+          results: previous.results.map((n) => ({ ...n, read: true })),
+          unread_count: 0,
         });
       }
       return { previous };
@@ -87,10 +75,10 @@ export function useNotifications() {
   });
 
   return {
-    notifications: query.data?.notifications ?? [],
-    unreadCount: query.data?.unreadCount ?? 0,
+    notifications: query.data?.results ?? [],
+    unreadCount: query.data?.unread_count ?? 0,
     loading: query.isLoading,
-    markRead: (id: string) => markRead.mutate(id),
+    markRead: (id: number) => markRead.mutate(id),
     markAllRead: () => markAllRead.mutate(),
     markingAll: markAllRead.isPending,
   };

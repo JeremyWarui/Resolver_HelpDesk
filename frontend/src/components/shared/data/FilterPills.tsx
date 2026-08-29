@@ -1,7 +1,5 @@
-// FilterPills — canonical filter pill component
-// Usage (composed pattern with TicketTable):
-//   <FilterPills pills={pills} active={filters.status ?? 'all'} onChange={(k) => setFilters({ status: k })} />
-//   <TicketTable tickets={data} variant="queue" ... />
+// The row of filter pills above a ticket table. It carries the choice; the
+// table beside it carries the rows.
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -49,9 +47,10 @@ export function FilterPills({ pills, active, onChange, loading = false, classNam
         const variant = pill.variant ?? 'default';
         const cssBase = VARIANT_CSS_BASE[variant];
 
-        // Status-specific pills: always show tinted bg + colored text (matching
-        // main branch QuickFilterButtons). Active state adds the status border.
-        // Default pills ('All'): neutral ghost when inactive, primary tint when active.
+        // A status pill is always tinted, so the row reads as a legend even
+        // before anything is picked; being active only adds the border.
+        // The plain 'All' pill has no status colour, so it is a neutral ghost
+        // until picked and takes a primary tint when it is.
         const pillStyle: React.CSSProperties | undefined = cssBase ? {
           backgroundColor: `var(${cssBase}-bg)`,
           color:           `var(${cssBase}-text)`,

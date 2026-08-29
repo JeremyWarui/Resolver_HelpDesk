@@ -1,27 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ArrowRight, Plus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { UserStatsCards } from '@/components/shared/data/StatCards';
+import TicketStatsCards from '@/components/shared/data/TicketStatsCards';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
-import { TicketCreationWizard } from '@/components/shared/ticket/TicketCreationWizard';
-import QuickActions, { type QuickActionItem } from './QuickActions';
+import type { TicketQuickStart } from '@/components/shared/ticket/TicketCreationWizard';
+import QuickActions from './QuickActions';
 import { AwaitingRatingBanner } from './AwaitingRatingBanner';
 import { RatingModal } from './RatingModal';
 import { useAuthStore } from '@/stores/authStore';
-import { useUserDashboard } from '@/hooks/dashboard';
-import { useTickets } from '@/hooks/tickets';
+import { useTickets } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
 
 interface UserDashboardProps {
-  onNavigate?: (section: 'dashboard' | 'userTickets' | 'submitTicket' | 'settings') => void;
+  /** The shell owns the wizard, so opening it is a navigation like any other —
+   *  this page sends the chosen service along rather than mounting its own. */
+  onNavigate?: (
+    section: 'dashboard' | 'userTickets' | 'submitTicket',
+    quickStart?: TicketQuickStart,
+  ) => void;
   onTicketSelect?: (id: number) => void;
 }
-
-type QuickStart = {
-  subSectionCode?: string;
-  item?: QuickActionItem;
-} | undefined;
 
 // A preview, not a second copy of My Tickets — that page is in the sidebar and
 // owns the filtering. Ten rows is enough to see what is in flight.
@@ -30,38 +29,21 @@ const RECENT_LIMIT = 10;
 const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
   const queryClient = useQueryClient();
   const userData = useAuthStore((s) => s.user);
-  const { loading: dashLoading, refetch } = useUserDashboard();
 
   const { tickets, totalTickets, loading: ticketsLoading } = useTickets({
     mine: 1,
     page_size: RECENT_LIMIT,
   });
 
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [quickStart, setQuickStart] = useState<QuickStart>(undefined);
   const [rating, setRating] = useState<Ticket | null>(null);
 
   const welcomeName = [userData?.first_name, userData?.last_name].filter(Boolean).join(' ') ||
     userData?.username ||
     'User';
 
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  function handleServiceSelect(ctx: { subSectionCode: string; item?: QuickActionItem }) {
-    setQuickStart({ subSectionCode: ctx.subSectionCode, item: ctx.item });
-    setWizardOpen(true);
-  }
-
-  function handleWizardOpenChange(open: boolean) {
-    setWizardOpen(open);
-    if (!open) setQuickStart(undefined);
-  }
-
   function refreshAll() {
-    refetch();
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
   }
 
   return (
@@ -70,16 +52,12 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
       <div className="px-6 py-4 border-b bg-background">
         <div className="flex items-center justify-between mb-5">
           <p className="text-sm text-muted-foreground">Welcome back, {welcomeName}</p>
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={() => { setQuickStart(undefined); setWizardOpen(true); }}
-          >
+          <Button size="sm" className="gap-1.5" onClick={() => onNavigate?.('submitTicket')}>
             <Plus className="h-4 w-4" />
             New Ticket
           </Button>
         </div>
-        <UserStatsCards />
+        <TicketStatsCards />
       </div>
 
       <div className="p-6 space-y-6">
@@ -100,7 +78,7 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
               Pick the closest match to report a fault
             </span>
           </div>
-          <QuickActions onServiceSelect={handleServiceSelect} />
+          <QuickActions onServiceSelect={(quick) => onNavigate?.('submitTicket', quick)} />
         </div>
 
         {/* ── Recent activity ── */}
@@ -122,7 +100,7 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
           <TicketTable
             tickets={tickets}
             variant="my-tickets"
-            loading={ticketsLoading || dashLoading}
+            loading={ticketsLoading}
             emptyMessage="No requests yet"
             emptyDescription="Anything you report will appear here."
             onRowClick={(t) => onTicketSelect?.(t.id)}
@@ -130,13 +108,6 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
           />
         </div>
       </div>
-
-      <TicketCreationWizard
-        isOpen={wizardOpen}
-        onOpenChange={handleWizardOpenChange}
-        onSuccess={refreshAll}
-        quickStart={quickStart}
-      />
 
       {rating && (
         <RatingModal

@@ -1,17 +1,9 @@
-// TicketTable — canonical ticket display component.
-// Wraps DataTable (TanStack Table + shadcn Table) with 5 variant column sets.
-//
-// Decision (Phase 3 audit): extends the existing DataTable/TableUtils pattern.
-// Columns stay clean single-value cells; StatusBadge and PriorityBadge replace
-// the hardcoded colour classes that previously lived in TableUtils.tsx.
-// The "Rate & close" action column is unique to the my-tickets variant.
-//
-// Composed usage (all ticket list views):
-//   <FilterPills pills={pills} active={filters.status ?? 'all'} onChange={(k) => setFilters({ status: k })} />
-//   <TicketTable tickets={data} variant="queue" loading={isLoading} onRowClick={...} />
+// The ticket list. Wraps DataTable with one column set per variant; the
+// "Rate & close" action column belongs to the my-tickets variant alone.
 
 import { useMemo } from 'react';
 import DataTable from '@/components/shared/data/DataTable/DataTable';
+import { useRole } from '@/lib/auth/permissions';
 import {
   createVariantColumns,
   VARIANT_COLUMN_VISIBILITY,
@@ -19,13 +11,11 @@ import {
 import type { FilterOption } from '@/components/shared/data/DataTable/DataTable';
 import type { Ticket, TicketTableVariant, } from '@/types';
 
-export interface TicketTableProps {
+interface TicketTableProps {
   tickets: Ticket[];
   variant: TicketTableVariant;
   loading?: boolean;
   onRowClick?: (ticket: Ticket) => void;
-  onOpenTicket?: (ticket: Ticket | null) => void;
-  onOpenTicketDialog?: (open: boolean) => void;
   onRate?: (ticket: Ticket) => void;
   /** 'pending' variant only — clear the hold, or re-code it without clearing it. */
   onResume?: (ticket: Ticket) => void;
@@ -39,11 +29,14 @@ export interface TicketTableProps {
   };
   selectedRowId?: number | null;
   rowClassName?: (ticket: Ticket) => string;
-  title?: string;
   emptyMessage?: string;
   emptyDescription?: string;
   searchPlaceholder?: string;
   filterOptions?: FilterOption[];
+  title?: string;
+  subtitle?: string;
+  /** Rows per page when the table paginates in the browser. */
+  defaultPageSize?: number;
   /**
    * Extra column ids to hide on top of the variant's own map.
    *
@@ -57,13 +50,13 @@ export interface TicketTableProps {
   hideColumns?: string[];
 }
 
+const TICKET_NOUN = { one: 'ticket', many: 'tickets' };
+
 export function TicketTable({
   tickets,
   variant,
   loading = false,
   onRowClick,
-  onOpenTicket,
-  onOpenTicketDialog,
   onRate,
   onResume,
   onChangeReason,
@@ -72,30 +65,38 @@ export function TicketTable({
   selectedRowId = null,
   rowClassName,
   title,
+  subtitle,
+  defaultPageSize = 20,
   emptyMessage = 'No tickets found',
   emptyDescription = 'Try adjusting your filters.',
   searchPlaceholder = 'Search by ID or title…',
   filterOptions,
 }: TicketTableProps) {
   const columns = useMemo(
-    () =>
-      createVariantColumns({
-        variant,
-        setSelectedTicket: onOpenTicket,
-        setIsTicketDialogOpen: onOpenTicketDialog,
-        onRate,
-        onResume,
-        onChangeReason,
-      }),
-    [variant, onOpenTicket, onOpenTicketDialog, onRate, onResume, onChangeReason],
+    () => createVariantColumns({ variant, onRate, onResume, onChangeReason }),
+    [variant, onRate, onResume, onChangeReason],
   );
+
+  /**
+   * Priority is shown by default to the two roles who act on it: the HOS sets
+   * it as they hand the ticket over, and the technician decides what to do
+   * next by it. Everyone else — the requester, the HOD, the manager, the
+   * admin — gets it hidden but not removed, so the Columns menu turns it on,
+   * and the ticket detail carries it either way.
+   *
+   * A role rule rather than a variant one because the HOS and the admin read
+   * the same `admin` variant on the same Tickets page.
+   */
+  const role = useRole();
+  const showsPriority = role === 'hos' || role === 'technician';
 
   const columnVisibility = useMemo(
     () => ({
       ...VARIANT_COLUMN_VISIBILITY[variant],
+      priority: showsPriority,
       ...Object.fromEntries((hideColumns ?? []).map((id) => [id, false])),
     }),
-    [variant, hideColumns],
+    [variant, showsPriority, hideColumns],
   );
 
   // DataTable's search box filters a hidden `searchField` column. Callers pass
@@ -126,8 +127,8 @@ export function TicketTable({
     <DataTable
       columns={columns}
       data={rows}
-      variant="admin"
       title={title}
+      subtitle={subtitle}
       loading={loading}
       onRowClick={onRowClick}
       selectedRowId={selectedRowId}
@@ -143,9 +144,10 @@ export function TicketTable({
       emptyStateDescription={emptyDescription}
       initialColumnVisibility={columnVisibility}
       searchPlaceholder={searchPlaceholder}
+      noun={TICKET_NOUN}
       manualPagination={!!pagination}
       totalItems={pagination?.total}
-      defaultPageSize={pagination?.pageSize ?? 20}
+      defaultPageSize={pagination?.pageSize ?? defaultPageSize}
       onPageChange={pagination?.onPageChange}
       onPageSizeChange={pagination?.onPageSizeChange}
       filterOptions={filterOptions}

@@ -1,6 +1,6 @@
 import apiClient from './client';
 import { useAuthStore } from '@/stores/authStore';
-import type { User, UserRole } from '@/types';
+import type { RoleAssignment, User, UserRole } from '@/types';
 
 // ── Backend JWT response shape ────────────────────────────────────────────────
 
@@ -10,15 +10,16 @@ interface JWTUser {
   email: string;
   first_name: string;
   last_name: string;
-  home_campus_name?: string | null;
-  primary_department_name?: string | null;
-  section_name?: string | null;
+  full_name: string;
+  primary_campus_id: number | null;
+  primary_campus_name: string | null;
+  home_campus_id: number | null;
+  home_campus_name: string | null;
   active_role: {
     id?: number;
     role: UserRole;
-    section_id?: number | null;
-    campus_department_id?: number | null;
-    department_id?: number | null;
+    campus_id?: number | null;
+    campus_name?: string | null;
   } | null;
 }
 
@@ -50,12 +51,13 @@ export interface LoginResponse {
   role: UserRole;
   first_name: string;
   last_name: string;
+  full_name: string;
+  /** What the role oversees — null for an admin, a manager and a requester. */
   primary_campus_id: number | null;
-  primary_department_id: number | null;
-  sections: number[];
+  primary_campus_name: string | null;
+  /** Where the person is based, which routes the tickets they raise. */
+  home_campus_id: number | null;
   home_campus_name: string | null;
-  primary_department_name: string | null;
-  section_name: string | null;
 }
 
 export interface LoginCredentials {
@@ -92,33 +94,31 @@ function flattenJWT(data: JWTLoginResponse): LoginResponse {
     role: ar?.role ?? 'user',
     first_name: data.user.first_name,
     last_name: data.user.last_name,
-    primary_campus_id: tokenCampusId,
-    primary_department_id: ar?.department_id ?? null,
-    sections: ar?.section_id != null ? [ar.section_id] : [],
+    full_name: data.user.full_name,
+    primary_campus_id: ar?.campus_id ?? null,
+    primary_campus_name: ar?.campus_name ?? null,
+    // From the JWT claim, which every role carries — `active_role` is null for
+    // a plain requester, and they still raise tickets from somewhere.
+    home_campus_id: tokenCampusId,
     home_campus_name: data.user.home_campus_name ?? null,
-    primary_department_name: data.user.primary_department_name ?? null,
-    section_name: data.user.section_name ?? null,
   };
 }
 
 /** Map the flat login response to the app-wide User shape.
  * Display variants the response doesn't carry are null — useUserData
  * refreshes them on next mount. */
-export function flatToUser(flat: LoginResponse): User {
+function flatToUser(flat: LoginResponse): User {
   return {
     id: flat.user_id,
     username: flat.username,
     email: flat.email,
     first_name: flat.first_name,
     last_name: flat.last_name,
+    full_name: flat.full_name,
     role: flat.role,
-    sections: flat.sections ?? [],
-    section_names: [],
-    section_name: flat.section_name,
     primary_campus_id: flat.primary_campus_id,
-    primary_department_id: flat.primary_department_id,
-    primary_department_name: flat.primary_department_name,
-    home_campus_id: null,
+    primary_campus_name: flat.primary_campus_name,
+    home_campus_id: flat.home_campus_id,
     home_campus_name: flat.home_campus_name,
   };
 }
@@ -164,17 +164,6 @@ export async function logout(): Promise<void> {
   }
 }
 
-/** One role per user, held for as long as they hold the post. The backend
- *  model is a OneToOne; the negative tests in backend/tests/test_auth.py hold
- *  that boundary. */
-export interface RoleAssignment {
-  id: number;
-  role: string;
-  section_id: number | null;
-  campus_department_id: number | null;
-  department_id: number | null;
-}
-
 // GET /auth/me/ returns the serialized user at the TOP level (no `user`
 // wrapper, no accessToken) with the server-re-derived active_role — the
 // authoritative answer to "what role is this session actually in now".
@@ -184,12 +173,14 @@ export interface MeResponse {
   email: string;
   first_name: string;
   last_name: string;
+  full_name: string;
   /** active_role.role, defaulting to 'user' for pure requesters. */
   role: UserRole;
   active_role: RoleAssignment | null;
+  primary_campus_id: number | null;
+  primary_campus_name: string | null;
+  home_campus_id: number | null;
   home_campus_name: string | null;
-  primary_department_name: string | null;
-  section_name: string | null;
 }
 
 export async function getProfile(): Promise<MeResponse> {
@@ -197,24 +188,8 @@ export async function getProfile(): Promise<MeResponse> {
   return { ...data, role: (data.active_role?.role as UserRole) ?? 'user' };
 }
 
-// ── Sync helpers (read the auth store, no API call) ───────────────────────────
-
-export function getCurrentUser(): User | null {
-  return useAuthStore.getState().user;
-}
-
-export function getUserRole(): UserRole | null {
-  return getCurrentUser()?.role ?? null;
-}
-
-export function hasRole(roles: UserRole | UserRole[]): boolean {
-  const role = getUserRole();
-  if (!role) return false;
-  return Array.isArray(roles) ? roles.includes(role) : role === roles;
-}
-
 export function clearSession(): void {
   useAuthStore.getState().clearUser();
-  localStorage.removeItem('refreshToken'); // old keys used by legacy code
+  localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
 }

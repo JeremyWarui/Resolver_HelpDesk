@@ -190,7 +190,7 @@ test('the assignee resolves it, and the requester sees it resolved', async ({ pa
   await expect(ratedRow.getByRole('button', { name: 'Rate & close' })).toHaveCount(0);
 });
 
-test('a technician in the same section but a different trade cannot see it', async ({ page }) => {
+test('a technician at the same campus but a different trade cannot see it', async ({ page }) => {
   // The sharp negative. Anthony Gitau is at Nairobi like the assignee, but
   // linked to Carpentry and Painting — never Plumbing. Scope is pairwise
   // (campus AND trade) via Exists on SectionTechnician; the plausible

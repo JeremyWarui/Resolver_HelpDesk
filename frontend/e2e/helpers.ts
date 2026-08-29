@@ -66,10 +66,10 @@ export async function loginAsAdmin(page: Page): Promise<void> {
 }
 
 /**
- * Open a ticket's detail page by its number (KSG-…), from a list page.
+ * Open a ticket's detail page by its number, from a list page.
  *
- * Ticket numbers come from `TicketSequence.allocate()`, so a spec that creates
- * a ticket cannot predict its number and has to read it back off the row.
+ * `Ticket.save()` builds the number from the pk, so a spec that creates a
+ * ticket cannot predict it and has to read it back off the row.
  */
 export async function openTicketByNumber(page: Page, ticketNo: string): Promise<void> {
   const row = page.getByText(ticketNo, { exact: false }).first();

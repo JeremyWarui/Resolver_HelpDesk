@@ -1,36 +1,22 @@
-// TicketTimeline — vertical event list for the ticket detail page.
-// Layout: icon | label + actor | time (right). Date shown as compact left pill on day change.
+// The ticket's activity trail: icon, label and actor, with the time on the
+// right and a date pill wherever the day changes.
 
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ROLE_LABELS } from '@/constants/roles';
+import type { TicketEventType, TicketTimelineEvent, UserRole } from '@/types';
 import {
   Plus, UserPlus, ArrowRightLeft, ArrowRight,
-  MessageCircle, ChevronsUp, Pause,
+  MessageCircle, ChevronsUp,
   CheckCheck, Archive, Undo2, Star,
   Flag, AlertCircle, Activity,
 } from 'lucide-react';
 
-export type TimelineEventType =
-  | 'created' | 'assigned' | 'reassigned' | 'status_changed'
-  | 'comment' | 'comment_added' | 'escalated' | 'pending'
-  | 'resolved' | 'closed' | 'reopened' | 'rated'
-  | 'priority_changed' | 'sla_breach';
-
-export interface TimelineEvent {
-  id: number | string;
-  event_type: TimelineEventType;
-  actor?: { id: number; username: string; full_name?: string | null };
-  note?: string;
-  data?: Record<string, unknown>;
-  created_at: string;
-}
-
 interface TicketTimelineProps {
-  events: TimelineEvent[];
+  events: TicketTimelineEvent[];
   loading?: boolean;
   className?: string;
   hideHeader?: boolean;
-  userRole?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,12 +28,6 @@ function formatTime(iso: string) {
 function actorName(actor?: { full_name?: string | null; username: string }): string {
   if (!actor) return 'System';
   return (actor.full_name ?? '').trim() || actor.username;
-}
-
-function levelLabel(level: string): string {
-  if (level === 'hod') return 'Department Head';
-  if (level === 'hos') return 'Section Head';
-  return 'Technician';
 }
 
 function dayLabel(iso: string): string {
@@ -69,7 +49,7 @@ type EventConfig = {
   label: string;
 };
 
-const EVENT_CONFIG: Record<TimelineEventType, EventConfig> = {
+const EVENT_CONFIG: Record<TicketEventType, EventConfig> = {
   created:          { Icon: Plus,           colorVar: '--status-assigned',  label: 'Ticket opened'    },
   assigned:         { Icon: UserPlus,       colorVar: '--status-assigned',  label: 'Assigned'         },
   reassigned:       { Icon: ArrowRightLeft, colorVar: '--status-assigned',  label: 'Reassigned'       },
@@ -77,7 +57,6 @@ const EVENT_CONFIG: Record<TimelineEventType, EventConfig> = {
   comment:          { Icon: MessageCircle,  colorVar: '--status-assigned',  label: 'Comment added'    },
   comment_added:    { Icon: MessageCircle,  colorVar: '--status-assigned',  label: 'Comment added'    },
   escalated:        { Icon: ChevronsUp,     colorVar: '--status-escalated', label: 'Escalated'        },
-  pending:          { Icon: Pause,          colorVar: '--status-pending',   label: 'Paused'           },
   resolved:         { Icon: CheckCheck,     colorVar: '--status-resolved',  label: 'Resolved'         },
   closed:           { Icon: Archive,        colorVar: '--status-closed',    label: 'Closed'           },
   reopened:         { Icon: Undo2,          colorVar: '--status-assigned',  label: 'Reopened'         },
@@ -90,8 +69,8 @@ function humanStatus(s: string) {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function buildSubtext(event: TimelineEvent): string {
-  const { event_type, data, actor, note } = event;
+function buildSubtext(event: TicketTimelineEvent): string {
+  const { event_type, data, actor } = event;
   const name = actorName(actor);
   switch (event_type) {
     case 'created':
@@ -120,11 +99,9 @@ function buildSubtext(event: TimelineEvent): string {
       const to     = data?.to   as string | undefined;
       const lu     = data?.level_user as { full_name?: string | null; username?: string } | undefined;
       const luName = lu ? ((lu.full_name ?? '').trim() || lu.username || '') : '';
-      const levels = from && to ? `${levelLabel(from)} → ${levelLabel(to)}` : '';
+      const levels = from && to ? `${ROLE_LABELS[from as UserRole] ?? from} → ${ROLE_LABELS[to as UserRole] ?? to}` : '';
       return [levels, luName ? `now with ${luName}` : ''].filter(Boolean).join(' · ');
     }
-    case 'pending':
-      return note ? `${name} · "${note}"` : name;
     case 'rated': {
       const rating = Number(data?.to ?? 0);
       return `${name} · ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}`;
@@ -147,21 +124,17 @@ function DateChip({ label }: { label: string }) {
   );
 }
 
-// Events whose `note` (TicketLog.reason) is a human-entered message worth
-// rendering: progress notes, pending reasons, resolution notes (QA D1/D2), and
-// the HOS's handover note on assignment — which the modal had always collected
-// and thrown away, so the one instruction attached to the job never reached the
-// person doing it.
-const NOTE_EVENT_TYPES: TimelineEventType[] = [
-  'status_changed', 'pending', 'resolved', 'closed', 'reopened',
-  'assigned', 'reassigned',
+// Events whose `note` (TicketLog.reason) is a message someone typed: progress
+// notes, hold reasons, resolution notes and the HOS's handover note.
+const NOTE_EVENT_TYPES: TicketEventType[] = [
+  'status_changed', 'resolved', 'closed', 'reopened', 'assigned', 'reassigned',
 ];
 
 function EventRow({
   event,
   isLast,
 }: {
-  event: TimelineEvent;
+  event: TicketTimelineEvent;
   isLast: boolean;
 }) {
   const cfg       = EVENT_CONFIG[event.event_type] ?? EVENT_CONFIG.status_changed;
@@ -218,11 +191,10 @@ export function TicketTimeline({
   loading = false,
   className,
   hideHeader = false,
-  userRole,
 }: TicketTimelineProps) {
-  const visibleEvents = userRole === 'user'
-    ? events.filter((e) => e.data?.visibility !== 'internal')
-    : events;
+  // No role filtering here. The server already decides what each caller may
+  // read: a requester's log feed omits the staff comment events, and the
+  // comment endpoint refuses them outright.
 
   if (loading) {
     return (
@@ -239,7 +211,7 @@ export function TicketTimeline({
     );
   }
 
-  if (visibleEvents.length === 0) {
+  if (events.length === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-10 text-muted-foreground gap-2', className)}>
         <Activity className="h-7 w-7 opacity-25" />
@@ -251,17 +223,17 @@ export function TicketTimeline({
   const items: React.ReactNode[] = [];
   let lastDay = '';
 
-  visibleEvents.forEach((event, idx) => {
+  events.forEach((event, idx) => {
     const day = dayLabel(event.created_at);
     if (day !== lastDay) {
       items.push(<DateChip key={`chip-${day}`} label={day} />);
       lastDay = day;
     }
-    items.push(<EventRow key={event.id} event={event} isLast={idx === visibleEvents.length - 1} />);
+    items.push(<EventRow key={event.id} event={event} isLast={idx === events.length - 1} />);
   });
 
   return (
-    <div className={cn('', className)}>
+    <div className={className}>
       {!hideHeader && (
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />

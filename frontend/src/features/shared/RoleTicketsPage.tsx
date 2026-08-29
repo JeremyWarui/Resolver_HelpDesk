@@ -1,64 +1,21 @@
-import TicketsTable from "@/features/admin/TicketsPage/TicketsTable";
-import {
-  AdminStatsCards,
-  ManagerStatsCards,
-  HODStatsCards,
-  SectionHeadStatsCards,
-} from "@/components/shared/data/StatCards";
+import TicketsTable from '@/features/shared/TicketsTable';
+import TicketStatsCards from '@/components/shared/data/TicketStatsCards';
+import { SCOPE_SUBTITLE } from '@/constants/roles';
 
-export type TicketsRole = "admin" | "manager" | "hod" | "hos";
-
-/**
- * Shared, role-scoped Tickets page.
- *
- * Lifted from the Admin TicketsPage (header + StatCards strip + filterable
- * TicketsTable titled "Tickets"). Every data source — the stat cards and the
- * ticket table — scopes server-side by the caller's JWT role, so the only
- * role-specific surface here is the header copy and which StatCards renders.
- */
-
-// Role-specific StatCards component. Rendered with NO props — each component
-// self-fetches its scoped data.
-const STAT_CARDS: Record<TicketsRole, React.ComponentType> = {
-  admin: AdminStatsCards,
-  manager: ManagerStatsCards,
-  hod: HODStatsCards,
-  hos: SectionHeadStatsCards,
-};
-
-// Subtitle only. The page title is ROLE_NAV[role].headerTitle, rendered by
-// RoleLayout — a `title` here would be a second, unread copy of it.
-const SUBTITLE: Record<TicketsRole, string> = {
-  admin: "Manage and track all maintenance tickets",
-  manager: "Tickets across your department",
-  hod: "Tickets in your campus department",
-  hos: "Tickets in your section(s)",
-};
+type TicketsRole = 'admin' | 'manager' | 'hod' | 'hos';
 
 interface Props {
   role: TicketsRole;
   onTicketSelect?: (ticketId: number) => void;
 }
 
-const RoleTicketsPage = ({ role, onTicketSelect }: Props) => {
-  const StatCards = STAT_CARDS[role];
-  const subtitle = SUBTITLE[role];
-
+/** The tickets page for a supervising role. Both the cards and the table are JWT-scoped. */
+export default function RoleTicketsPage({ role, onTicketSelect }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
-      <div className="flex justify-between mb-2">
-        <div>
-          <p className="text-sm text-gray-600">{subtitle}</p>
-        </div>
-      </div>
-
-      {/* Global stats (reuses same data from dashboard) */}
-      <StatCards />
-
-      {/* Tickets table with integrated quick filters */}
-      <TicketsTable role={role} onTicketSelect={onTicketSelect} />
+      <p className="text-sm text-gray-600 mb-2">{SCOPE_SUBTITLE[role]}</p>
+      <TicketStatsCards />
+      <TicketsTable onTicketSelect={onTicketSelect} />
     </div>
   );
-};
-
-export default RoleTicketsPage;
+}

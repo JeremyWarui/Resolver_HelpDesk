@@ -1,7 +1,7 @@
-// RatingModal — user rates a resolved ticket and closes it (Rate & Close).
-// Shows the technician's resolution note when available so the requester can
-// read what was done before rating (QA D2). Reopen is a separate standalone
-// action on the ticket detail page (QA B2c).
+// Rate a resolved ticket and close it in one action.
+//
+// The technician's resolution note is shown above the stars where there is
+// one, so the requester rates what was actually done rather than from memory.
 
 import { useState } from 'react';
 import { toast } from 'sonner';

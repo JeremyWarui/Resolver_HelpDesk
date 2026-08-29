@@ -14,13 +14,9 @@ const FLUENT_UI_COLORS = {
 } as const;
 
 /**
- * Chart color palette — six colors, cycled with `COLORS[i % COLORS.length]`.
- * Ordered blue → green → orange → red → purple → cyan, matching the status
- * family colors so a chart and a badge for the same thing agree.
- *
- * Five files each kept a private copy of this array. They were byte-identical,
- * which is the good case: the bad case is the day one of them gains a color and
- * the same section is drawn in two different shades on two different pages.
+ * The chart palette — six colours, cycled with `COLORS[i % COLORS.length]`.
+ * Ordered blue → green → orange → red → purple → cyan to match the status
+ * colours, so a chart and a badge for the same thing agree.
  */
 export const CHART_COLORS = [
   FLUENT_UI_COLORS.blue,

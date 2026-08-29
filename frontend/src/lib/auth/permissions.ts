@@ -1,113 +1,80 @@
-// lib/auth/permissions.ts — role → permission map
-// Guards UI elements; the API is the authoritative permission layer.
+// What a role may do to a ticket it can already see. Guards the action buttons
+// on the ticket detail; the API is the authoritative layer and refuses the same
+// things.
+//
+// Actions only — which sections a role reaches is `ROLE_NAV`.
 
-import type { UserRole } from '@/types';
-import type { PermissionMap } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import type { PermissionMap, UserRole } from '@/types';
 
-export const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
+/** Signed out, or a role the map does not know: refuse everything. */
+const NONE: PermissionMap = {
+  canAssignTicket: false,
+  canReassignTicket: false,
+  canUpdateTicketStatus: false,
+  canCloseTicket: false,
+  canReopenTicket: false,
+};
+
+const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
   user: {
-    canCreateTicket: true,
     canAssignTicket: false,
     canReassignTicket: false,
     canUpdateTicketStatus: false,
-    canCloseTicket: true,    // user confirms resolution
-    canReopenTicket: true,   // user reopens resolved ticket
-    canRateTicket: true,
-
-    canViewDeptQueue: false,
-    canViewOrgAnalytics: false,
-    canViewSLATracking: false,
-    canExportReports: false,
-    canConfigureSystem: false,
-    canManageUsers: false,
+    canCloseTicket: true,    // the requester confirms resolution
+    canReopenTicket: true,   // and reopens if it was not fixed
   },
 
   technician: {
-    canCreateTicket: true,
     canAssignTicket: false,
     canReassignTicket: false,
-    canUpdateTicketStatus: true,   // own assigned tickets
+    canUpdateTicketStatus: true,   // their own assigned tickets
     canCloseTicket: false,
     canReopenTicket: false,
-    canRateTicket: false,
-
-    canViewDeptQueue: false,
-    canViewOrgAnalytics: false,
-    canViewSLATracking: false,
-    canExportReports: false,
-    canConfigureSystem: false,
-    canManageUsers: false,
   },
 
   hos: {
-    canCreateTicket: true,
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: false,
     canReopenTicket: false,
-    canRateTicket: false,
-
-    canViewDeptQueue: false,
-    canViewOrgAnalytics: false,
-    canViewSLATracking: true,
-    canExportReports: true,
-    canConfigureSystem: false,
-    canManageUsers: false,
   },
 
   hod: {
-    canCreateTicket: true,
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: false,
     canReopenTicket: false,
-    canRateTicket: false,
-
-    canViewDeptQueue: true,
-    canViewOrgAnalytics: false,
-    canViewSLATracking: true,
-    canExportReports: true,
-    canConfigureSystem: false,
-    canManageUsers: false,
   },
 
-  manager: {
-    canCreateTicket: false,
-    canAssignTicket: false,
-    canReassignTicket: false,
-    canUpdateTicketStatus: false,
-    canCloseTicket: false,
-    canReopenTicket: false,
-    canRateTicket: false,
-
-    canViewDeptQueue: true,
-    canViewOrgAnalytics: true,
-    canViewSLATracking: true,
-    canExportReports: true,
-    canConfigureSystem: false,
-    canManageUsers: false,
-  },
+  // Oversight is read-only (REVIEW.md §4).
+  manager: NONE,
 
   admin: {
-    canCreateTicket: true,
     canAssignTicket: true,
     canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: true,
     canReopenTicket: true,
-    canRateTicket: false,
-
-    canViewDeptQueue: true,
-    canViewOrgAnalytics: true,
-    canViewSLATracking: true,
-    canExportReports: true,
-    canConfigureSystem: true,
-    canManageUsers: true,
   },
 };
 
-export function getPermissions(role: UserRole): PermissionMap {
-  return ROLE_PERMISSIONS[role];
+/**
+ * What the signed-in role may do.
+ *
+ * Reads the auth store directly. This was a React context with a provider
+ * around the whole app, but the store hydrates synchronously and this is a
+ * lookup in a static map — there was nothing to provide and nothing to
+ * memoize, and every consumer of that context wanted only the role anyway.
+ */
+export function usePermissions(): PermissionMap {
+  const role = useAuthStore((s) => s.user?.role);
+  return (role && ROLE_PERMISSIONS[role]) ?? NONE;
+}
+
+/** The signed-in role, or null when signed out. */
+export function useRole(): UserRole | null {
+  return useAuthStore((s) => s.user?.role) ?? null;
 }

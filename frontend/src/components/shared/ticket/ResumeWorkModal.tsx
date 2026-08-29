@@ -13,11 +13,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { DialogActions } from '@/components/shared/forms/DialogActions';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -29,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { updateTicketStatus } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
-import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
 
 interface Props {
@@ -167,14 +166,13 @@ export function ResumeWorkModal({ ticket, mode, open, onClose, onDone }: Props) 
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || submitting}>
-            {submitting ? 'Saving…' : isResume ? 'Resume work' : 'Update reason'}
-          </Button>
-        </DialogFooter>
+        <DialogActions
+          onCancel={handleClose}
+          onSubmit={handleSubmit}
+          pending={submitting}
+          disabled={!canSubmit}
+          submitLabel={isResume ? 'Resume work' : 'Update reason'}
+        />
       </DialogContent>
     </Dialog>
   );

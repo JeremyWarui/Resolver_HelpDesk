@@ -4,22 +4,15 @@ import { Button } from '@/components/ui/button';
 import { FilterPills } from '@/components/shared/data/FilterPills';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import { RatingModal } from './RatingModal';
-import UserStatsCards from '@/components/shared/data/StatCards/UserStatsCards';
-import { useTickets } from '@/hooks/tickets';
-import type { FilterPill, Ticket } from '@/types';
+import TicketStatsCards from '@/components/shared/data/TicketStatsCards';
+import { useTickets } from '@/hooks/tickets/useTickets';
+import { ALL_TICKET_STATUSES, statusPills } from '@/constants/tickets';
+import type { Ticket } from '@/types';
 
-const STATUS_PILLS: FilterPill[] = [
-  { key: 'all',         label: 'All' },
-  { key: 'open',        label: 'Open',        variant: 'open' },
-  { key: 'assigned',    label: 'Assigned',    variant: 'assigned' },
-  { key: 'in_progress', label: 'In Progress', variant: 'in_progress' },
-  { key: 'pending',     label: 'On Hold',     variant: 'pending' },
-  { key: 'resolved',    label: 'Resolved',    variant: 'resolved' },
-  { key: 'closed',      label: 'Closed',      variant: 'closed' },
-];
+const STATUS_PILLS = statusPills(ALL_TICKET_STATUSES);
 
 interface MyTicketsPageProps {
-  onNavigate?: (section: 'dashboard' | 'userTickets' | 'submitTicket' | 'settings') => void;
+  onNavigate?: (section: 'dashboard' | 'userTickets' | 'submitTicket') => void;
   onTicketSelect?: (ticketId: number) => void;
 }
 
@@ -74,7 +67,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
 
       {/* Stat cards */}
       <div className="px-4 py-3 border-b bg-background shrink-0">
-        <UserStatsCards />
+        <TicketStatsCards />
       </div>
 
       {/* Filter pills */}

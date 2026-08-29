@@ -258,8 +258,8 @@ green for all of them. Run the Playwright suite after UI changes;
   section breakdown restates the campus chart beside it. `role_config.py`
   refuses it; charts, tables and filter dropdowns must follow.
 - **`TYPE_SPECS`** (`apps/facilities/validators.py`) is the location contract.
-  It is mirrored by `FACILITY_FORMS` in `TicketCreationWizard.tsx` and the codes
-  in `src/constants/facilityTypes.ts`. Change all three together.
+  The frontend mirrors it in one place: `src/constants/catalogue.ts`, which
+  holds both the codes and `FACILITY_FORMS`. Change the two together.
 - **A new query param means a filter and a negative test**, same commit. A param
   nothing reads looks like scoping and does nothing.
 - **Ticket numbers** are built from the pk in `Ticket.save()`

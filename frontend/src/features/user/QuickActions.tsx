@@ -1,157 +1,60 @@
-import { useState } from 'react';
-import {
-  ChevronDown, ChevronUp, AlertCircle,
-  Hammer, BrickWall, PaintRoller, Droplets, Zap, Wrench,
-} from 'lucide-react';
+import { AlertCircle, Wrench } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/stores/authStore';
-import { useCatalog } from '@/hooks/catalog/useCatalog';
-import type { CatalogSubSection } from '@/lib/api/catalogue';
+import { useCatalog } from '@/hooks/useCatalogue';
+import { TRADE_ICONS } from '@/constants/catalogue';
+import type { TicketQuickStart } from '@/components/shared/ticket/TicketCreationWizard';
 
-// The requester's view of the catalogue.
+// The requester's view of the catalogue: one card per kind of maintenance work.
 //
-// Internally these are sub-sections — the trade that scopes a technician. The
-// requester is never shown that word: they are picking a kind of maintenance
-// work, and who ends up doing it is the system's problem, not theirs.
+// Internally these are trades — the trade that scopes a technician. The
+// requester is never shown that word: they are picking a kind of work, and who
+// ends up doing it is the system's problem, not theirs.
+//
+// A card names the trade and nothing else. The faults under it are the wizard's
+// first step, and listing them here as well made the requester choose a service
+// twice: once from a card that showed four of the trade's five or six items
+// behind a "more" toggle, then again from the full list the wizard opens on.
 
 // ── Theme per service ─────────────────────────────────────────────────────────
 //
 // Keyed on the seeded code. An unknown code still renders, in grey — a new
 // service should appear the day it is seeded, not the day the frontend ships.
 
+// Colour only — the icon comes from TRADE_ICONS, shared with the wizard.
 interface ServiceTheme {
   color: string;
   lightBg: string;
-  icon: React.ElementType;
 }
 
 const SERVICE_THEMES: Record<string, ServiceTheme> = {
-  CARP:  { color: '#854F0B', lightBg: 'bg-amber-100 dark:bg-amber-950/50',   icon: Hammer },
-  MAS:   { color: '#5F5E5A', lightBg: 'bg-stone-200 dark:bg-stone-700/50',   icon: BrickWall },
-  PAINT: { color: '#534AB7', lightBg: 'bg-violet-100 dark:bg-violet-950/50', icon: PaintRoller },
-  PLUMB: { color: '#185FA5', lightBg: 'bg-blue-100 dark:bg-blue-950/50',     icon: Droplets },
-  ELEC:  { color: '#A37A00', lightBg: 'bg-yellow-100 dark:bg-yellow-950/50', icon: Zap },
+  CARP:  { color: '#854F0B', lightBg: 'bg-amber-100 dark:bg-amber-950/50' },
+  MAS:   { color: '#5F5E5A', lightBg: 'bg-stone-200 dark:bg-stone-700/50' },
+  PAINT: { color: '#534AB7', lightBg: 'bg-violet-100 dark:bg-violet-950/50' },
+  PLUMB: { color: '#185FA5', lightBg: 'bg-blue-100 dark:bg-blue-950/50' },
+  ELEC:  { color: '#A37A00', lightBg: 'bg-yellow-100 dark:bg-yellow-950/50' },
 };
 
 const FALLBACK_THEME: ServiceTheme = {
   color: '#6B7280',
   lightBg: 'bg-gray-100 dark:bg-gray-800/50',
-  icon: Wrench,
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface QuickActionItem {
-  id: number;
-  name: string;
-  description: string;
-}
-
 interface QuickActionsProps {
-  onServiceSelect: (ctx: {
-    subSectionCode: string;
-    item?: QuickActionItem;
-  }) => void;
+  /** The trade the requester picked. The wizard opens on that trade's fault
+   *  list, which is where a service item is actually chosen. */
+  onServiceSelect: (quickStart: TicketQuickStart) => void;
 }
-
-// ── ServiceBox ────────────────────────────────────────────────────────────────
-
-const VISIBLE_ITEM_LIMIT = 4;
-
-function ServiceBox({
-  service,
-  onServiceSelect,
-}: {
-  service: CatalogSubSection;
-  onServiceSelect: QuickActionsProps['onServiceSelect'];
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const theme = SERVICE_THEMES[service.code] ?? FALLBACK_THEME;
-  const ServiceIcon = theme.icon;
-
-  const items = service.items ?? [];
-  const visible = expanded ? items : items.slice(0, VISIBLE_ITEM_LIMIT);
-  const hasMore = items.length > VISIBLE_ITEM_LIMIT;
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0', theme.lightBg)}>
-          <ServiceIcon className="h-3.5 w-3.5" style={{ color: theme.color }} />
-        </div>
-        <span className="text-[13px] font-semibold text-foreground flex-1 leading-tight truncate">
-          {service.name}
-        </span>
-      </div>
-
-      <Separator className="my-3" />
-
-      {/* Service items — one per row, so the fault text stays readable in a
-          narrow column. */}
-      <div className="space-y-1.5 flex-1">
-        {visible.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onServiceSelect({ subSectionCode: service.code, item })}
-            className="w-full text-left rounded-md border border-transparent px-2 py-1.5 text-[12px] leading-snug text-card-foreground hover:bg-muted/60 hover:border-border transition-colors"
-          >
-            {item.name}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-2 flex items-center justify-between gap-2">
-        {hasMore ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(prev => !prev)}
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-          >
-            {expanded ? (
-              <><ChevronUp className="h-3 w-3" /> Less</>
-            ) : (
-              <><ChevronDown className="h-3 w-3" /> {items.length - VISIBLE_ITEM_LIMIT} more</>
-            )}
-          </button>
-        ) : <span />}
-        <button
-          type="button"
-          onClick={() => onServiceSelect({ subSectionCode: service.code })}
-          className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline whitespace-nowrap"
-        >
-          Something else →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── QuickActions ──────────────────────────────────────────────────────────────
 
 const QuickActions = ({ onServiceSelect }: QuickActionsProps) => {
-  // Campus-scoped: a requester is only offered the services their campus
-  // actually staffs, which is the same list the wizard opens on.
-  const campusId = useAuthStore((s) => s.user?.primary_campus_id ?? null);
-  const { data: services = [], isLoading, error } = useCatalog(campusId);
+  // The same list the wizard opens on: every campus runs all five trades.
+  const { data: services = [], isLoading, error } = useCatalog();
 
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        {[1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-7 w-7 rounded-md" />
-              <Skeleton className="h-4 flex-1 rounded" />
-            </div>
-            <Skeleton className="h-px w-full" />
-            <div className="space-y-1.5">
-              {[1, 2, 3, 4].map(j => <Skeleton key={j} className="h-6 w-full rounded-md" />)}
-            </div>
-          </div>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} className="h-24 w-full rounded-xl" />
         ))}
       </div>
     );
@@ -179,9 +82,28 @@ const QuickActions = ({ onServiceSelect }: QuickActionsProps) => {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
-      {services.map(service => (
-        <ServiceBox key={service.id} service={service} onServiceSelect={onServiceSelect} />
-      ))}
+      {services.map((service) => {
+        const theme = SERVICE_THEMES[service.code] ?? FALLBACK_THEME;
+        // Indexed rather than called: a function returning a component reads as
+        // one created during render.
+        const ServiceIcon = TRADE_ICONS[service.code] ?? Wrench;
+
+        return (
+          <button
+            key={service.id}
+            type="button"
+            onClick={() => onServiceSelect({ tradeCode: service.code })}
+            className="flex w-full flex-col items-center gap-2.5 rounded-xl border border-border bg-card p-4 text-center transition-colors hover:border-primary/40 hover:bg-muted/40"
+          >
+            <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', theme.lightBg)}>
+              <ServiceIcon className="h-5 w-5" style={{ color: theme.color }} />
+            </div>
+            <span className="text-[13px] font-semibold leading-tight text-foreground">
+              {service.name} Services
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 };

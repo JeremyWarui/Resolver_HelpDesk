@@ -7,9 +7,9 @@ export interface MultiSelectOption {
   label: string;
 }
 
-/** Reusable checkbox-group multi-select — extracted from the inline pattern
- * in DynamicFormRenderer.tsx (2nd use case: specialty tagging). Uses the
- * shadcn Checkbox primitive for consistent focus/disabled states. */
+/** A checkbox-group multi-select over numeric ids. Built on the shadcn
+ *  Checkbox primitive, so focus and disabled states match every other
+ *  control on the form. */
 export function MultiSelectCheckboxGroup({
   options,
   selected,

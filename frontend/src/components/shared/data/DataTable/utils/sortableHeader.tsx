@@ -1,10 +1,9 @@
-// The sortable column header. Five columns in TableUtils inlined this same
-// ten-line block while this file already existed and three admin pages already
-// used it — TableUtils simply predates it.
+// The sortable column header, shared by the ticket columns and the admin
+// tables.
 //
-// Not a hook, despite the old name `useSortableColumn`: it returns a component
-// and is called from plain column factories, which only worked because it obeys
-// no rules of hooks.
+// Not a hook: it returns a component and is called from plain column
+// factories, outside any render. Naming it `use…` would promise rules it does
+// not follow.
 
 import type React from 'react';
 import { ChevronDown } from 'lucide-react';

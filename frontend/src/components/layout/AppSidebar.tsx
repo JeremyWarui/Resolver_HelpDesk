@@ -2,39 +2,12 @@ import { NavLink } from 'react-router-dom';
 import { LogOut, PanelLeftClose, PanelLeftOpen, Inbox, Briefcase, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useRoleContext } from '@/lib/auth/roleContext';
+import { useRole } from '@/lib/auth/permissions';
 import { useUIStore } from '@/stores/uiStore';
-import { useLogout } from '@/hooks/useLogout';
-import { SIDEBAR_CONFIG, type SidebarCount } from '@/constants/sidebarConfig';
+import { useLogout } from '@/hooks/useAuth';
+import { ROLE_NAV, type SidebarCount } from '@/constants/roleNav';
 import { useNavCounts } from '@/hooks/tickets/useNavCounts';
-import { ROLE_BASE } from '@/constants/roleRoutes';
-
-const SECTION_PATH: Record<string, string> = {
-  dashboard:      '',
-  userTickets:    '/tickets',
-  submitTicket:   '/new',
-  assignedTickets: '/assigned',
-  report:         '/reports',
-  tickets:        '/tickets',
-  pending:        '/pending',
-  escalated:      '/escalated',
-  technicians:    '/technicians',
-  sections:       '/sections',
-  reports:        '/reports',
-  analytics:      '/analytics',
-  schedule:       '/schedule',
-  facilities:     '/facilities',
-  campuses:       '/campuses',
-  departments:    '/departments',
-  inventory:      '/catalogue',
-  users:          '/users',
-  sla:            '/sla',
-  feedback:       '/feedback',
-  'sla-rules':    '/sla-rules',
-  workflows:      '/workflows',
-  'audit-log':    '/audit-log',
-  settings:       '/settings',
-};
+import { ROLE_BASE } from '@/constants/roles';
 
 /** Badge colour per counted queue — the same token the rows and status pills
  *  use, so the sidebar number and the thing it counts are the same colour.
@@ -44,14 +17,27 @@ const COUNT_COLOR: Record<SidebarCount, string> = {
   pending: 'var(--status-pending)',
 };
 
+/** Every entry on the rail — nav links, the context switch, profile, logout —
+ *  is the same row: icon, optional label, active tint, and a collapse to a
+ *  centred icon. Written out four times, it drifted. */
+function railItem(active: boolean, expanded: boolean): string {
+  return cn(
+    'flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-sm font-medium transition-colors',
+    active
+      ? 'bg-primary/10 text-primary'
+      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+    !expanded && 'justify-center px-0',
+  );
+}
+
 export function AppSidebar() {
-  const { role } = useRoleContext();
+  const role = useRole();
   const { sidebarOpen, toggleSidebar, isMyRequests, toggleMyRequests, setMyRequests } = useUIStore();
   const { handleLogout } = useLogout();
 
-  // Pure requesters (role: null, SoT R15) use the 'user' sidebar config.
+  // A plain requester has no role claim and gets the 'user' sidebar.
   const effectiveRole = role ?? 'user';
-  const config = SIDEBAR_CONFIG[effectiveRole];
+  const config = ROLE_NAV[effectiveRole];
   const base = ROLE_BASE[effectiveRole];
 
   // Skipped for pure requesters and admins, whose sidebars carry no counted
@@ -99,9 +85,9 @@ export function AppSidebar() {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-        {config.items.map(({ id, label, icon: Icon, count }) => {
-          const href = base + (SECTION_PATH[id] ?? '');
-          const isBase = (SECTION_PATH[id] ?? '') === '';
+        {config.items.map(({ id, path, label, icon: Icon, count }) => {
+          const href = base + (path ? `/${path}` : '');
+          const isBase = path === '';
           // Zero is not rendered at all: an empty queue should recede, and a
           // badge reading "0" draws the eye to precisely the item with nothing
           // in it.
@@ -115,15 +101,7 @@ export function AppSidebar() {
               // keep rendering the requester view and sidebar clicks appear dead
               // (isMyRequests is persisted, so this survived reloads too).
               onClick={() => setMyRequests(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-2.5 py-2 rounded-md text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  !sidebarOpen && 'justify-center px-0',
-                )
-              }
+              className={({ isActive }) => railItem(isActive, sidebarOpen)}
               title={
                 !sidebarOpen
                   ? n > 0 ? `${label} — ${n}` : label
@@ -164,13 +142,7 @@ export function AppSidebar() {
         <div className="shrink-0 p-2 border-t border-border">
           <button
             onClick={toggleMyRequests}
-            className={cn(
-              'flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-sm font-medium transition-colors',
-              isMyRequests
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              !sidebarOpen && 'justify-center px-0',
-            )}
+            className={railItem(isMyRequests, sidebarOpen)}
             title={!sidebarOpen ? (isMyRequests ? 'Staff workspace' : 'My Requests') : undefined}
           >
             {isMyRequests
@@ -188,15 +160,7 @@ export function AppSidebar() {
       <div className="shrink-0 p-2 border-t border-border space-y-0.5">
         <NavLink
           to="/profile"
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              !sidebarOpen && 'justify-center px-0',
-            )
-          }
+          className={({ isActive }) => railItem(isActive, sidebarOpen)}
           title={!sidebarOpen ? 'My Profile' : undefined}
         >
           <UserCircle className="h-4 w-4 shrink-0" />
@@ -204,10 +168,7 @@ export function AppSidebar() {
         </NavLink>
         <button
           onClick={handleLogout}
-          className={cn(
-            'flex items-center gap-3 w-full px-2.5 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
-            !sidebarOpen && 'justify-center px-0',
-          )}
+          className={railItem(false, sidebarOpen)}
           title={!sidebarOpen ? 'Logout' : undefined}
         >
           <LogOut className="h-4 w-4 shrink-0" />

@@ -1,35 +1,32 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRoles?: string[];
-  redirectTo?: string;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
-  children, 
+/**
+ * Gate a route on the session.
+ *
+ * No loading state: `useAuthStore` hydrates from localStorage synchronously at
+ * module load, so whether there is a session is known on the first render.
+ * There is nothing to wait for, and the spinner that used to sit here read an
+ * `isLoading` that only a component's own login/logout call can set — which
+ * this component never makes.
+ */
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
   requiredRoles = [],
-  redirectTo = '/login'
 }) => {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const user = useAuthStore((s) => s.user);
 
-  // Show loading spinner while checking auth
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return <Navigate to={redirectTo} replace />;
+    return <Navigate to="/login" replace />;
   }
 
-  // Check role-based access
   if (requiredRoles.length > 0 && user) {
     const hasRequiredRole = requiredRoles.includes(user.role);
     

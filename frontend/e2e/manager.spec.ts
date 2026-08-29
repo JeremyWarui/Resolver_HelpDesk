@@ -1,23 +1,26 @@
 import { test, expect } from '@playwright/test';
 import { login, USERS } from './helpers';
 
-// Manager was the one supervisory role that ignored RoleTicketsPage and wired
-// DataTable by hand — the older of the two ticket-table stacks. The visible
-// cost was the FilterPills row, so managers had no Overdue filter while admin,
-// HOD and HOS did, and RoleTicketsPage already held a complete, unreachable
-// `manager` config.
-//
-// tsc cannot see any of that: both stacks compile. This asserts the page still
-// renders after the swap, and that the pill it was missing is now there and
-// narrows rather than widens.
+// The manager tickets page renders, and its Overdue pill narrows the list
+// server-side rather than filtering the page the client happens to hold.
 test('the manager tickets page renders and has the Overdue filter', async ({ page }) => {
   await login(page, USERS.manager);
   await page.getByRole('link', { name: 'Tickets', exact: true }).click();
 
-  await expect(page.getByText('Tickets across your department')).toBeVisible();
+  await expect(page.getByText('Every campus')).toBeVisible();
+
+  // Count once the unfiltered list has actually landed: a row rendering is not
+  // the same as the page being rendered.
   const rows = page.getByRole('row');
   await expect(rows.first()).toBeVisible();
-  const allCount = await rows.count();
+  let seen = -1;
+  await expect(async () => {
+    const n = await rows.count();
+    const settled = n === seen;
+    seen = n;
+    expect(settled, 'the unfiltered list is still rendering').toBe(true);
+  }).toPass({ timeout: 15_000 });
+  const allCount = seen;
 
   const overdue = page.getByRole('button', { name: 'Overdue' });
   await expect(overdue).toBeVisible();
@@ -28,8 +31,7 @@ test('the manager tickets page renders and has the Overdue filter', async ({ pag
   await overdue.click();
   await filtered;
 
-  // Narrows, never widens — the pill used to be dead state that set status to
-  // "all" alongside it, which listed more rows than before it was clicked.
+  // Narrows, never widens.
   await expect(async () => {
     expect(await page.getByRole('row').count()).toBeLessThanOrEqual(allCount);
   }).toPass({ timeout: 15_000 });

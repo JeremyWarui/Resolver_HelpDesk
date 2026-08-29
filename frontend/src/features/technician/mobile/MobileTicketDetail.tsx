@@ -5,23 +5,17 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import {
-  useMobileTicketDetail,
-  useMobileTicketComments,
-  useUpdateTicketStatus,
-  useAddComment,
-} from './useMobileTickets';
+import { useMutation } from '@tanstack/react-query';
+import { addComment, updateTicketStatus } from '@/lib/api/tickets';
+import { useTicketComments, useTicketDetail, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
+import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
 import { VALID_NEXT_STATUS } from '@/constants/tickets';
-import { useTicketFilterOptions } from '@/hooks/tickets/useTicketFilterOptions';
 import { timeAgo } from '@/utils/date';
-import { STATUS_CONFIG } from './MobileTicketList';
+import { StatusBadge } from '@/components/shared/ticket/StatusBadge';
 
-// Decoration only — which transitions are legal comes from VALID_NEXT_STATUS,
-// the single mirror of the backend lifecycle map. This used to be a second,
-// undeclared copy and it had drifted: it offered `open → in_progress` (the
-// backend refuses that; `open` is unassigned and the way out is claim) and it
-// dropped `pending → resolved`, so a job could not be closed out from hold.
+// Labels and icons only. Which transitions are legal comes from
+// VALID_NEXT_STATUS, the one mirror of the backend lifecycle map.
 const ACTION_STYLE: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   in_progress: { label: 'Resume Work',   icon: ArrowUpCircle, color: 'bg-purple-600 text-white' },
   pending:     { label: 'Put On Hold',   icon: Clock,         color: 'bg-orange-500 text-white' },
@@ -40,7 +34,13 @@ function StatusActions({ ticketId, status, isOnline }: StatusActionProps) {
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [reasonCode, setReasonCode] = useState('');
-  const { mutate, isPending } = useUpdateTicketStatus(ticketId);
+  const invalidate = useTicketInvalidate();
+  const { mutate, isPending } = useMutation({
+    mutationFn: ({ status, reason, pendingReason, pendingReasonNote }: {
+      status: string; reason: string; pendingReason?: string; pendingReasonNote?: string;
+    }) => updateTicketStatus(ticketId, status, reason, pendingReason, pendingReasonNote),
+    onSuccess: () => invalidate(ticketId),
+  });
   const { pendingReasons } = useTicketFilterOptions();
   const transitions = (VALID_NEXT_STATUS[status as Ticket['status']] ?? []).map(next => ({
     next,
@@ -142,7 +142,11 @@ function StatusActions({ ticketId, status, isOnline }: StatusActionProps) {
 function CommentBox({ ticketId, isOnline }: { ticketId: number; isOnline: boolean }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState('');
-  const { mutate, isPending } = useAddComment(ticketId);
+  const invalidate = useTicketInvalidate();
+  const { mutate, isPending } = useMutation({
+    mutationFn: (text: string) => addComment(ticketId, text),
+    onSuccess: () => invalidate(ticketId),
+  });
 
   const submit = () => {
     if (!body.trim()) return;
@@ -194,7 +198,7 @@ function CommentBox({ ticketId, isOnline }: { ticketId: number; isOnline: boolea
 // ── Comments list ─────────────────────────────────────────────────────────────
 
 function CommentsList({ ticketId }: { ticketId: number }) {
-  const { data: comments = [], isLoading } = useMobileTicketComments(ticketId);
+  const { comments, loading: isLoading } = useTicketComments(ticketId);
 
   if (isLoading) {
     return (
@@ -235,21 +239,17 @@ interface Props {
 }
 
 export function MobileTicketDetail({ ticket, onBack, isOnline }: Props) {
-  const { data: detail } = useMobileTicketDetail(ticket.id);
+  const { ticket: detail } = useTicketDetail(ticket.id);
   const t = detail ?? ticket;
-  const st = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.open;
-  const priorityName = (t.priority as unknown as { name?: string })?.name ?? '—';
-  const isBreaching = (t as unknown as { is_breaching?: boolean }).is_breaching;
+  const isBreaching = t.is_breaching;
 
-  const location = t.location as unknown as {
-    facility_type?: { name?: string };
-    facility?: { name?: string };
-    values?: Record<string, string>;
-  } | null;
+  // `values` is Record<string, unknown> — the free-text location fields the
+  // facility type asks for — so each is stringified before being joined.
+  const location = t.location;
   const locationLine = [
     location?.facility?.name,
     location?.facility_type?.name,
-    location?.values && Object.values(location.values).filter(Boolean).join(', '),
+    Object.values(location?.values ?? {}).filter(Boolean).map(String).join(', '),
   ].filter(Boolean).join(' · ');
 
   return (
@@ -265,12 +265,10 @@ export function MobileTicketDetail({ ticket, onBack, isOnline }: Props) {
             {isBreaching && <AlertCircle className="h-3 w-3 text-red-500 shrink-0" />}
           </div>
           <p className="text-sm font-semibold truncate">
-            {(t.service_item as unknown as { name?: string })?.name ?? t.description}
+            {t.service_item?.name ?? t.description}
           </p>
         </div>
-        <span className={cn('text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0', st.color)}>
-          {st.label}
-        </span>
+        <StatusBadge status={t.status} className="shrink-0 text-[11px] px-2.5 py-1" />
       </div>
 
       {/* Scrollable body */}
@@ -297,9 +295,9 @@ export function MobileTicketDetail({ ticket, onBack, isOnline }: Props) {
         {/* Meta grid */}
         <div className="bg-white rounded-xl border border-border divide-y divide-border/70">
           {[
-            { label: 'Priority',  value: priorityName },
-            { label: 'Section',   value: (t.section as unknown as { name?: string })?.name ?? '—' },
-            { label: 'Raised by', value: (t.raised_by as unknown as { full_name?: string; username?: string })?.full_name ?? (t.raised_by as unknown as { username?: string })?.username ?? '—' },
+            { label: 'Priority',  value: t.priority?.name ?? '—' },
+            { label: 'Trade',     value: t.trade?.name ?? '—' },
+            { label: 'Raised by', value: t.raised_by?.full_name || t.raised_by?.username || '—' },
             { label: 'Created',   value: new Date(t.created_at).toLocaleString() },
             ...(t.resolution_due_at ? [{ label: 'Due by', value: new Date(t.resolution_due_at).toLocaleString() }] : []),
           ].map(({ label, value }) => (

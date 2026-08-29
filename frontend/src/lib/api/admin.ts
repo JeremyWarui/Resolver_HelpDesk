@@ -1,35 +1,30 @@
-// Admin domain module — system-level endpoints only accessible to admin role.
-// User management → users.ts | Org structure → organizations.ts | Reports → reports.ts
-// This module covers endpoints with no other natural home.
 import apiClient from './client';
+import type { AssignedUser } from '@/types';
 
-// ── Audit log ─────────────────────────────────────────────────────────────────
-
+/** One TicketLog row, as the admin audit table lists it. */
 export interface AuditLogEntry {
   id: number;
-  /** Display name — "Esther Wairimu". Null for system-generated entries. */
-  actor: string | null;
-  /** The stable handle behind that name; names are not unique. */
-  actor_username: string | null;
-  action: string;
-  target_type: string;
-  ticket_no: string | null;
-  priority: string | null;
-  department: string | null;
-  detail: string;
+  event_type: string;
+  from_value: string;
+  to_value: string;
   reason: string;
+  /** Null for a system-generated row. */
+  actor: AssignedUser | null;
+  /** Who the ticket climbed to, on an escalation. */
+  level_user: AssignedUser | null;
+  ticket_no: string;
   created_at: string;
 }
 
 export interface AuditLogParams {
   page?: number;
   page_size?: number;
+  /** Matched against username, first name and last name. */
   actor?: string;
-  action?: string;
-  target_type?: string;
   date_from?: string;
   date_to?: string;
 }
 
+/** Every log row in the system, newest first. Admin only. */
 export const getAuditLog = (params?: AuditLogParams) =>
   apiClient.get<{ count: number; results: AuditLogEntry[] }>('/admin/audit-log/', { params });

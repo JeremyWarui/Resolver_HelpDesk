@@ -1,16 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTicketById, getTicketTimeline, getAttachments } from '@/lib/api/tickets';
-import type { TicketAttachmentRow } from '@/lib/api/tickets';
+import { getTicketById, getTicketTimeline, getAttachments, getComments } from '@/lib/api/tickets';
+import type { TicketAttachmentRow, TicketComment } from '@/lib/api/tickets';
 import type { Ticket, TicketTimelineEvent } from '@/types';
 
-export interface UseTicketDetailResult {
+interface UseTicketDetailResult {
   ticket: Ticket | null;
   loading: boolean;
   error: Error | null;
   refetch: () => void;
 }
 
-export interface UseTicketTimelineResult {
+interface UseTicketTimelineResult {
   events: TicketTimelineEvent[];
   loading: boolean;
 }
@@ -54,6 +54,17 @@ export function useTicketAttachments(ticketId: number | null) {
   return { attachments: data ?? [], loading: isLoading };
 }
 
+export function useTicketComments(ticketId: number | null) {
+  const { data, isLoading } = useQuery<TicketComment[]>({
+    queryKey: ['ticket-comments', ticketId],
+    queryFn: async () => (await getComments(ticketId!)).results,
+    enabled: ticketId != null,
+    staleTime: 60 * 1000,
+  });
+
+  return { comments: data ?? [], loading: isLoading };
+}
+
 export function useTicketInvalidate() {
   const queryClient = useQueryClient();
   return (ticketId?: number) => {
@@ -61,6 +72,7 @@ export function useTicketInvalidate() {
       queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
       queryClient.invalidateQueries({ queryKey: ['ticket', ticketId, 'timeline'] });
       queryClient.invalidateQueries({ queryKey: ['ticket', ticketId, 'attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-comments', ticketId] });
     }
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
   };

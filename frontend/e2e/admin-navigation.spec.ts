@@ -1,22 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers';
 
-// Sidebar navigation smoke: every admin sidebar item must change both the URL
-// and the rendered page (asserted via the header title), and the "My Requests"
-// context switch (§1.2) must swap the content in AND be escaped by any sidebar
-// navigation — regression tests for the dead-navigation bug where layouts kept
-// rendering the requester view after the toggle.
+// Every admin sidebar item must change both the URL and the rendered page, and
+// the "My Requests" context switch must swap the content in and be escaped by
+// any sidebar navigation.
 
 const SIDEBAR_ITEMS: Array<{ label: string; path: string; title: string }> = [
   { label: 'Tickets', path: '/dashboard/tickets', title: 'Tickets' },
   { label: 'Reports', path: '/dashboard/reports', title: 'Reports' },
-  { label: 'Analytics', path: '/dashboard/analytics', title: 'Organisation Analytics' },
-  { label: 'Schedule', path: '/dashboard/schedule', title: 'Schedule' },
   { label: 'Technicians', path: '/dashboard/technicians', title: 'Technicians' },
   { label: 'Facilities', path: '/dashboard/facilities', title: 'Facilities' },
-  { label: 'Sections', path: '/dashboard/sections', title: 'Sections' },
   { label: 'Campuses', path: '/dashboard/campuses', title: 'Campuses' },
-  { label: 'Departments', path: '/dashboard/departments', title: 'Departments' },
   { label: 'Service Catalogue', path: '/dashboard/catalogue', title: 'Service Catalogue' },
   { label: 'Users', path: '/dashboard/users', title: 'Users' },
   { label: 'SLA Rules', path: '/dashboard/sla-rules', title: 'SLA Rules' },

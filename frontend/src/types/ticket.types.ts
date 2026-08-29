@@ -1,14 +1,23 @@
-import type { NestedRef } from './section.types';
-
+/** A priority level with its two SLA targets and its two escalation thresholds. */
 export interface Priority {
   id: number;
   name: string;
+  /** 1 is lowest, and what every ticket opens at. */
   rank: number;
   response_minutes: number;
   resolution_minutes: number;
+  escalate_to_hos_minutes: number;
+  escalate_to_hod_minutes: number;
 }
 
-export interface SubSectionRef {
+/** The campus a ticket belongs to — the requester's own, never chosen. */
+export interface CampusRef {
+  id: number;
+  name: string;
+  code: string;
+}
+
+export interface TradeRef {
   id: number;
   name: string;
   code: string;
@@ -20,18 +29,13 @@ export interface TicketLocation {
   values: Record<string, unknown>;
 }
 
+/** How a person appears inside a ticket payload. `full_name` is never blank. */
 export interface AssignedUser {
   id: number;
-  name?: string;
-  full_name?: string;
-  username?: string;
-  role?: string;
-}
-
-export interface OrganizationalPath {
-  campus: NestedRef | null;
-  department: NestedRef | null;
-  section: NestedRef;
+  username: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
 }
 
 export interface Attachment {
@@ -42,20 +46,10 @@ export interface Attachment {
   size_bytes: number;
 }
 
-export interface Comment {
-  id: number;
-  text: string;
-  author: { id: number; username: string; full_name: string };
-  created_at: string;
-  attachments?: Attachment[];
-}
-
-// Shape of the nested read-only `feedback` on ticket detail
-// (TicketFeedbackSerializer — null until the requester submits a rating).
+/** The nested `feedback` on ticket detail. Null until the requester rates it. */
 export interface Feedback {
-  id: number;
   rating: number;
-  comment?: string;
+  comment: string;
   created_at: string;
 }
 
@@ -68,17 +62,16 @@ export interface Ticket {
   current_level?: 'technician' | 'hos' | 'hod';
 
   // Write-only IDs (sent on create/update)
-  section_id?: number;
   assigned_to_id?: number | null;
 
   // Read-only nested objects
-  section: NestedRef;
+  /** The requester's campus. Derived server-side, never chosen. */
+  requester_campus: CampusRef;
   /** The trade that owns the work — Plumbing, Electrical, and so on. Derived
-   *  server-side from the chosen service item; together with `section` it is
-   *  the pair a technician is scoped to. */
-  sub_section: SubSectionRef;
-  raised_by: string | { id: number; username: string; full_name: string };
-  raised_by_id: number; // user ID — use this for ownership checks, not raised_by
+   *  server-side from the chosen service item; together with `requester_campus`
+   *  it is the pair a technician is scoped to. */
+  trade: TradeRef;
+  raised_by: AssignedUser;
   assigned_to: AssignedUser | null;
 
   // SLA timestamps (server-owned; paused_at non-null means SLA frozen)
@@ -103,10 +96,6 @@ export interface Ticket {
   pending_reason?: string | null;
   pending_reason_display?: string | null;
   pending_reason_note?: string | null;
-  organizational_path?: OrganizationalPath | null;
-
-  // Available technicians (only for roles that can assign)
-  available_technicians?: Array<{ id: number; username: string; full_name: string }>;
 
   /** Whether the requester has rated it. A flag, present on list rows; the
    *  rating object itself stays on the detail view. */
@@ -119,10 +108,8 @@ export interface Ticket {
    *  with the badge on the ticket and the count on the dashboard. */
   is_breaching?: boolean;
 
-  // Nested data (detail view only)
-  comments?: Comment[];
-  /** Detail endpoint only (`TicketDetailReadSerializer`). Reading this on a
-   *  list row typechecks and is always undefined — use `has_feedback` there. */
+  /** Detail endpoint only. On a list row this is always undefined — read
+   *  `has_feedback` there instead. */
   feedback?: Feedback | null;
   /** Detail only. Deliberately absent from the list serializer — a phone
    *  number is for the technician who opened the ticket, not for anyone
@@ -131,7 +118,7 @@ export interface Ticket {
   service_item?: {
     id: number;
     name: string;
-    sub_section: SubSectionRef;
+    trade: TradeRef;
   } | null;
 }
 
@@ -142,25 +129,22 @@ export interface TicketsResponse {
   results: Ticket[];
 }
 
-// Canonical create payload — the server derives section, trade and priority
-// from the service item and the requester's own campus.
+// The create payload. The server derives the trade, the campus and the priority
+// from the service item and the requester.
 export interface CreateTicketPayload {
   service_item: number;
   description: string;
-  /** Optional. Left out, the requester's own number is used. */
+  /** Left out, the requester's own number is used. */
   contact_phone?: string;
-  location?: {
-    facility_type: number;
-    facility?: number;
-    values: Record<string, unknown>;
+  /** The facility names its own type, so only its id is sent. */
+  location: {
+    facility: number;
+    values: Record<string, string>;
   };
 }
 
 export interface UpdateTicketPayload {
-  title?: string;
   description?: string;
-  section_id?: number;
-  facility_id?: number;
   status?: Ticket['status'];
   assigned_to_id?: number | null;
   pending_reason?: string | null;
@@ -178,8 +162,8 @@ export interface TicketsParams {
   mine?: 1;          // My Requests context: only tickets raised_by == self
   ordering?: string;
   // Server-side filters (narrow the role-scoped queryset; never widen scope)
-  section?: number;
-  sub_section?: number;   // trade — Plumbing, Electrical, …
+  campus?: number;
+  trade?: number;   // trade — Plumbing, Electrical, …
   current_level?: 'technician' | 'hos' | 'hod';
   /** '1' returns everything above the technician, in one request. */
   escalated?: '1';
@@ -190,13 +174,19 @@ export interface TicketsParams {
   raised_by?: number;    // requester user id
 }
 
+/** `comment` is the client's own label for a comment row; every other value is
+ *  a `TicketLog.event_type`. */
+export type TicketEventType =
+  | 'created' | 'assigned' | 'reassigned' | 'status_changed'
+  | 'comment' | 'comment_added' | 'resolved' | 'closed'
+  | 'reopened' | 'rated' | 'escalated' | 'priority_changed' | 'sla_breach';
+
+/** One row of the merged trail. A system action has no actor, and a person
+ *  registered by email alone has no name yet, so both are optional. */
 export interface TicketTimelineEvent {
   id: number | string;
-  event_type:
-    | 'created' | 'assigned' | 'reassigned' | 'status_changed'
-    | 'comment' | 'comment_added' | 'pending' | 'resolved' | 'closed'
-    | 'reopened' | 'rated' | 'escalated' | 'priority_changed' | 'sla_breach';
-  actor?: { id: number; username: string; full_name: string };
+  event_type: TicketEventType;
+  actor?: { id: number; username: string; full_name?: string | null };
   note?: string;
   data?: Record<string, unknown>;
   created_at: string;

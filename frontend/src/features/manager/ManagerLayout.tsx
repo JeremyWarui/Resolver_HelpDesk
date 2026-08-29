@@ -1,36 +1,24 @@
-import { Suspense, lazy, type ReactNode } from 'react';
-import ComingSoonSection from '@/components/shared/ComingSoonSection';
+import { lazy } from 'react';
 import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
-import { ROLE_NAV } from '@/config/roleNav';
-import ManagerDashboard from './ManagerDashboard';
+import RoleDashboardView from '@/features/shared/RoleDashboardView';
 
 const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
-const ManagerAnalytics = lazy(() => import('./ManagerAnalytics'));
-const PendingWorkView = lazy(() => import('@/features/shared/PendingWorkView'));
-const FacilityRegisterView = lazy(() => import('@/features/shared/FacilityRegisterView'));
-const ManagerReportsPage = lazy(() => import('./ManagerReportsPage'));
+const FacilitiesPage = lazy(() => import('@/features/shared/Facilities/FacilitiesPage'));
+const RoleReportsPage = lazy(() => import('@/features/shared/RoleReportsPage'));
 const FeedbackTab = lazy(() => import('@/features/shared/FeedbackTab'));
 
-const PageLoading = () => (
-  <div className="flex items-center justify-center h-64">
-    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-    <span className="ml-2 text-muted-foreground">Loading page...</span>
-  </div>
-);
-
+/** Organisation-wide reporting and analytics (REVIEW.md §4). Oversight is
+ *  read-only, so there is no operational queue here: what is on hold is on the
+ *  reports page, counted by the server rather than by one page of rows. */
 const ManagerLayout = () => (
   <RoleDashboardLayout
-    nav={ROLE_NAV.manager}
-    renderWrapper={(node: ReactNode) => <Suspense fallback={<PageLoading />}>{node}</Suspense>}
+    role="manager"
     sections={({ onTicketSelect }) => ({
-      dashboard: <ManagerDashboard onTicketSelect={onTicketSelect} />,
-      tickets: <RoleTicketsPage role="manager" onTicketSelect={onTicketSelect} />,
-      pending: <PendingWorkView role="manager" onTicketSelect={onTicketSelect} />,
-      facilities: <FacilityRegisterView role="manager" />,
-      analytics: <ManagerAnalytics />,
-      reports: <ManagerReportsPage />,
-      feedback: <FeedbackTab role="manager" />,
-      settings: <ComingSoonSection section="Settings" />,
+      dashboard:  <RoleDashboardView role="manager" onTicketSelect={onTicketSelect} />,
+      tickets:    <RoleTicketsPage role="manager" onTicketSelect={onTicketSelect} />,
+      facilities: <FacilitiesPage manage={false} />,
+      reports:    <RoleReportsPage role="manager" />,
+      feedback:   <FeedbackTab role="manager" />,
     })}
   />
 );
