@@ -78,9 +78,62 @@ There is no `services/` subpackage. A service module sits directly in its app:
 **A view never writes a ticket's state.** It calls `transition_status`,
 `assign_ticket` or `claim_ticket` in `tickets/lifecycle.py`.
 
-Frontend: `features/<role>/` for pages, `features/shared/` for views that take
-the role as a parameter, `components/shared/data/` for components that fetch
-their own scoped data. Extend those rather than writing a copy per role.
+### The frontend
+
+```
+frontend/src/
+├── app/           routing shells: auth screens, the dashboard shell, ticket detail
+├── features/      pages, by role — admin, manager, technician, user, shared
+├── components/
+│   ├── ui/        shadcn primitives. Generated; `cn` lives at `@/lib/utils`
+│   │              because `components.json` points there.
+│   └── shared/    the app's own components: data/, ticket/, forms/, feedback/
+├── hooks/         flat, except hooks/tickets/ where four belong together
+├── lib/api/       one module per backend app; named exports, bar the
+│                  axios instance itself
+├── constants/     one file per subject, seven of them
+├── types/         reached only as `@/types`
+├── stores/        zustand: the session, and sidebar state
+└── utils/         dates, phone, bytes, DRF errors, identity, validation
+```
+
+`features/shared/` holds anything more than one role renders — including
+`SupervisorLayout`, which **both** the HOS and the HOD use, because
+`ROLE_NAV.hos` and `ROLE_NAV.hod` list the same sections and the difference
+between them is scope, which the server decides. There is no `features/hos/`
+or `features/hod/`.
+
+**One way in per layer.** Import the module, not a folder — `hooks/` and
+`lib/api/` have no barrels, and the half-adopted ones they used to have meant
+seventeen imports reaching past them. `@/types` is the deliberate exception: one
+door for every domain type, and no file imports `types/ticket.types` directly.
+`lib/api` exports named functions; there is no service object wrapping the same
+calls a second time.
+
+**Identity in Zustand, verification in React Query.** `useAuthStore` hydrates
+from localStorage synchronously at module load, so whether there is a session
+is known on the first render — which is why no route guard has a loading state,
+and why the axios interceptor can read the token before React has mounted. It
+is also the only session state reachable from non-React code and the only one
+that syncs across tabs. React Query owns the part the server can change under
+you: `useUserData` re-validates the cached role against `/auth/me/`.
+`useAuth` holds nothing but the three mutations.
+
+**Say a thing once.** Before adding a map, a badge or a dialog footer, check
+whether it exists:
+
+| For | Use |
+|---|---|
+| A status, priority or escalation badge | `TokenPill` |
+| A dialog's Cancel/Save row | `DialogActions` |
+| A row of figures | `MetricCard`, `MetricCardRow` |
+| A ticket list | `TicketTable` + a variant in `TicketTableColumns` |
+| A register with a filter rail | `RailLayout` |
+| Role names, scope, escalation levels | `constants/roles.ts` |
+| Notification labels and tints | `constants/notifications.ts` |
+
+Escalation level in particular had four spellings across four files before it
+had one. A second copy of a vocabulary is how they drift.
 
 ### Writing comments
 
@@ -262,6 +315,18 @@ green for all of them. Run the Playwright suite after UI changes;
   holds both the codes and `FACILITY_FORMS`. Change the two together.
 - **A new query param means a filter and a negative test**, same commit. A param
   nothing reads looks like scoping and does nothing.
+- **An SLA percentage means `met / (met + missed)`** — settled work only. That
+  is what `resolution_sla_pct` computes in `metrics.py`, and the gauge on the
+  SLA page computes the same thing so the two cannot disagree. Overdue work is
+  live and has no outcome yet: counting it as failed there once read 47% against
+  the reports page's 89% for the same section at the same moment. Overdue has
+  its own card; it does not belong in this denominator.
+- **Never gate rendering on a React Query result's identity.** `useQuery` hands
+  back the same array reference on every render once it is cached, so
+  `if (prev !== data)` fires on the first load and then never again. The ticket
+  wizard resolved its pre-filled trade that way: the first service card worked
+  and every one after it opened an empty list. Gate on the state you actually
+  need — `if (!trade && …)` — not on whether the cache object changed.
 - **Ticket numbers** are built from the pk in `Ticket.save()`
   (`TKT-<CAMPUS>-<pk padded to 5>`), so the first save is two writes. No
   sequence table. Never parse one to make the next; gaps are fine.
