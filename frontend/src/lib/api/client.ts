@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import type { UserRole } from '@/types';
 
 // Allow _retry flag on axios request configs without casting everywhere
 declare module 'axios' {
@@ -60,6 +61,31 @@ export function clearSessionAndRedirect(reason?: 'role-changed'): void {
   }
 }
 
+/**
+ * End the session when the server's role no longer matches the cached one.
+ *
+ * The only comparison of its kind, and both paths that learn a role from the
+ * server reach it: the silent refresh below, which gets one on every token
+ * rotation, and `/auth/me/` on dashboard mount, which covers the window where
+ * the access token is still valid so no refresh has fired. The two catch
+ * different moments and neither covers the other, but what they do about it
+ * is one decision, and it is made here.
+ *
+ * The comparison is against the stored user, not the token's claim: the token
+ * is reissued correctly scoped either way, and the copy that goes stale is the
+ * user object the sidebar and the dashboard choice are drawn from. A roleless
+ * requester is `user` in the store and null on the wire; both read as `user`,
+ * which is what keeps a requester from being signed out on every rotation.
+ *
+ * Returns whether the session was cleared.
+ */
+export function reconcileRole(serverRole: UserRole | null): boolean {
+  const cached = useAuthStore.getState().user;
+  if (!cached || (serverRole ?? 'user') === cached.role) return false;
+  clearSessionAndRedirect('role-changed');
+  return true;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -84,22 +110,18 @@ apiClient.interceptors.response.use(
 
     try {
       // Use bare axios (not apiClient) to avoid triggering this interceptor again
-      const { data } = await axios.post<{ accessToken: string; roleChanged: boolean }>(
+      const { data } = await axios.post<{ accessToken: string; role: UserRole | null }>(
         `${BASE_URL}/auth/refresh/`,
         {},
         { withCredentials: true }
       );
 
-      // jwt_refresh() re-derives role/scope from the DB on every rotation, so
-      // roleChanged means an admin promoted/demoted this user since they last
-      // logged in. The new access token is already scoped correctly, but the
-      // cached user object (sidebar, dashboard choice) is stale and only ever
-      // refreshed at login/switch-role — force a clean re-login rather than
-      // let the UI keep showing the old role's shell.
-      if (data.roleChanged) {
-        const err = new Error('Role changed — re-authentication required');
+      // jwt_refresh() re-reads the assignment from the database on every
+      // rotation, so this is where an admin's promotion or demotion first
+      // reaches a session that is still being used.
+      if (reconcileRole(data.role)) {
+        const err = new Error('Role changed, re-authentication required');
         processQueue(err, null);
-        clearSessionAndRedirect('role-changed');
         return Promise.reject(err);
       }
 

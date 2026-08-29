@@ -171,14 +171,18 @@ def jwt_refresh(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    old_role = refresh.payload.get("role")
     assignment = get_assignment(user)
     new_refresh, new_access = build_tokens_for_assignment(user, assignment)
-    new_role = assignment.role if assignment else None
 
-    # roleChanged tells the frontend its cached user object is stale.
+    # The role as the database has it, not a verdict on whether it moved. The
+    # client compares it against the cached user object it draws the shell
+    # from, which is the copy that goes stale; the claim on the token being
+    # replaced is not. Null for a plain requester, who holds no assignment.
     response = Response(
-        {"accessToken": str(new_access), "roleChanged": old_role != new_role},
+        {
+            "accessToken": str(new_access),
+            "role": assignment.role if assignment else None,
+        },
         status=status.HTTP_200_OK,
     )
     _set_refresh_cookie(response, new_refresh)

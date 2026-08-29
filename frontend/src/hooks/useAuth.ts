@@ -16,7 +16,7 @@ import {
   decodeJwtPayload,
 } from '@/lib/api/auth';
 import type { LoginResponse, LoginCredentials, RegisterPayload } from '@/lib/api/auth';
-import { clearSessionAndRedirect } from '@/lib/api/client';
+import { reconcileRole } from '@/lib/api/client';
 import type { User } from '@/types';
 
 /**
@@ -85,18 +85,14 @@ export const useUserData = () => {
       if (!authUser) return null;
       const token = useAuthStore.getState().getToken() ?? '';
 
-      // Re-validate the cached role against the server on dashboard mount
-      // (page reload, tab reopen). /auth/me/ re-derives the active assignment
-      // from the DB, so a promotion/demotion done while this session was live
-      // is caught even when the role_changed WS push couldn't reach us
-      // (socket down, no channel layer) and the access token hasn't expired
-      // yet (jwt_refresh's roleChanged check is the expiry-time fallback).
+      // Re-validate the cached role on dashboard mount (page reload, tab
+      // reopen). /auth/me/ re-derives the assignment from the database, so a
+      // promotion or demotion made while this session was away is caught here
+      // even though the access token is still valid and no refresh has run.
+      // `reconcileRole` owns what happens next; the interceptor's refresh path
+      // reaches the same function from the other direction.
       try {
-        const profile = await getProfile();
-        if (profile.role !== authUser.role) {
-          clearSessionAndRedirect('role-changed');
-          return authUser;
-        }
+        if (reconcileRole((await getProfile()).role)) return authUser;
       } catch {
         // Network/API failure: keep the cached profile; the 401 interceptor
         // owns expired-token handling.

@@ -115,21 +115,34 @@ def test_refresh_issues_a_usable_access_token(api, nrb_hos):
 
     response = api.post(REFRESH)
     assert response.status_code == 200, response.json()
-    assert response.json()["roleChanged"] is False
+    assert response.json()["role"] == "hos"
 
     api.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['accessToken']}")
     assert api.get(ME).json()["active_role"]["role"] == "hos"
 
 
-def test_refresh_reports_a_role_change(api, requester, nrb):
+def test_refresh_reports_the_role_the_database_now_holds(api, requester, nrb):
     """Claims are re-read from the database rather than copied forward, so a
     promotion lands on the next silent refresh instead of at the next login."""
     _login(api, requester)
     assign_role(requester, "hos", campus=nrb)
 
     body = api.post(REFRESH).json()
-    assert body["roleChanged"] is True
+    assert body["role"] == "hos"
     assert AccessToken(body["accessToken"])["role"] == "hos"
+
+
+def test_refresh_reports_null_for_an_account_holding_no_post(api, nrb):
+    """Registering creates the account, not an assignment, so a new sign-up
+    has no role row until an admin grants one. The client stores such a user
+    as `user` and the wire says null; `reconcileRole` reads the two as equal,
+    which is what keeps this account from being signed out on every rotation.
+    """
+    newcomer = factories.make_user("newcomer", campus=nrb)
+    assert not RoleAssignment.objects.filter(user=newcomer).exists()
+    _login(api, newcomer)
+
+    assert api.post(REFRESH).json()["role"] is None
 
 
 def test_logging_out_blacklists_the_refresh_token(api, nrb_hos):
