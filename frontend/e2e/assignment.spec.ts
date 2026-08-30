@@ -90,6 +90,67 @@ test('the trail records who assigned it, to whom', async ({ page }) => {
   await expect(sheet.getByText('Esther', { exact: false }).first()).toBeVisible();
 });
 
+test('the assignee starts the work the HOS handed them', async ({ page }) => {
+  // Assigned is not started. The button that moves it is Start work rather
+  // than the status modal, because a technician opening a job they have been
+  // given should not have to pick `in_progress` out of a list to begin it.
+  await login(page, USERS.technician);
+  await page.goto('/tech/assigned');
+  await page.getByPlaceholder(/Search/i).first().fill(ticketNo);
+  await page.getByText(ticketNo, { exact: false }).first().click();
+
+  const sheet = page.getByRole('dialog').first();
+  const started = page.waitForResponse(
+    (r) => r.url().includes('/status/') && r.request().method() === 'POST',
+  );
+  await sheet.getByRole('button', { name: 'Start work' }).click();
+  expect((await started).status(), 'assigned must move to in progress').toBe(200);
+  await expect(sheet.getByText('In Progress', { exact: false }).first()).toBeVisible({
+    timeout: 20_000,
+  });
+});
+
+test('the assignee resolves it, and the requester closes it', async ({ page }) => {
+  // The half `assignment.spec.ts` stopped short of: handing a ticket over is
+  // only worth testing if the ticket then gets finished by the person it was
+  // handed to. Claiming reaches resolved in ticket-lifecycle.spec.ts; this is
+  // the same ending reached down the assigned path, where the status modal
+  // offers in_progress -> resolved rather than a claim.
+  await login(page, USERS.technician);
+  await page.goto('/tech/assigned');
+  await page.getByPlaceholder(/Search/i).first().fill(ticketNo);
+  await page.getByText(ticketNo, { exact: false }).first().click();
+
+  const sheet = page.getByRole('dialog').first();
+  await sheet.getByRole('button', { name: 'Update Status' }).click();
+
+  const modal = page.getByRole('dialog').filter({ hasText: 'Update ticket status' });
+  await modal.getByRole('button', { name: 'Resolved', exact: true }).click();
+  await modal
+    .getByPlaceholder('Describe what was done or what changed…')
+    .fill('Replaced the cistern inlet valve and tested the flush.');
+  await modal.getByRole('button', { name: 'Save update' }).click();
+  await expect(modal).toBeHidden();
+
+  // Closing is the requester's, not the technician's. Read the row rather than
+  // opening the ticket: a resolved job raises the rating prompt over the list.
+  await login(page, USERS.requester);
+  await page.getByRole('link', { name: 'My Tickets', exact: true }).click();
+  await page.getByPlaceholder(/Search/i).first().fill(ticketNo);
+  const row = page.getByRole('row').filter({ hasText: ticketNo });
+  await expect(row).toBeVisible({ timeout: 20_000 });
+  await expect(row.getByText('Resolved')).toBeVisible();
+
+  await row.getByRole('button', { name: 'Rate & close' }).click();
+  const rating = page.getByRole('dialog').filter({ hasText: 'Rate resolution' });
+  await rating.getByLabel('5 stars').click();
+  await rating.getByRole('button', { name: 'Submit & close ticket' }).click();
+  await expect(rating).toBeHidden({ timeout: 20_000 });
+
+  const closedRow = page.getByRole('row').filter({ hasText: ticketNo });
+  await expect(closedRow.getByText('Closed')).toBeVisible({ timeout: 20_000 });
+});
+
 test('the renamed routes resolve, and /tech/mobile still outranks /tech/*', async ({ page }) => {
   await login(page, USERS.hos);
   await page.goto('/hos/reports');

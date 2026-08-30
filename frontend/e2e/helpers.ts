@@ -31,6 +31,12 @@ export const USERS = {
 /** The trade `USERS.technician` is linked to, and one of its seeded items. */
 export const PLUMBING = { trade: 'Plumbing', item: 'Leaking tap or pipe' };
 
+/** A trade `USERS.technicianOtherTrade` holds and `USERS.technician` does not.
+ *  Anthony Gitau is (Nairobi, Carpentry) and (Nairobi, Painting); Esther
+ *  Wairimu is (Nairobi, Plumbing) only. Routing a ticket through this pair
+ *  runs pairwise scope in the direction the other specs do not. */
+export const CARPENTRY = { trade: 'Carpentry', item: 'Repair door or door frame' };
+
 /** A Nairobi office block from the seed — the facility dropdown must offer it. */
 export const NRB_OFFICE_BLOCK = 'Administration Block';
 
