@@ -1,18 +1,21 @@
 """
-The manager's dashboard: the operation right now and this week, at a glance.
+The dashboard for the manager, the HOD and the HOS: the operation right now
+and this week, at a glance.
 
 Live work as it stands, the last seven Kenyan days against the seven before,
-raised and resolved over a chosen period, each campus's live work by stage,
-the Reports page's Campuses table and the buildings with faults that keep
-coming back. Every number comes from `metrics` or `overview`; this module only
-arranges them. Reports is where a manager reads any other period in full.
+raised and resolved over a chosen period, and the buildings with faults that
+keep coming back. The manager also reads each campus's live work by stage and
+the Reports page's Campuses table; an HOS or HOD each trade's live work by
+stage and their technicians. Every number comes from `metrics` or `overview`;
+this module only arranges them. Reports is where any other period is read.
 """
 
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 
-from apps.org.models import Campus
+from apps.org.models import Campus, Trade
 
 from . import metrics, overview
 
@@ -41,35 +44,58 @@ def week(now=None, days: int = DAYS) -> dict:
     return {"from": midnight - timedelta(days=days - 1), "to": now, "bucket": "day"}
 
 
-def build(qs, trend_days: int = DAYS, open_days: int | None = None, now=None) -> dict:
+def build(qs, trend_days: int = DAYS, open_days: int | None = None, now=None,
+          role: str = "manager", campus_ids=None) -> dict:
     """Every section of the dashboard over `qs`, which is already scoped.
 
     `trend_days` is the raised-and-resolved chart's period; `open_days`, when
-    given, narrows open work by campus to work raised in that many days.
+    given, narrows open work by stage to work raised in that many days.
+    `campus_ids` are the campuses an HOS or HOD runs.
     """
+    every_campus = role in overview.EVERY_CAMPUS_ROLES
     window = week(now)
     current = metrics.totals(qs, window)
     previous = metrics.totals(qs, metrics.previous_window(window))
 
     live = metrics.snapshot(qs, ["campus"])
     open_qs = qs.filter(created_at__gte=week(now, open_days)["from"]) if open_days else qs
-    by_campus = {row["key"]: row for row in (metrics.snapshot(open_qs, ["campus"]) if open_days else live)}
+    stage_by = "campus" if every_campus else "trade"
+    by_stage = {row["key"]: row for row in metrics.snapshot(open_qs, [stage_by])}
+    if every_campus:
+        stage_rows = Campus.objects.order_by("name")
+    else:
+        # A retired trade still has a bar while it has open work, so the bars add up to the cards.
+        stage_rows = Trade.objects.filter(Q(is_active=True) | Q(pk__in=by_stage)).order_by("name")
 
-    return {
+    data = {
         "week": {"from": window["from"].isoformat(), "to": window["to"].isoformat()},
         "live": {k: sum(row[k] for row in live) for k in _LIVE},
         "this_week": {k: current[k] for k in _WEEK},
         "last_week": {k: previous[k] for k in _WEEK},
         "trend": {"bucket": PERIODS[trend_days], "rows": _trend(qs, week(now, trend_days), trend_days)},
-        "campuses": [
-            {"key": c.pk, "label": c.name, **{k: by_campus.get(c.pk, {}).get(k, 0) for k in _STAGES}}
-            for c in Campus.objects.order_by("name")
+        "open_by": stage_by,
+        "open_work": [
+            {"key": r.pk, "label": r.name, **{k: by_stage.get(r.pk, {}).get(k, 0) for k in _STAGES}}
+            for r in stage_rows
         ],
         "target_pct": metrics.SLA_TARGET_PCT,
-        "campus_table": overview.campus_table(qs, window),
         # The Reports page's first rows; with no flag column to explain its order, most faults first.
         "facilities": sorted(overview.facilities(qs, window)[:FACILITY_ROWS], key=lambda f: -f["total"]),
     }
+    if every_campus:
+        data["campus_table"] = overview.campus_table(qs, window)
+    else:
+        data["technicians"] = overview.technician_table(qs, window, campus_ids)
+    return data
+
+
+def waiting(qs):
+    """Open tickets nobody has been sent to, waiting longest first.
+
+    Ordered by `clock_started_at`, which a reopen restarts, so a reopened
+    ticket waits from its reopening. The same tickets `live.waiting` counts.
+    """
+    return qs.filter(status="open").order_by("clock_started_at", "id")
 
 
 def _trend(qs, window, days: int) -> list:

@@ -71,6 +71,12 @@ export const ESCALATION_LEVEL: Record<string, { short: string; full: string }> =
  *  and refuses an assignment without one on these. */
 export const ROLES_REQUIRING_CAMPUS: UserRole[] = ['technician', 'hos', 'hod'];
 
+/** The roles whose reports cover every campus: they read the campus sections
+ *  and may narrow to one campus. Mirrors `EVERY_CAMPUS_ROLES` in
+ *  `backend/apps/analytics/overview.py`; an HOS or HOD reads their
+ *  technicians instead. */
+export const EVERY_CAMPUS_ROLES: UserRole[] = ['admin', 'manager'];
+
 /** Roles that run the system from a desk. Their pages open on a phone, but are
  *  laid out for a computer; requesters and technicians are the ones out and about. */
 export const DESK_ROLES: UserRole[] = ['admin', 'manager', 'hod', 'hos'];

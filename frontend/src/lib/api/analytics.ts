@@ -7,13 +7,13 @@ export async function getAnalytics(params?: AnalyticsParams): Promise<AnalyticsE
   return data;
 }
 
-/** The manager's report page, every section of it. */
+/** The Reports page of the manager, HOD or HOS, every section of it. */
 export async function getOverview(params: OverviewParams): Promise<OverviewEnvelope> {
   const { data } = await apiClient.get<OverviewEnvelope>('/analytics/overview/', { params });
   return data;
 }
 
-/** The manager's dashboard: right now and this week, each chart over its own period. */
+/** The dashboard of the manager, HOD or HOS: right now and this week, each chart over its own period. */
 export async function getDashboard(params: DashboardParams): Promise<DashboardEnvelope> {
   const { data } = await apiClient.get<DashboardEnvelope>('/analytics/dashboard/', {
     params: { trend_days: params.trend_days, open_days: params.open_days ?? undefined },

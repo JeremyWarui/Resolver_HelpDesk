@@ -10,7 +10,7 @@ interface Dashboard {
   };
   this_week: { total: number };
   last_week: { total: number };
-  campuses: { label: string; waiting: number; with_technician: number; on_hold: number }[];
+  open_work: { label: string; waiting: number; with_technician: number; on_hold: number }[];
   campus_table: { label: string; total: number; open_now: number; overdue: number; at_hod: number }[];
   facilities: { label: string; campus: string; total: number; trades: { label: string; total: number }[] }[];
 }
@@ -24,7 +24,7 @@ async function dashboard(page: Page, query = ''): Promise<Dashboard> {
   }, query);
 }
 
-const bar = (c: Dashboard['campuses'][number]) =>
+const bar = (c: Dashboard['open_work'][number]) =>
   `${c.label}: ${c.waiting} waiting, ${c.with_technician} with a technician, ${c.on_hold} on hold`;
 
 test('the manager dashboard shows the server’s figures and no ticket list', async ({ page }) => {
@@ -39,7 +39,7 @@ test('the manager dashboard shows the server’s figures and no ticket list', as
   await expect(card('Raised this week')).toContainText(`${data.last_week.total} last week`);
 
   const campuses = page.getByLabel('Open work by campus', { exact: true });
-  for (const c of data.campuses) {
+  for (const c of data.open_work) {
     await expect(campuses.getByRole('img', { name: bar(c) })).toBeVisible();
   }
 
@@ -79,7 +79,7 @@ test('each chart reads its own period, and the cards stay on the week', async ({
   await page.getByRole('option', { name: 'Raised this week' }).click();
   const recent = await dashboard(page, '?open_days=7');
   const campuses = page.getByLabel('Open work by campus', { exact: true });
-  for (const c of recent.campuses) {
+  for (const c of recent.open_work) {
     await expect(campuses.getByRole('img', { name: bar(c) })).toBeVisible();
   }
   await expect(openNow).toContainText(String(before.live.open_now));
@@ -90,10 +90,4 @@ test('Facility Health links through to Reports', async ({ page }) => {
   await page.getByRole('button', { name: 'See more in Reports' }).click();
   await expect(page.locator('header h1')).toHaveText('Reports');
   await expect(page.getByLabel('Facility Health', { exact: true })).toBeVisible();
-});
-
-test('the HOS keeps their own dashboard', async ({ page }) => {
-  await login(page, USERS.hos);
-  await expect(page.getByText('Recent Tickets')).toBeVisible();
-  await expect(page.getByLabel('Open work by campus', { exact: true })).toHaveCount(0);
 });

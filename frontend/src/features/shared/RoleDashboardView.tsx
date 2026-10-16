@@ -7,16 +7,14 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 import { RANGES, type RangeKey } from '@/constants/analytics';
 import { SCOPE_SUBTITLE } from '@/constants/roles';
 
-type DashboardRole = 'admin' | 'manager' | 'hod' | 'hos';
-
 interface Props {
-  role: DashboardRole;
+  role: 'admin';
   onTicketSelect?: (id: number) => void;
 }
 
 /**
- * The dashboard homepage for a supervising role: where the work stands now and
- * what came in lately. The cuts by trade, facility and technician are on the
+ * The admin's dashboard homepage: where the work stands now and what came in
+ * lately. The cuts by trade, facility and technician are on the
  * reports page.
  */
 export default function RoleDashboardView({ role, onTicketSelect }: Props) {
@@ -47,7 +45,6 @@ export default function RoleDashboardView({ role, onTicketSelect }: Props) {
         setStatusRange={setStatusRange}
       />
 
-      {/* The manager passes no `onTicketSelect`: their rows do not open. */}
       <LazyMount minHeight={400}>
         <RecentTicketsTable onTicketSelect={onTicketSelect} />
       </LazyMount>

@@ -20,7 +20,7 @@ export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boo
   return { data: data ?? null, loading: isLoading, error, refetch };
 }
 
-/** The manager's overview for a period, and optionally one campus. */
+/** The Reports overview of the manager, HOD or HOS for a period; the manager's optionally for one campus. */
 export function useOverview(params: OverviewParams) {
   const { data, isLoading, error } = useQuery<OverviewEnvelope>({
     queryKey: ['analytics', 'overview', params.days, params.bucket, params.campus ?? null],
@@ -30,9 +30,10 @@ export function useOverview(params: OverviewParams) {
   return { data: data ?? null, loading: isLoading, error };
 }
 
-/** The manager's dashboard, refreshed every minute while it is open. A new
- *  chart period keeps the last figures on screen until its own arrive. */
-export function useManagerDashboard(params: DashboardParams) {
+/** The dashboard of the manager, HOD or HOS, refreshed every minute while it
+ *  is open. A new chart period keeps the last figures on screen until its own
+ *  arrive. */
+export function useDashboard(params: DashboardParams) {
   const { data, isLoading, error } = useQuery<DashboardEnvelope>({
     queryKey: ['analytics', 'dashboard', params],
     queryFn: () => getDashboard(params),

@@ -1,3 +1,5 @@
+import type { Ticket } from './ticket.types';
+
 // The shape of GET /api/v1/analytics/ — the one reporting endpoint.
 
 export interface AnalyticsParams {
@@ -79,7 +81,7 @@ export interface AnalyticsEnvelope {
   trend: TrendPoint[];
 }
 
-// The shape of GET /api/v1/analytics/overview/ — the manager's report page.
+// The shape of GET /api/v1/analytics/overview/ — the Reports page of the manager, HOD and HOS.
 
 export interface OverviewParams {
   days?: number;
@@ -89,7 +91,7 @@ export interface OverviewParams {
 }
 
 export interface OverviewInsight {
-  kind: 'campus' | 'trade' | 'staffing' | 'facility' | 'escalated';
+  kind: 'campus' | 'trade' | 'technician' | 'staffing' | 'facility' | 'escalated';
   text: string;
 }
 
@@ -124,6 +126,18 @@ export interface OverviewCampus {
   jobs_each: number | null;
 }
 
+/** A technician's jobs raised in the period and assigned to them, and what they hold now. */
+export interface TechnicianRow {
+  key: number;
+  label: string;
+  total: number;
+  open_now: number;
+  overdue: number;
+  resolution_sla_pct: number | null;
+  resolution_seconds_avg: number | null;
+  rating_avg: number | null;
+}
+
 export interface OverviewEnvelope {
   range: { from: string; to: string };
   campus: { id: number; name: string } | null;
@@ -134,19 +148,22 @@ export interface OverviewEnvelope {
   at_hod_now: number;
   insights: OverviewInsight[];
   facilities: OverviewFacility[];
-  campuses: OverviewCampus[];
   trades: { key: number; label: string; total: number; resolution_sla_pct: number | null; rating_avg: number | null }[];
-  trade_by_campus: {
+  /** The manager's: every campus. */
+  campuses?: OverviewCampus[];
+  trade_by_campus?: {
     trades: string[];
     rows: { campus: string; counts: Record<string, number>; total: number }[];
     totals: Record<string, number>;
     total: number;
   };
+  /** An HOS's or HOD's: everyone working their campus. */
+  technicians?: TechnicianRow[];
   trend: TrendPoint[];
   bottlenecks: Bottleneck[];
 }
 
-// The shape of GET /api/v1/analytics/dashboard/ — the manager's dashboard.
+// The shape of GET /api/v1/analytics/dashboard/ — the manager's, HOD's and HOS's dashboard.
 
 type WeekFigures = Pick<Totals, 'total' | 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'rating_count'>;
 
@@ -160,13 +177,23 @@ export interface DashboardEnvelope {
   /** Raised and resolved over the chart's period: a row per day, or per seven days from the first. */
   trend: { bucket: Bucket; rows: { start: string; raised: number; resolved: number }[] };
   target_pct: number;
-  /** The Reports page's Campuses table, over the week. */
-  campus_table: OverviewCampus[];
-  /** Live work by stage, for every campus, calm ones included. */
-  campuses: { key: number; label: string; open_now: number; waiting: number; with_technician: number; on_hold: number }[];
+  /** What open work is cut by: every campus for the manager, every active trade for an HOS or HOD. */
+  open_by: 'campus' | 'trade';
+  /** Live work by stage, a row for each, calm ones included. */
+  open_work: { key: number; label: string; open_now: number; waiting: number; with_technician: number; on_hold: number }[];
   /** The Reports page's Facility Health rows over the week, the first few. */
   facilities: OverviewFacility[];
+  /** The manager's: the Reports page's Campuses table, over the week. */
+  campus_table?: OverviewCampus[];
+  /** An HOS's or HOD's: their technicians over the week. */
+  technicians?: TechnicianRow[];
+  /** An HOS's or HOD's: the tickets waiting longest for a technician, in the
+   *  list shape, each with when its clock last started. */
+  waiting?: { count: number; rows: WaitingTicket[] };
 }
+
+/** A ticket waiting for a technician, since its clock last started: a reopen restarts it. */
+export type WaitingTicket = Ticket & { waiting_since: string };
 
 /** The periods the dashboard's two charts offer, in days. */
 export type DashboardPeriod = 7 | 30 | 90;

@@ -93,16 +93,3 @@ test('picking a campus narrows every section to it', async ({ page }) => {
   await page.getByRole('option', { name: 'All campuses' }).click();
   await expect(campuses.getByRole('row')).toHaveCount(all.campuses.length + 1);
 });
-
-test('the HOS keeps the supervisor report', async ({ page }) => {
-  await login(page, USERS.hos);
-  await page.getByRole('link', { name: 'Reports', exact: true }).click();
-  await expect(page.getByText('Service Health')).toBeVisible();
-  // The tables mount as they scroll into view.
-  await page.locator('main').first().hover();
-  await expect(async () => {
-    await page.mouse.wheel(0, 600);
-    await expect(page.getByText('Technician Performance')).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000 });
-  await expect(page.getByText('Needs your attention')).toHaveCount(0);
-});

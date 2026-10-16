@@ -3,8 +3,9 @@ The downloadable reports: an Excel workbook and a PDF summary.
 
 Both are drawn from `report_data`, which reads every figure from `metrics` over
 `reporting_ticket_qs`, so a download says exactly what the reports page says
-for the same role and period. The manager's are laid out as their Reports page
-and read `overview.build`, as it does. Times are shown in Kenyan time.
+for the same role and period. The manager's, the HOD's and the HOS's are laid
+out as their Reports page and read `overview.build`, as it does. Times are
+shown in Kenyan time.
 """
 
 import io
@@ -33,8 +34,6 @@ KSG_GREEN_DARK = "6F7A00"
 # Who may download which format.
 XLSX_ROLES = ("admin", "manager", "hod", "hos", "technician")
 PDF_ROLES = ("manager", "hod", "hos", "technician")
-# Whose report covers every campus, and so may be narrowed to one.
-EVERY_CAMPUS_ROLES = ("admin", "manager")
 
 # "On hold", as the app says it, rather than the model's "Pending".
 STATUS_LABELS = {**dict(STATUSES), "pending": "On hold"}
@@ -61,7 +60,7 @@ def scope_label(user, role, campus=None):
     """Who and what a report covers, said in words."""
     if campus:
         return f"{campus.name} campus"
-    if role in EVERY_CAMPUS_ROLES:
+    if role in overview.EVERY_CAMPUS_ROLES:
         return "Every campus"
     if role == "technician":
         return f"Jobs assigned to {display_name(user)}"
@@ -165,8 +164,11 @@ def _ticket_rows(qs, window):
     return rows
 
 
-def report_data(user, role, window, campus=None):
-    """Everything both formats print, for this caller, period and campus."""
+def report_data(user, role, window, campus=None, campus_ids=None):
+    """Everything both formats print, for this caller, period and campus.
+
+    `campus_ids` are the campuses an HOS or HOD runs, for their technician rows.
+    """
     qs = reporting_ticket_qs(user, role)
     if campus:
         qs = qs.filter(requester_campus=campus)
@@ -178,14 +180,18 @@ def report_data(user, role, window, campus=None):
         "to": local(window["to"]),
         "generated": local(timezone.now()),
     }
-    if role == "manager":
-        return {**heading, "overview": overview.build(qs, window), "tickets": _ticket_rows(qs, window)}
+    if role in overview.OVERVIEW_ROLES:
+        return {
+            **heading,
+            "overview": overview.build(qs, window, role, campus_ids),
+            "tickets": _ticket_rows(qs, window),
+        }
     by_status = {row["key"]: row["total"] for row in group(qs, window, ["status"])}
     return {
         **heading,
         "totals": totals(qs, window),
         "by_status": {code: by_status.get(code, 0) for code, _ in STATUSES},
-        "by_campus": group(qs, window, ["campus"]) if role in EVERY_CAMPUS_ROLES else None,
+        "by_campus": group(qs, window, ["campus"]) if role in overview.EVERY_CAMPUS_ROLES else None,
         "by_trade": group(qs, window, ["trade"]),
         "by_technician": None if role == "technician" else group(qs, window, ["technician"]),
         "by_facility": _facility_rows(qs, window),
@@ -246,7 +252,7 @@ def summary_rows(data):
     ]
 
 
-def manager_headline(ov):
+def report_headline(ov):
     """The Reports page's stat cards as (label, value, before, kind, note).
 
     `before` is the period before where the card shows it, else None.
@@ -264,13 +270,14 @@ def manager_headline(ov):
 
 
 INSIGHT_KINDS = {
-    "campus": "Campus", "trade": "Trade", "staffing": "Staffing", "facility": "Facility", "escalated": "Escalated",
+    "campus": "Campus", "trade": "Trade", "technician": "Technician", "staffing": "Staffing",
+    "facility": "Facility", "escalated": "Escalated",
 }
 # Each kind's (text, cell) colours, as the Reports page tints its first column.
 INSIGHT_TONES = {
     "campus": ("#991B1B", "#FEF2F2"), "escalated": ("#991B1B", "#FEF2F2"),
     "trade": ("#92400E", "#FFFBEB"), "staffing": ("#92400E", "#FFFBEB"),
-    "facility": ("#1E40AF", "#EFF6FF"),
+    "facility": ("#1E40AF", "#EFF6FF"), "technician": ("#5B21B6", "#F5F3FF"),
 }
 PLAIN_TONE = ("#374151", "#F9FAFB")
 
@@ -420,7 +427,7 @@ def _saved(wb) -> bytes:
 def build_workbook(data) -> bytes:
     """The workbook: a summary sheet, one sheet per breakdown, and every ticket."""
     if "overview" in data:
-        return _manager_workbook(data)
+        return _overview_workbook(data)
     from openpyxl import Workbook
 
     wb = Workbook()
@@ -466,8 +473,8 @@ def build_workbook(data) -> bytes:
     return _saved(wb)
 
 
-def _manager_workbook(data) -> bytes:
-    """The manager's workbook: their Reports page, a sheet per section, then every ticket."""
+def _overview_workbook(data) -> bytes:
+    """The workbook of a Reports page built on `overview`: a sheet per section, then every ticket."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
@@ -478,7 +485,7 @@ def _manager_workbook(data) -> bytes:
     ws.title = "Summary"
     _cover(ws, data)
     _header(ws, ["Figure", "Value", "Period before", "Note"])
-    for label, value, before, kind, note in manager_headline(ov):
+    for label, value, before, kind, note in report_headline(ov):
         _row(ws, [(label, "text"), (value, kind), (before, kind), (note, "text")])
     _append(ws, [])
     _append(ws, ["Needs your attention"])
@@ -496,15 +503,25 @@ def _manager_workbook(data) -> bytes:
                      facility_pattern(row), row["suggestion"], row["open_now"]])
     _widths(ws)
 
-    ws = wb.create_sheet("Campuses")
-    _header(ws, ["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
-                 "Technicians", "Jobs each"])
-    for row in ov["campuses"]:
-        _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
-                  (row["overdue"], "count"), (row["at_hod"], "count"), (row["resolution_sla_pct"], "pct"),
-                  (row["resolution_seconds_avg"], "duration"), (row["rating_avg"], "number"),
-                  (row["technicians"], "count"), (row["jobs_each"], "number")])
-    _widths(ws)
+    if "campuses" in ov:
+        ws = wb.create_sheet("Campuses")
+        _header(ws, ["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+                     "Technicians", "Jobs each"])
+        for row in ov["campuses"]:
+            _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
+                      (row["overdue"], "count"), (row["at_hod"], "count"), (row["resolution_sla_pct"], "pct"),
+                      (row["resolution_seconds_avg"], "duration"), (row["rating_avg"], "number"),
+                      (row["technicians"], "count"), (row["jobs_each"], "number")])
+        _widths(ws)
+
+    if "technicians" in ov:
+        ws = wb.create_sheet("Technicians")
+        _header(ws, ["Technician", "Jobs", "Open now", "On time", "Avg fix", "Rating"])
+        for row in ov["technicians"]:
+            _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
+                      (row["resolution_sla_pct"], "pct"), (row["resolution_seconds_avg"], "duration"),
+                      (row["rating_avg"], "number")])
+        _widths(ws)
 
     ws = wb.create_sheet("Trades")
     _header(ws, ["Trade", "Raised", "On time", "Rating"])
@@ -513,15 +530,16 @@ def _manager_workbook(data) -> bytes:
                   (row["rating_avg"], "number")])
     _widths(ws)
 
-    grid = ov["trade_by_campus"]
-    ws = wb.create_sheet("Trades by campus")
-    _header(ws, ["Campus", *grid["trades"], "All"])
-    for row in grid["rows"]:
-        _append(ws, [row["campus"], *(row["counts"].get(t, 0) for t in grid["trades"]), row["total"]])
-    _append(ws, ["All", *(grid["totals"].get(t, 0) for t in grid["trades"]), grid["total"]])
-    for cell in ws[ws.max_row]:
-        cell.font = Font(bold=True)
-    _widths(ws)
+    if "trade_by_campus" in ov:
+        grid = ov["trade_by_campus"]
+        ws = wb.create_sheet("Trades by campus")
+        _header(ws, ["Campus", *grid["trades"], "All"])
+        for row in grid["rows"]:
+            _append(ws, [row["campus"], *(row["counts"].get(t, 0) for t in grid["trades"]), row["total"]])
+        _append(ws, ["All", *(grid["totals"].get(t, 0) for t in grid["trades"]), grid["total"]])
+        for cell in ws[ws.max_row]:
+            cell.font = Font(bold=True)
+        _widths(ws)
 
     ws = wb.create_sheet("Tickets raised")
     _header(ws, ["From", "Raised", "Settled"])
@@ -686,12 +704,12 @@ def build_pdf(data) -> bytes:
             Spacer(1, 4 * mm),
         ])
 
-    def manager_story():
-        """The manager's Reports page, section by section."""
+    def overview_story():
+        """The Reports page built on `overview`, section by section."""
         ov = data["overview"]
         story = cover() + [Paragraph("Headline figures", h2)]
         cards = []
-        for label, value, before, kind, note in manager_headline(ov):
+        for label, value, before, kind, note in report_headline(ov):
             kind = "hm" if kind == "duration" else kind
             kind = "page_pct" if kind == "pct" else kind
             shown = f"{_cell(value, kind)} / 5" if label == "Rating" and value is not None else _cell(value, kind)
@@ -738,20 +756,36 @@ def build_pdf(data) -> bytes:
         ])]
 
         target = ov["target_pct"]
-        campuses = [
-            [row["label"], str(row["total"]), str(row["open_now"]), str(row["overdue"]), str(row["at_hod"]),
-             _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
-             _cell(row["rating_avg"], "number"), str(row["technicians"]), _cell(row["jobs_each"], "number")]
-            for row in ov["campuses"]
-        ]
-        story += [Spacer(1, 4 * mm), KeepTogether([
-            Paragraph("Campuses", h2),
-            Paragraph(f"Target: {target}% on time.", small),
-            table(["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
-                   "Technicians", "Jobs each"],
-                  campuses or [["No tickets"] + [""] * 9],
-                  [page_width * 0.13] + [page_width * 0.09] * 7 + [page_width * 0.12] * 2),
-        ])]
+        if "campuses" in ov:
+            campuses = [
+                [row["label"], str(row["total"]), str(row["open_now"]), str(row["overdue"]), str(row["at_hod"]),
+                 _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
+                 _cell(row["rating_avg"], "number"), str(row["technicians"]), _cell(row["jobs_each"], "number")]
+                for row in ov["campuses"]
+            ]
+            story += [Spacer(1, 4 * mm), KeepTogether([
+                Paragraph("Campuses", h2),
+                Paragraph(f"Target: {target}% on time.", small),
+                table(["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+                       "Technicians", "Jobs each"],
+                      campuses or [["No tickets"] + [""] * 9],
+                      [page_width * 0.13] + [page_width * 0.09] * 7 + [page_width * 0.12] * 2),
+            ])]
+
+        if "technicians" in ov:
+            people = [
+                [row["label"], str(row["total"]), str(row["open_now"]),
+                 _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
+                 _cell(row["rating_avg"], "number")]
+                for row in ov["technicians"]
+            ]
+            story += [Spacer(1, 4 * mm), KeepTogether([
+                Paragraph("Technicians", h2),
+                Paragraph(f"Jobs raised this period and assigned to each. Target: {target}% on time.", small),
+                table(["Technician", "Jobs", "Open now", "On time", "Avg fix", "Rating"],
+                      people or [["No technicians", "", "", "", "", ""]],
+                      [page_width * 0.35] + [page_width * 0.13] * 5),
+            ])]
 
         trades = [
             [row["label"], str(row["total"]), _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["rating_avg"], "number")]
@@ -763,17 +797,18 @@ def build_pdf(data) -> bytes:
                   [page_width * w for w in (0.4, 0.2, 0.2, 0.2)]),
         ])]
 
-        grid = ov["trade_by_campus"]
-        cells = [[row["campus"], *(str(row["counts"].get(t, 0)) for t in grid["trades"]), str(row["total"])]
-                 for row in grid["rows"]]
-        cells.append(["All", *(str(grid["totals"].get(t, 0)) for t in grid["trades"]), str(grid["total"])])
-        share = 0.8 / (len(grid["trades"]) + 1)
-        story += [Spacer(1, 4 * mm), KeepTogether([
-            Paragraph("Trades by campus", h2),
-            Paragraph("Tickets raised in each trade at each campus.", small),
-            table(["Campus", *grid["trades"], "All"], cells,
-                  [page_width * 0.2] + [page_width * share] * (len(grid["trades"]) + 1)),
-        ])]
+        if "trade_by_campus" in ov:
+            grid = ov["trade_by_campus"]
+            cells = [[row["campus"], *(str(row["counts"].get(t, 0)) for t in grid["trades"]), str(row["total"])]
+                     for row in grid["rows"]]
+            cells.append(["All", *(str(grid["totals"].get(t, 0)) for t in grid["trades"]), str(grid["total"])])
+            share = 0.8 / (len(grid["trades"]) + 1)
+            story += [Spacer(1, 4 * mm), KeepTogether([
+                Paragraph("Trades by campus", h2),
+                Paragraph("Tickets raised in each trade at each campus.", small),
+                table(["Campus", *grid["trades"], "All"], cells,
+                      [page_width * 0.2] + [page_width * share] * (len(grid["trades"]) + 1)),
+            ])]
 
         story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"])])]
 
@@ -879,7 +914,7 @@ def build_pdf(data) -> bytes:
         ]))
         return story
 
-    story = manager_story() if "overview" in data else section_story()
+    story = overview_story() if "overview" in data else section_story()
 
     def footer(canvas, doc):
         canvas.saveState()

@@ -1,4 +1,4 @@
-"""The manager's overview: who may read it, and what each section says."""
+"""The Reports overview of the manager, HOD and HOS: who may read it, and what each section says."""
 
 from datetime import timedelta
 
@@ -37,8 +37,8 @@ def _get(api, user, **params):
     return response.json()
 
 
-@pytest.mark.parametrize("role", ["admin_user", "nrb_hod", "nrb_hos", "nrb_electrician", "requester"])
-def test_only_the_manager_reads_the_overview(api, request, role):
+@pytest.mark.parametrize("role", ["admin_user", "nrb_electrician", "requester"])
+def test_only_the_manager_hod_and_hos_read_the_overview(api, request, role):
     api.force_authenticate(request.getfixturevalue(role))
     assert api.get(reverse(URL)).status_code == 403
 
@@ -290,3 +290,105 @@ def test_the_headline_reads_the_period_against_the_one_before(api, manager, requ
     assert (data["current"]["resolution_sla_pct"], data["previous"]["resolution_sla_pct"]) == (100.0, 0.0)
     assert set(data["previous"]) == {"resolution_sla_pct", "resolution_seconds_avg"}
     assert "change" not in data
+
+
+# ─── The HOS and HOD ────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_a_supervisor_reads_technicians_instead_of_the_campus_sections(
+    api, request, requester, msa_requester, nrb, msa, electrical, priorities, nrb_electrician, role
+):
+    factories.make_ticket(requester, nrb, electrical, status="in_progress", assigned_to=nrb_electrician)
+    factories.make_ticket(msa_requester, msa, electrical)
+
+    data = _get(api, request.getfixturevalue(role), days=30)
+
+    assert "campuses" not in data and "trade_by_campus" not in data
+    assert [r["key"] for r in data["technicians"]] == [nrb_electrician.pk]
+    assert data["current"]["total"] == 1
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_a_supervisor_cannot_narrow_to_a_campus(api, request, msa, role):
+    api.force_authenticate(request.getfixturevalue(role))
+    assert api.get(reverse(URL), {"campus": msa.pk}).status_code == 400
+
+
+def test_the_manager_reads_no_technician_table(api, manager):
+    assert "technicians" not in _get(api, manager, days=30)
+
+
+def _settled_by(technician, requester, campus, trade, late, days_ago=2):
+    ticket = _settle(factories.make_ticket(requester, campus, trade), late=late, days_ago=days_ago)
+    Ticket.objects.filter(pk=ticket.pk).update(assigned_to=technician)
+
+
+def test_the_insights_name_the_weakest_technician_for_a_supervisor(
+    api, nrb_hos, requester, nrb, electrical, priorities, nrb_electrician
+):
+    steady = factories.make_technician("steady", nrb, [electrical])
+    for n in range(overview.CELL_MIN_TICKETS):
+        _settled_by(nrb_electrician, requester, nrb, electrical, late=n < 6)
+        _settled_by(steady, requester, nrb, electrical, late=False)
+
+    texts = [i["text"] for i in _get(api, nrb_hos, days=30)["insights"] if i["kind"] == "technician"]
+
+    name = next(r["label"] for r in _get(api, nrb_hos, days=30)["technicians"] if r["key"] == nrb_electrician.pk)
+    assert texts == [f"{name}: 10 jobs, 40% on time, the lowest of 2 technicians."]
+
+
+def test_no_technician_is_named_when_everyone_meets_the_target(
+    api, nrb_hos, requester, nrb, electrical, priorities, nrb_electrician
+):
+    steady = factories.make_technician("steady", nrb, [electrical])
+    for _ in range(overview.CELL_MIN_TICKETS):
+        _settled_by(nrb_electrician, requester, nrb, electrical, late=False)
+        _settled_by(steady, requester, nrb, electrical, late=False)
+
+    assert not [i for i in _get(api, nrb_hos, days=30)["insights"] if i["kind"] == "technician"]
+
+
+def test_a_technician_with_few_jobs_is_not_named(api, nrb_hos, requester, nrb, electrical, priorities, nrb_electrician):
+    steady = factories.make_technician("steady", nrb, [electrical])
+    for n in range(overview.CELL_MIN_TICKETS - 1):
+        _settled_by(nrb_electrician, requester, nrb, electrical, late=True)
+    for _ in range(overview.CELL_MIN_TICKETS):
+        _settled_by(steady, requester, nrb, electrical, late=False)
+
+    assert not [i for i in _get(api, nrb_hos, days=30)["insights"] if i["kind"] == "technician"]
+
+
+def test_a_lone_technician_is_never_called_the_lowest(api, nrb_hos, requester, nrb, electrical, priorities, nrb_electrician):
+    # A colleague with no jobs is in the table but measures nothing, so is no comparison.
+    factories.make_technician("idle_one", nrb, [electrical])
+    for _ in range(overview.CELL_MIN_TICKETS):
+        _settled_by(nrb_electrician, requester, nrb, electrical, late=True)
+
+    assert not [i for i in _get(api, nrb_hos, days=30)["insights"] if i["kind"] == "technician"]
+
+
+def test_a_technician_exactly_on_target_is_not_named(api, nrb_hos, requester, nrb, electrical, priorities, nrb_electrician):
+    steady = factories.make_technician("steady", nrb, [electrical])
+    for n in range(12):  # 9 of 12 on time is the 75% target exactly
+        _settled_by(nrb_electrician, requester, nrb, electrical, late=n < 3)
+        _settled_by(steady, requester, nrb, electrical, late=False)
+
+    data = _get(api, nrb_hos, days=30)
+    mine = next(r for r in data["technicians"] if r["key"] == nrb_electrician.pk)
+
+    assert mine["resolution_sla_pct"] == data["target_pct"]
+    assert not [i for i in data["insights"] if i["kind"] == "technician"]
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_the_overview_lists_a_technician_with_no_work_this_period(
+    api, request, requester, nrb, electrical, priorities, nrb_electrician, role
+):
+    idle = factories.make_technician("idle_one", nrb, [electrical])
+    factories.make_ticket(requester, nrb, electrical, status="in_progress", assigned_to=nrb_electrician)
+
+    rows = {r["key"]: r for r in _get(api, request.getfixturevalue(role), days=30)["technicians"]}
+
+    assert set(rows) == {nrb_electrician.pk, idle.pk}
+    assert (rows[idle.pk]["total"], rows[idle.pk]["open_now"]) == (0, 0)

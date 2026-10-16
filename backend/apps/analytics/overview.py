@@ -1,13 +1,16 @@
 """
-The manager's overview: the figures `metrics` computes, arranged as the page
-reads them. Headline against the period before, what needs attention, facility
-health, campuses, trades, trades by campus, then volume over time and holds.
+The Reports page's overview: the figures `metrics` computes, arranged as the
+page reads them. Headline against the period before, what needs attention and
+facility health; then for the manager campuses, trades and trades by campus,
+and for an HOS or HOD their technicians and trades; then volume and holds.
 
 Nothing here counts tickets itself; every number comes from `metrics`. What
 lives here is the arrangement and the rules that pick what to point at, so the
 page and its downloads say the same things.
 """
 
+from apps.accounts.identity import display_name
+from apps.accounts.models import TechnicianTrade
 from apps.facilities.models import Facility
 from apps.org.models import Campus, ServiceItem, Trade
 
@@ -26,13 +29,24 @@ SUGGESTIONS = {
 REPEAT_AT = 3
 # How many buildings Facility Health lists.
 FACILITY_ROWS = 7
-# A trade-by-campus cell needs this many tickets before its on-time share is news.
+# A trade-by-campus cell, or a technician, needs this many tickets before its
+# on-time share is news.
 CELL_MIN_TICKETS = 10
 INSIGHT_ROWS = 5
+# Whose Reports page and dashboard this module arranges.
+OVERVIEW_ROLES = ("manager", "hod", "hos")
+# The roles whose reports cover every campus: they read the campus sections and
+# may narrow to one campus. An HOS or HOD reads their technicians instead.
+EVERY_CAMPUS_ROLES = ("admin", "manager")
 
 
-def build(qs, window: dict) -> dict:
-    """Every section of the overview, over `qs` (already scoped and narrowed)."""
+def build(qs, window: dict, role: str = "manager", campus_ids=None) -> dict:
+    """Every section of the overview, over `qs` (already scoped and narrowed).
+
+    `campus_ids` are the campuses an HOS or HOD runs, so a technician with no
+    work there this period still has a row.
+    """
+    every_campus = role in EVERY_CAMPUS_ROLES
     current = metrics.totals(qs, window)
     previous = metrics.totals(qs, metrics.previous_window(window))
 
@@ -42,14 +56,15 @@ def build(qs, window: dict) -> dict:
     live_campus_rows = metrics.snapshot(qs, ["campus"])
     live_by_campus = {row["key"]: row for row in live_campus_rows}
 
-    campus_ids = set(Campus.objects.values_list("id", flat=True))
+    all_campuses = set(Campus.objects.values_list("id", flat=True))
     campuses = _campuses(
-        campus_rows, live_campus_rows, metrics.technicians_by_campus(campus_ids)
+        campus_rows, live_campus_rows, metrics.technicians_by_campus(all_campuses)
     )
-    gaps = _staffing_gaps(qs, metrics.staffed_pairs(campus_ids))
+    gaps = _staffing_gaps(qs, metrics.staffed_pairs(all_campuses))
     facility_rows = facilities(qs, window)
+    technicians = None if every_campus else technician_table(qs, window, campus_ids)
 
-    return {
+    data = {
         "target_pct": metrics.SLA_TARGET_PCT,
         "current": current,
         "previous": {
@@ -58,17 +73,23 @@ def build(qs, window: dict) -> dict:
         },
         "unassigned_now": sum(row["unassigned"] for row in live_by_campus.values()),
         "at_hod_now": sum(row["at_hod"] for row in live_by_campus.values()),
-        "insights": _insights(campuses, campus_rows, trade_rows, cells, gaps, facility_rows, qs, window),
+        "insights": _insights(
+            campuses, campus_rows, trade_rows, cells, gaps, facility_rows, technicians, qs, window
+        ),
         "facilities": facility_rows,
-        "campuses": campuses,
         "trades": [
             {k: row[k] for k in ("key", "label", "total", "resolution_sla_pct", "rating_avg")}
             for row in trade_rows
         ],
-        "trade_by_campus": _trade_by_campus(cells),
         "trend": metrics.trend(qs, window, window["bucket"]),
         "bottlenecks": metrics.bottlenecks(qs),
     }
+    if every_campus:
+        data["campuses"] = campuses
+        data["trade_by_campus"] = _trade_by_campus(cells)
+    else:
+        data["technicians"] = technicians
+    return data
 
 
 def campus_table(qs, window: dict) -> list:
@@ -79,6 +100,35 @@ def campus_table(qs, window: dict) -> list:
         metrics.snapshot(qs, ["campus"]),
         metrics.technicians_by_campus(campus_ids),
     )
+
+
+def technician_table(qs, window: dict, campus_ids=None) -> list:
+    """One row per technician: jobs raised in the window and assigned to them,
+    how those went, and what they hold right now.
+
+    Everyone covering `campus_ids` has a row, work or none; so does anyone
+    else holding work in `qs`. Unassigned work belongs to nobody and is left out.
+    """
+    period = {row["key"]: row for row in metrics.group(qs, window, ["technician"])}
+    live = {row["key"]: row for row in metrics.snapshot(qs, ["technician"]) if row["key"] is not None}
+    names = {key: row["label"] for key, row in {**live, **period}.items()}
+    if campus_ids:
+        for link in TechnicianTrade.objects.filter(campus_id__in=campus_ids).select_related("user"):
+            names.setdefault(link.user_id, display_name(link.user))
+    rows = []
+    for key, label in names.items():
+        row, now = period.get(key, {}), live.get(key, {})
+        rows.append({
+            "key": key,
+            "label": label,
+            "total": row.get("total", 0),
+            "open_now": now.get("open_now", 0),
+            "overdue": now.get("overdue", 0),
+            "resolution_sla_pct": row.get("resolution_sla_pct"),
+            "resolution_seconds_avg": row.get("resolution_seconds_avg"),
+            "rating_avg": row.get("rating_avg"),
+        })
+    return sorted(rows, key=lambda r: r["label"])
 
 
 def _campuses(rows, live_rows, technicians) -> list:
@@ -212,13 +262,13 @@ def facilities(qs, window) -> list:
     return rows[:FACILITY_ROWS]
 
 
-def _insights(campuses, campus_rows, trade_rows, cells, gaps, facilities, qs, window) -> list:
+def _insights(campuses, campus_rows, trade_rows, cells, gaps, facilities, technicians, qs, window) -> list:
     """Up to INSIGHT_ROWS plain sentences, each about something below target.
 
-    Rules, in order: the weakest campus, the weakest trade-at-campus cell, a
-    trade with no technician, the building most in need, the campus with most
-    work at the HOD, and the weakest trade. A rule with nothing to point at
-    says nothing.
+    Rules, in order: the weakest campus, the weakest trade-at-campus cell, the
+    weakest technician (for an HOS or HOD), a trade with no technician, the
+    building most in need, the campus with most work at the HOD, and the
+    weakest trade. A rule with nothing to point at says nothing.
     """
     target = metrics.SLA_TARGET_PCT
     out = []
@@ -249,6 +299,19 @@ def _insights(campuses, campus_rows, trade_rows, cells, gaps, facilities, qs, wi
             "text": f"{cell['label_2']} at {cell['label']}: {cell['total']} tickets, "
                     f"{cell['resolution_sla_pct']:g}% on time.",
         })
+
+    measured_people = [
+        t for t in technicians or ()
+        if t["total"] >= CELL_MIN_TICKETS and t["resolution_sla_pct"] is not None
+    ]
+    if len(measured_people) >= 2:
+        person = min(measured_people, key=lambda t: (t["resolution_sla_pct"], t["label"]))
+        if person["resolution_sla_pct"] < target:
+            out.append({
+                "kind": "technician",
+                "text": f"{person['label']}: {person['total']} jobs, {person['resolution_sla_pct']:g}% on time, "
+                        f"the lowest of {len(measured_people)} technicians.",
+            })
 
     if gaps:
         gap = gaps[0]

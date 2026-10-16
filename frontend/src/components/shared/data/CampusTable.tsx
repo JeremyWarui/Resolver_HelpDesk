@@ -2,10 +2,8 @@ import type { ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { OverviewCampus } from '@/types';
+import { formatHours as hours, formatPct as pct } from '@/utils/format';
 import { cn } from '@/lib/utils';
-
-const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
-const hours = (s: number | null) => (s == null ? '—' : `${(s / 3600).toFixed(1)}h`);
 
 interface CampusTableProps {
   rows: OverviewCampus[] | null;

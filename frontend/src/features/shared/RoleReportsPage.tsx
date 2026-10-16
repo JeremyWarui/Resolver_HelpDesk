@@ -10,26 +10,21 @@ import RangeSelector from '@/components/shared/data/RangeSelector';
 import ReportDownloads from '@/components/shared/data/ReportDownloads';
 import LazyMount from '@/components/shared/LazyMount';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { RANGES, canGroupBy, type RangeKey } from '@/constants/analytics';
+import { RANGES, type RangeKey } from '@/constants/analytics';
 import { SCOPE_SUBTITLE } from '@/constants/roles';
-import type { UserRole } from '@/types';
-
-type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos';
 
 /**
- * The reporting page, one per role. Every figure comes from `/analytics/`,
+ * The admin's reporting page. Every figure comes from `/analytics/`,
  * scoped server-side. A breakdown is offered only where `role_config.py` would
  * serve it — asking for one it refuses returns the role's default instead, so
  * the table would be titled the wrong thing.
  */
-export default function RoleReportsPage({ role }: { role: ReportsRole }) {
+export default function RoleReportsPage({ role }: { role: 'admin' }) {
   const [range, setRange] = useState<RangeKey>('month');
   const { days, bucket } = RANGES[range];
   const params = { days, bucket };
 
   const { data, loading } = useAnalytics(params);
-  const can = (dimension: Parameters<typeof canGroupBy>[1]) =>
-    canGroupBy(role as UserRole, dimension);
 
   return (
     <div className="flex-1 overflow-y-auto bg-muted/30 p-3 sm:p-4 space-y-4">
@@ -71,29 +66,25 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
         />
       </div>
 
-      {can('campus') && (
-        <LazyMount minHeight={320}>
-          <BreakdownTable
-            dimension="campus"
-            title="Campus Performance"
-            description="Ticket load, speed and SLA per campus"
-            params={params}
-            columns={['total', 'open', 'settled', 'escalated', 'response_seconds_avg', 'resolution_seconds_avg', 'resolution_sla_pct', 'rating_avg']}
-          />
-        </LazyMount>
-      )}
+      <LazyMount minHeight={320}>
+        <BreakdownTable
+          dimension="campus"
+          title="Campus Performance"
+          description="Ticket load, speed and SLA per campus"
+          params={params}
+          columns={['total', 'open', 'settled', 'escalated', 'response_seconds_avg', 'resolution_seconds_avg', 'resolution_sla_pct', 'rating_avg']}
+        />
+      </LazyMount>
 
-      {can('technician') && (
-        <LazyMount minHeight={360}>
-          <BreakdownTable
-            dimension="technician"
-            title="Technician Performance"
-            description="Who is carrying the work"
-            params={params}
-            columns={['total', 'open', 'settled', 'missed', 'response_seconds_avg', 'resolution_seconds_avg', 'rating_avg']}
-          />
-        </LazyMount>
-      )}
+      <LazyMount minHeight={360}>
+        <BreakdownTable
+          dimension="technician"
+          title="Technician Performance"
+          description="Who is carrying the work"
+          params={params}
+          columns={['total', 'open', 'settled', 'missed', 'response_seconds_avg', 'resolution_seconds_avg', 'rating_avg']}
+        />
+      </LazyMount>
 
       <LazyMount minHeight={320}>
         <BreakdownTable
@@ -107,11 +98,9 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
 
       {/* Every building on the register, joined to the work raised against it —
           so a building nobody has reported is a row, not an absence. */}
-      {can('facility') && (
-        <LazyMount minHeight={420}>
-          <FacilityHealthTable params={params} />
-        </LazyMount>
-      )}
+      <LazyMount minHeight={420}>
+        <FacilityHealthTable params={params} />
+      </LazyMount>
 
       <LazyMount minHeight={220}>
         <HoldsPanel bottlenecks={data?.bottlenecks ?? null} loading={loading} />

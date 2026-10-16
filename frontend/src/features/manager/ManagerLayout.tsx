@@ -1,9 +1,9 @@
 import { lazy } from 'react';
 import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
-import ManagerDashboard from '@/features/manager/ManagerDashboard';
+import OverviewDashboard from '@/features/shared/OverviewDashboard';
 
 const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
-const ManagerReportsPage = lazy(() => import('@/features/manager/ManagerReportsPage'));
+const OverviewReportsPage = lazy(() => import('@/features/shared/OverviewReportsPage'));
 const TechniciansPage = lazy(() => import('@/features/shared/Technicians/TechniciansPage'));
 const FacilitiesPage = lazy(() => import('@/features/shared/Facilities/FacilitiesPage'));
 const CampusesPage = lazy(() => import('@/features/admin/CampusesPage'));
@@ -17,9 +17,9 @@ const ManagerLayout = () => (
   <RoleDashboardLayout
     role="manager"
     sections={({ onTicketSelect, onNavigate }) => ({
-      dashboard:   <ManagerDashboard onSeeMore={() => onNavigate('reports')} />,
+      dashboard:   <OverviewDashboard role="manager" onNavigate={onNavigate} />,
       tickets:     <RoleTicketsPage role="manager" />,
-      reports:     <ManagerReportsPage />,
+      reports:     <OverviewReportsPage role="manager" />,
       technicians: <TechniciansPage manage={false} />,
       facilities:  <FacilitiesPage manage={false} />,
       campuses:    <CampusesPage manage={false} />,

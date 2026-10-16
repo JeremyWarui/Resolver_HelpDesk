@@ -10,12 +10,13 @@ const CAMPUSES_KEY = ['campuses'] as const;
 const ROSTER_KEY = ['campus-roster'] as const;
 const FACILITIES_KEY = ['facilities'] as const;
 
-export const useCampuses = () => {
+export const useCampuses = (options?: { enabled?: boolean }) => {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<Campus[]>({
     queryKey: CAMPUSES_KEY,
     queryFn: () => campusesService.getCampuses(),
     staleTime: 10 * 60 * 1000,
+    enabled: options?.enabled ?? true,
   });
 
   return {

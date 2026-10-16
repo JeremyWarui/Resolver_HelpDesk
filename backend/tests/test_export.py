@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from openpyxl import load_workbook
 
 from apps.tickets.lifecycle import assign_ticket, rate_ticket, transition_status
@@ -100,10 +101,11 @@ def test_the_manager_workbook_is_their_reports_page_over_every_campus(api, manag
     assert _summary(wb)["Covers"] == "Every campus"
 
 
-def test_an_hos_workbook_is_their_campus_without_a_campus_sheet(api, nrb_hos, worked):
+def test_an_hos_workbook_is_their_reports_page_over_their_campus(api, nrb_hos, worked):
     wb = _workbook(api, nrb_hos)
-    assert "By campus" not in wb.sheetnames
-    assert "By technician" in wb.sheetnames
+    assert wb.sheetnames == [
+        "Summary", "Facility Health", "Technicians", "Trades", "Tickets raised", "Holds", "Tickets",
+    ]
     assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi"}
     assert _summary(wb)["Covers"] == "Nairobi campus"
 
@@ -127,7 +129,7 @@ def _pct(value):
     return None if value is None else pytest.approx(value / 100)
 
 
-@pytest.mark.parametrize("role", ["nrb_hod", "nrb_hos", "nrb_electrician"])
+@pytest.mark.parametrize("role", ["nrb_electrician"])
 def test_the_workbook_says_what_the_reports_page_says(api, request, worked, role):
     """Same role, same period, same numbers, for each kind of scope."""
     user = request.getfixturevalue(role)
@@ -350,6 +352,63 @@ def test_the_manager_workbook_says_what_their_reports_page_says(api, manager, wo
     _assert_workbook_matches(wb, page)
 
 
+def _busy_campus(requester, nrb, electrical, nrb_electrician):
+    """Live work for the Nairobi electrician, one job of it overdue, and an idle colleague."""
+    factories.make_ticket(requester, nrb, electrical, status="in_progress", assigned_to=nrb_electrician)
+    late = factories.make_ticket(requester, nrb, electrical, status="in_progress", assigned_to=nrb_electrician)
+    type(late).objects.filter(pk=late.pk).update(resolution_due_at=timezone.now() - timedelta(hours=1))
+    return factories.make_technician("idle_one", nrb, [electrical])
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_a_supervisors_workbook_says_what_their_reports_page_says(
+    api, request, worked, requester, nrb, electrical, nrb_electrician, role
+):
+    idle = _busy_campus(requester, nrb, electrical, nrb_electrician)
+    user = request.getfixturevalue(role)
+    api.force_authenticate(user)
+    page = api.get(reverse("analytics:overview"), {"days": 30}).json()
+    wb = _workbook(api, user, days=30)
+
+    _assert_workbook_matches(wb, page)
+    people = {r["Technician"]: r for r in _sheet(wb, "Technicians")}
+    mine = next(t for t in page["technicians"] if t["key"] == nrb_electrician.pk)
+    assert people[mine["label"]]["Open now"] == 2  # two live, one of them overdue
+    assert idle.pk in {t["key"] for t in page["technicians"]}
+    assert len(people) == len(page["technicians"]) == 2
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_a_supervisors_pdf_prints_the_pages_technician_figures(
+    api, monkeypatch, request, worked, requester, nrb, electrical, nrb_electrician, role
+):
+    _busy_campus(requester, nrb, electrical, nrb_electrician)
+    user = request.getfixturevalue(role)
+    api.force_authenticate(user)
+    page = api.get(reverse("analytics:overview"), {"days": 30}).json()
+    words = _pdf_words(api, user, monkeypatch, days=30)
+
+    # The name column is a paragraph; the table's own strings follow its last heading, row by row.
+    start = words.index("Avg fix", words.index("Technicians")) + 2
+    assert len(page["technicians"]) == 2
+    for n, t in enumerate(page["technicians"]):
+        row = words[start + 5 * n:start + 5 * (n + 1)]
+        assert row == [
+            str(t["total"]), str(t["open_now"]), _cell_text(t["resolution_sla_pct"]),
+            _hours_text(t["resolution_seconds_avg"]), _rating_text(t["rating_avg"]),
+        ]
+
+
+def _hours_text(seconds):
+    from decimal import ROUND_HALF_UP, Decimal
+
+    return "—" if seconds is None else f"{Decimal(seconds / 3600).quantize(Decimal('0.1'), ROUND_HALF_UP)}h"
+
+
+def _rating_text(value):
+    return "—" if value is None else f"{value:.2f}".rstrip("0").rstrip(".")
+
+
 def _seconds(value):
     return None if value is None else timedelta(seconds=value)
 
@@ -366,7 +425,19 @@ def _assert_workbook_matches(wb, page):
     assert headline["Open right now"]["Value"] == current["open_backlog"]
     assert headline["Rating"]["Value"] == current["rating_avg"]
 
-    campuses = {r["Campus"]: r for r in _sheet(wb, "Campuses")}
+    if "technicians" in page:
+        assert _sheet(wb, "Technicians") == [
+            {"Technician": t["label"], "Jobs": t["total"], "Open now": t["open_now"],
+             "On time": _pct(t["resolution_sla_pct"]), "Avg fix": _seconds(t["resolution_seconds_avg"]),
+             "Rating": t["rating_avg"]}
+            for t in page["technicians"]
+        ]
+        assert "Campuses" not in wb.sheetnames and "Trades by campus" not in wb.sheetnames
+        page = {**page, "campuses": [], "trade_by_campus": None}
+    else:
+        assert "Technicians" not in wb.sheetnames
+
+    campuses = {r["Campus"]: r for r in _sheet(wb, "Campuses")} if page["campuses"] else {}
     assert set(campuses) == {c["label"] for c in page["campuses"]}
     for c in page["campuses"]:
         assert campuses[c["label"]] == {
@@ -382,11 +453,13 @@ def _assert_workbook_matches(wb, page):
     ]
 
     grid = page["trade_by_campus"]
-    rows = {r["Campus"]: r for r in _sheet(wb, "Trades by campus")}
-    for row in grid["rows"]:
-        assert rows[row["campus"]] == {
-            "Campus": row["campus"], **{t: row["counts"].get(t, 0) for t in grid["trades"]}, "All": row["total"]}
-    assert rows["All"] == {"Campus": "All", **{t: grid["totals"].get(t, 0) for t in grid["trades"]}, "All": grid["total"]}
+    if grid:
+        rows = {r["Campus"]: r for r in _sheet(wb, "Trades by campus")}
+        for row in grid["rows"]:
+            assert rows[row["campus"]] == {
+                "Campus": row["campus"], **{t: row["counts"].get(t, 0) for t in grid["trades"]}, "All": row["total"]}
+        assert rows["All"] == {
+            "Campus": "All", **{t: grid["totals"].get(t, 0) for t in grid["trades"]}, "All": grid["total"]}
 
     assert [(r["Raised"], r["Settled"]) for r in _sheet(wb, "Tickets raised")] == [
         (p["total"], p["settled"]) for p in page["trend"]]
@@ -553,8 +626,19 @@ def test_a_two_trade_technicians_pdf_keeps_its_trade_sections(
     assert "Avg resp." not in words
 
 
-def test_a_supervisors_pdf_keeps_the_section_wording(api, monkeypatch, nrb_hos, worked):
-    words = _pdf_words(api, nrb_hos, monkeypatch)
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
+def test_a_supervisors_pdf_follows_their_reports_page(api, monkeypatch, request, worked, role):
+    words = _pdf_words(api, request.getfixturevalue(role), monkeypatch)
 
-    assert {"Status", "Trade", "Trade performance", "Settled", "Avg resp."} <= set(words)
-    assert "Where my jobs stand" not in words
+    order = ["Headline figures", "Needs your attention", "Facility Health", "Technicians", "Trades",
+             "Tickets raised", "On hold now, by reason"]
+    positions = [words.index(title) for title in order]
+    assert positions == sorted(positions)
+    for absent in ("Campuses", "Trades by campus", "Trade performance", "Where my jobs stand"):
+        assert absent not in words
+
+
+def test_the_admin_pdf_is_refused_and_their_workbook_keeps_its_breakdowns(api, admin_user, worked):
+    api.force_authenticate(admin_user)
+    assert api.get(reverse(PDF)).status_code == 403
+    assert "By technician" in _workbook(api, admin_user).sheetnames
