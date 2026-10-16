@@ -46,6 +46,14 @@ test('the figures cover the whole period, and Load more pages through it', async
   const rows = comments.getByRole('listitem');
   await expect(rows).toHaveCount(20);
   await expect(comments.getByText(`Showing 20 of ${summary.count}`, { exact: true })).toBeVisible();
+
+  // The page fits the window: the comments scroll inside their card, and the
+  // count and Load more stay in view below them.
+  expect(await page.locator('main').evaluate((m) => m.scrollHeight - m.clientHeight)).toBeLessThanOrEqual(1);
+  const list = comments.getByRole('list', { name: 'Ratings in the period' });
+  expect(await list.evaluate((l) => l.scrollHeight > l.clientHeight)).toBe(true);
+  await expect(comments.getByRole('button', { name: 'Load more' })).toBeInViewport();
+
   await comments.getByRole('button', { name: 'Load more' }).click();
   const shown = Math.min(summary.count, 40);
   await expect(rows).toHaveCount(shown);

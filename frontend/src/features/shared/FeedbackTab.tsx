@@ -55,7 +55,8 @@ function FeedbackTab({ role }: { role: UserRole }) {
   }
 
   return (
-    <div className="flex-1 min-h-full overflow-y-auto bg-muted/30 p-3 sm:p-4 space-y-4">
+    // On a wide screen the page fills the window and the comments scroll inside their card.
+    <div className="flex h-full flex-col gap-4 overflow-y-auto bg-muted/30 p-3 sm:p-4 lg:overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           {SUBTITLES[role] ?? 'Submitted ratings and comments'}
@@ -63,7 +64,7 @@ function FeedbackTab({ role }: { role: UserRole }) {
         <RangeSelector value={range} onChange={pickRange} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start">
+      <div className="grid grid-cols-1 items-start gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <Card aria-label="Ratings" className="lg:sticky lg:top-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Ratings</CardTitle>
@@ -124,7 +125,7 @@ function FeedbackTab({ role }: { role: UserRole }) {
           </CardContent>
         </Card>
 
-        <Card aria-label="Comments">
+        <Card aria-label="Comments" className="flex flex-col lg:h-full lg:min-h-0 lg:self-stretch">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Comments</CardTitle>
             <CardDescription>
@@ -142,7 +143,7 @@ function FeedbackTab({ role }: { role: UserRole }) {
               </Button>
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-1 flex-col lg:min-h-0">
             {list.error ? (
               <p className="py-12 text-center text-sm text-destructive">Failed to load the comments.</p>
             ) : list.loading ? (
@@ -161,12 +162,12 @@ function FeedbackTab({ role }: { role: UserRole }) {
               </div>
             ) : (
               <>
-                <ul className="divide-y">
+                <ul aria-label="Ratings in the period" className="divide-y lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
                   {list.feedback.map((row) => (
                     <FeedbackItem key={row.id} row={row} role={role} />
                   ))}
                 </ul>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t pt-3">
                   <p className="text-xs text-gray-500">
                     Showing {list.feedback.length} of {list.total}
                   </p>
