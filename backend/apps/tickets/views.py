@@ -63,6 +63,7 @@ from apps.tickets.scope import (
     ticket_base_qs,
 )
 from apps.tickets.sla import q_overdue
+from apps.analytics import metrics
 from apps.common.pagination import AppendOnlyFeedPagination
 from apps.common.roles import TICKET_SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import emit_ticket_created, emit_comment_added
@@ -638,29 +639,52 @@ class TicketAttachmentDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class TicketFeedbackListView(generics.ListAPIView):
-    """GET /tickets/feedback/ — ratings over the caller's reporting scope.
+FEEDBACK_ROLES = ("admin", "manager", "hod", "hos", "technician")
+
+
+def rated_in_period(request):
+    """Tickets the caller reports on that were rated in the requested period.
 
     A technician reads the ratings on jobs assigned to them; a supervisor
     their campus; the manager and admin every campus. A requester has none.
+    The period is the Reports page's (`days`, or `date_from` and `date_to`),
+    measured on when the rating was given. A client paging through a list
+    sends a fixed `date_from` and `date_to`, so the window cannot move
+    between pages.
+    """
+    role = resolve_role(request)
+    if role not in FEEDBACK_ROLES:
+        raise PermissionDenied("Ratings are listed for staff only.")
+    qs = reporting_ticket_qs(request.user, role).filter(rated_at__isnull=False)
+    return metrics.rated_in(qs, metrics.resolve_window(request.query_params))
+
+
+class TicketFeedbackListView(generics.ListAPIView):
+    """GET /tickets/feedback/: the period's ratings, newest first, 20 a page.
+
+    `?rating=1..5` narrows to one star; anything else is a 400.
     """
 
     permission_classes = [IsAuthenticated]
     serializer_class = TicketFeedbackRowSerializer
-    ROLES = ("admin", "manager", "hod", "hos", "technician")
 
     def get_queryset(self):
-        """Rated tickets the caller reports on, newest rating first."""
-        role = resolve_role(self.request)
-        if role not in self.ROLES:
-            raise PermissionDenied("Ratings are listed for staff only.")
-        qs = reporting_ticket_qs(self.request.user, role).filter(rated_at__isnull=False)
+        qs = rated_in_period(self.request)
+        rating = self.request.query_params.get("rating")
+        if rating is not None:
+            if rating not in {str(s) for s in metrics.STARS}:
+                raise drf_serializers.ValidationError({"rating": "Must be a whole number from 1 to 5."})
+            qs = qs.filter(rating=int(rating))
+        return qs.order_by("-rated_at", "-id")
 
-        params = self.request.query_params
-        if params.get("rating"):
-            qs = qs.filter(rating=params["rating"])
-        if params.get("date_from"):
-            qs = qs.filter(rated_at__gte=params["date_from"])
-        if params.get("date_to"):
-            qs = qs.filter(rated_at__lte=params["date_to"])
-        return qs.order_by("-rated_at")
+
+class TicketFeedbackSummaryView(APIView):
+    """GET /tickets/feedback/summary/: the period's figures, over every rating in it.
+
+    `?rating` is ignored: the figures are always the whole period's.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(metrics.ratings(rated_in_period(request)))

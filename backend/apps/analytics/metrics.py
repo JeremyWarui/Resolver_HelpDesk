@@ -135,6 +135,32 @@ def raised_in(qs, window):
     return qs.filter(created_at__gte=window["from"], created_at__lte=window["to"])
 
 
+def rated_in(qs, window):
+    """Narrow to the tickets rated inside the window."""
+    return qs.filter(rated_at__gte=window["from"], rated_at__lte=window["to"])
+
+
+STARS = (5, 4, 3, 2, 1)
+
+
+def ratings(qs) -> dict:
+    """How a set of tickets was rated: how many, the average, how many with a
+    comment, and how many at each star from five down."""
+    rated = qs.filter(rating__isnull=False).order_by()
+    figures = rated.aggregate(
+        count=Count("id"),
+        average=Avg("rating"),
+        commented=Count("id", filter=~Q(rating_comment="")),
+    )
+    by_star = dict(rated.values_list("rating").annotate(n=Count("id")).order_by())
+    return {
+        "count": figures["count"],
+        "average": round(figures["average"], 2) if figures["average"] is not None else None,
+        "commented": figures["commented"],
+        "stars": [{"stars": s, "count": by_star.get(s, 0)} for s in STARS],
+    }
+
+
 # ─── The figures ────────────────────────────────────────────────────────────
 
 

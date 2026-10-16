@@ -2,10 +2,12 @@
 // lists its filters are built from. All three come off `lib/api/tickets`, and
 // every ticket table uses at least two of them.
 
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   getTickets,
   getFeedback,
+  getFeedbackSummary,
+  type FeedbackWindow,
   getTicketFilterOptions,
   type TicketFeedbackRow,
   type TicketFilterOption,
@@ -39,21 +41,36 @@ export const useTickets = (params?: TicketsParams, skip = false): UseTicketsResu
   };
 };
 
-/** Role-scoped feedback list. No scope params: the server derives breadth from
- *  the JWT role — a technician gets their own, everyone above gets their whole
- *  scope. */
-export const useFeedback = () => {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['tickets', 'feedback'],
-    queryFn: getFeedback,
+/** The window's ratings, a page at a time. Scope comes from the server: a
+ *  technician gets their own jobs, everyone above their whole scope. */
+export const useFeedback = (window: FeedbackWindow, rating: number | null) => {
+  const result = useInfiniteQuery({
+    queryKey: ['tickets', 'feedback', window.date_from, window.date_to, rating],
+    queryFn: ({ pageParam }) => getFeedback(window, rating, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (last, pages) => (last.next ? pages.length + 1 : undefined),
     staleTime: 60 * 1000,
   });
 
   return {
-    feedback: (data?.results ?? []) as TicketFeedbackRow[],
-    loading: isLoading,
-    error: error as Error | null,
+    feedback: (result.data?.pages.flatMap((p) => p.results) ?? []) as TicketFeedbackRow[],
+    total: result.data?.pages[0]?.count ?? 0,
+    loading: result.isLoading,
+    error: result.error as Error | null,
+    hasMore: result.hasNextPage,
+    loadingMore: result.isFetchingNextPage,
+    loadMore: () => result.fetchNextPage(),
   };
+};
+
+/** The window's figures, over every rating in it. */
+export const useFeedbackSummary = (window: FeedbackWindow) => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['tickets', 'feedback', 'summary', window.date_from, window.date_to],
+    queryFn: () => getFeedbackSummary(window),
+    staleTime: 60 * 1000,
+  });
+  return { summary: data ?? null, loading: isLoading, error: error as Error | null };
 };
 
 /** The option lists for the tickets-table filters, scoped server-side — so a

@@ -273,8 +273,37 @@ export interface TicketFeedbackResponse {
   results: TicketFeedbackRow[];
 }
 
-export async function getFeedback(): Promise<TicketFeedbackResponse> {
-  const { data } = await apiClient.get<TicketFeedbackResponse>('/tickets/feedback/');
+/** A fixed span of rating dates, as ISO strings. Fixed so pages cannot drift. */
+export interface FeedbackWindow {
+  date_from: string;
+  date_to: string;
+}
+
+/** One page of the window's ratings, newest first; `rating` narrows to one star. */
+export async function getFeedback(
+  window: FeedbackWindow,
+  rating: number | null,
+  page = 1,
+): Promise<TicketFeedbackResponse> {
+  const { data } = await apiClient.get<TicketFeedbackResponse>('/tickets/feedback/', {
+    params: { ...window, page, ...(rating ? { rating } : {}) },
+  });
+  return data;
+}
+
+/** The period's figures, over every rating in it. */
+export interface FeedbackSummary {
+  count: number;
+  average: number | null;
+  commented: number;
+  /** Five stars down to one, always all five. */
+  stars: { stars: number; count: number }[];
+}
+
+export async function getFeedbackSummary(window: FeedbackWindow): Promise<FeedbackSummary> {
+  const { data } = await apiClient.get<FeedbackSummary>('/tickets/feedback/summary/', {
+    params: window,
+  });
   return data;
 }
 
