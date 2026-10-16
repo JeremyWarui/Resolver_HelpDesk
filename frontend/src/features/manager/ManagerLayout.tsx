@@ -1,6 +1,6 @@
 import { lazy } from 'react';
 import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
-import RoleDashboardView from '@/features/shared/RoleDashboardView';
+import ManagerDashboard from '@/features/manager/ManagerDashboard';
 
 const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
 const ManagerReportsPage = lazy(() => import('@/features/manager/ManagerReportsPage'));
@@ -17,7 +17,7 @@ const ManagerLayout = () => (
   <RoleDashboardLayout
     role="manager"
     sections={({ onTicketSelect }) => ({
-      dashboard:   <RoleDashboardView role="manager" />,
+      dashboard:   <ManagerDashboard />,
       tickets:     <RoleTicketsPage role="manager" />,
       reports:     <ManagerReportsPage />,
       technicians: <TechniciansPage manage={false} />,

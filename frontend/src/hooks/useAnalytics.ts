@@ -5,9 +5,9 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getAnalytics, getOverview } from '@/lib/api/analytics';
+import { getAnalytics, getDashboard, getOverview } from '@/lib/api/analytics';
 import { useFacilities } from '@/hooks/useOrganizations';
-import type { AnalyticsEnvelope, AnalyticsParams, Facility, OverviewEnvelope, OverviewParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, Facility, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** The reporting envelope for the signed-in user. `group_by` is checked server-side. */
 export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boolean }) {
@@ -26,6 +26,17 @@ export function useOverview(params: OverviewParams) {
     queryKey: ['analytics', 'overview', params.days, params.bucket, params.campus ?? null],
     queryFn: () => getOverview(params),
     staleTime: 2 * 60 * 1000,
+  });
+  return { data: data ?? null, loading: isLoading, error };
+}
+
+/** The manager's dashboard, refreshed every minute while it is open. */
+export function useManagerDashboard() {
+  const { data, isLoading, error } = useQuery<DashboardEnvelope>({
+    queryKey: ['analytics', 'dashboard'],
+    queryFn: getDashboard,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
   return { data: data ?? null, loading: isLoading, error };
 }

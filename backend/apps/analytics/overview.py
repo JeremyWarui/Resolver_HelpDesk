@@ -89,6 +89,16 @@ def _hours(seconds):
     return seconds / 3600 if seconds is not None else None
 
 
+def campus_table(qs, window: dict) -> list:
+    """The Campuses table over `qs` and `window`, as Reports and the dashboard show it."""
+    campus_ids = set(Campus.objects.values_list("id", flat=True))
+    return _campuses(
+        metrics.group(qs, window, ["campus"]),
+        metrics.snapshot(qs, ["campus"]),
+        metrics.technicians_by_campus(campus_ids),
+    )
+
+
 def _campuses(rows, live_rows, technicians) -> list:
     """One row per campus with work raised in the period or live now.
 

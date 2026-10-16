@@ -19,7 +19,7 @@ from apps.org.models import Campus
 from apps.tickets.models import Ticket
 from apps.tickets.scope import reporting_ticket_qs
 
-from . import export, overview
+from . import dashboard, export, overview
 from .metrics import bottlenecks, group, resolve_window, totals, trend
 from .role_config import resolve_group_by
 
@@ -143,3 +143,15 @@ class OverviewView(ReportingView):
         data["range"] = {"from": window["from"].isoformat(), "to": window["to"].isoformat()}
         data["campus"] = {"id": campus.pk, "name": campus.name} if campus else None
         return Response(data)
+
+
+class DashboardView(ReportingView):
+    """GET /analytics/dashboard/: the manager's dashboard, right now and this week."""
+
+    ROLES = ("manager",)
+
+    def get(self, request):
+        role, qs = scoped_for(request)
+        if role not in self.ROLES:
+            raise PermissionDenied("The dashboard overview is the manager's.")
+        return Response(dashboard.build(qs))

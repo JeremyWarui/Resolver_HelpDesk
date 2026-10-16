@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricCardRow, type StatConfig } from '@/components/shared/data/MetricCard';
 import { TicketVolumeChart } from '@/components/shared/data/TicketVolumeChart';
+import CampusTable from '@/components/shared/data/CampusTable';
 import HoldsPanel from '@/components/shared/data/HoldsPanel';
 import RangeSelector from '@/components/shared/data/RangeSelector';
 import ReportDownloads from '@/components/shared/data/ReportDownloads';
@@ -25,7 +26,6 @@ const KIND_LABEL: Record<OverviewInsight['kind'], { text: string; tone: string }
 };
 
 const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
-const hours = (s: number | null) => (s == null ? '—' : `${(s / 3600).toFixed(1)}h`);
 
 /**
  * The manager's report: how the period went against the one before, what
@@ -71,7 +71,12 @@ export default function ManagerReportsPage() {
           <MetricCardRow stats={headline(data)} loading={loading} />
           <Attention insights={data?.insights ?? null} />
           <FacilityHealth data={data} />
-          <Campuses data={data} onPick={setCampus} />
+          <CampusTable
+            rows={data?.campuses ?? null}
+            target={data?.target_pct}
+            onPick={setCampus}
+            description={<>Pick a campus to read this page for it alone.{data?.target_pct != null && ` Target: ${data.target_pct}% on time.`}</>}
+          />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
             <Trades data={data} />
             <TradesByCampus data={data} />
@@ -211,67 +216,6 @@ function FacilityHealth({ data }: { data: OverviewEnvelope | null }) {
                       </span>
                     </td>
                     <td className="p-2 text-right">{row.open_now}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function Campuses({ data, onPick }: { data: OverviewEnvelope | null; onPick: (id: number) => void }) {
-  const rows = data?.campuses ?? null;
-  const target = data?.target_pct;
-  return (
-    <Card aria-label="Campuses">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Campuses</CardTitle>
-        <CardDescription>
-          Pick a campus to read this page for it alone.{target != null && ` Target: ${target}% on time.`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {rows == null ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm tabular-nums">
-              <thead>
-                <tr className="text-right text-sm text-muted-foreground">
-                  <th className="p-2 text-left font-medium">Campus</th>
-                  <th className="p-2 font-medium">Raised</th>
-                  <th className="p-2 font-medium">Open now</th>
-                  <th className="p-2 font-medium">Overdue</th>
-                  <th className="p-2 font-medium">With HOD</th>
-                  <th className="p-2 font-medium">On time</th>
-                  <th className="p-2 font-medium">Avg fix</th>
-                  <th className="p-2 font-medium">Rating</th>
-                  <th className="p-2 font-medium">Technicians</th>
-                  <th className="p-2 font-medium">Jobs each</th>
-                </tr>
-              </thead>
-              <tbody className="text-right">
-                {rows.map((row) => (
-                  <tr key={row.key} className="border-t">
-                    <th scope="row" className="p-2 text-left font-medium">
-                      <button type="button" className="text-primary hover:underline" onClick={() => onPick(row.key)}>
-                        {row.label}
-                      </button>
-                    </th>
-                    <td className="p-2">{row.total}</td>
-                    <td className="p-2">{row.open_now}</td>
-                    <td className="p-2">{row.overdue}</td>
-                    <td className="p-2">{row.at_hod}</td>
-                    <td className={cn('p-2 font-semibold', target != null && row.resolution_sla_pct != null && row.resolution_sla_pct < target && 'text-red-700')}>
-                      {pct(row.resolution_sla_pct)}
-                    </td>
-                    <td className="p-2">{hours(row.resolution_seconds_avg)}</td>
-                    <td className="p-2">{row.rating_avg ?? '—'}</td>
-                    <td className="p-2">{row.technicians}</td>
-                    <td className="p-2">{row.jobs_each ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

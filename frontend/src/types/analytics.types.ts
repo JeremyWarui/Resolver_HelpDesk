@@ -142,3 +142,23 @@ export interface OverviewEnvelope {
   trend: TrendPoint[];
   bottlenecks: Bottleneck[];
 }
+
+// The shape of GET /api/v1/analytics/dashboard/ — the manager's dashboard.
+
+type WeekFigures = Pick<Totals, 'total' | 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'rating_count'>;
+
+export interface DashboardEnvelope {
+  /** The last seven Kenyan days, today included. */
+  week: { from: string; to: string };
+  /** Live work right now. */
+  live: { open_now: number; waiting: number; with_technician: number; on_hold: number; overdue: number; at_hod: number };
+  this_week: WeekFigures;
+  last_week: WeekFigures;
+  /** One row per day of the week: raised that day, and resolved that day whenever raised. */
+  days: { day: string; raised: number; resolved: number }[];
+  target_pct: number;
+  /** The Reports page's Campuses table, over the week. */
+  campus_table: OverviewCampus[];
+  /** Live work by stage, for every campus, calm ones included. */
+  campuses: { key: number; label: string; open_now: number; waiting: number; with_technician: number; on_hold: number }[];
+}

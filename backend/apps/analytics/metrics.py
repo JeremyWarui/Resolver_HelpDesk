@@ -379,6 +379,9 @@ def snapshot(qs, dimensions) -> list:
         .values(**keys)
         .annotate(
             open_now=Count("id"),
+            waiting=Count("id", filter=Q(status="open")),
+            with_technician=Count("id", filter=Q(status__in=("assigned", "in_progress"))),
+            on_hold=Count("id", filter=Q(status="pending")),
             overdue=Count("id", filter=q_overdue()),
             at_hod=Count("id", filter=Q(current_level="hod")),
             unassigned=Count("id", filter=Q(assigned_to__isnull=True)),
@@ -410,6 +413,22 @@ def staffed_pairs(campus_ids) -> set:
         TechnicianTrade.objects.filter(campus_id__in=campus_ids)
         .values_list("campus_id", "trade_id")
         .distinct()
+    )
+
+
+def resolved_by_day(qs, window: dict) -> list:
+    """How many tickets were resolved on each Kenyan day of the window.
+
+    By when the work was resolved, whenever it was raised: `trend` counts what
+    was raised in a day; this counts what was finished in it.
+    """
+    return list(
+        qs.filter(resolved_at__gte=window["from"], resolved_at__lte=window["to"])
+        .annotate(day=TruncDay("resolved_at", tzinfo=REPORT_TZ))
+        .values("day")
+        .annotate(total=Count("id"))
+        # Clears the scope queryset's ordering; see `group`.
+        .order_by("day")
     )
 
 
