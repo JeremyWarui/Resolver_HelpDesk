@@ -74,8 +74,20 @@ REST_FRAMEWORK = {
     # Views name a pagination class only to deviate from this.
     "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.DefaultPagination",
     "PAGE_SIZE": 20,
+    # How many proxies sit in front of Django. The rate limits read the client's
+    # address from X-Forwarded-For only this many hops back, so a client cannot
+    # pick its own address by sending the header. 0 for runserver; 1 behind IIS
+    # or nginx.
+    "NUM_PROXIES": int(os.environ.get("NUM_PROXIES", "0")),
     # Only views that name a scope are limited.
-    "DEFAULT_THROTTLE_RATES": {"system_feedback": "10/hour"},
+    "DEFAULT_THROTTLE_RATES": {
+        "system_feedback": "10/hour",
+        # Per address, so one inbox cannot be flooded; per IP, so one campus
+        # behind one address can still reset as many as it needs.
+        "password_reset_email": "3/hour",
+        "password_reset_ip": "20/hour",
+        "password_reset_confirm": "20/hour",
+    },
 }
 
 
@@ -164,9 +176,35 @@ TIME_ZONE = "UTC"
 # page reads it to say when a run is overdue.
 ESCALATION_INTERVAL_MINUTES = int(os.environ.get("ESCALATION_INTERVAL_MINUTES", "15"))
 
-# Where mail goes once email is wired up; empty means it is not set up, which
-# the admin's dashboard says.
+# Mail goes out over SMTP once EMAIL_HOST is set; until then each message is
+# printed to the console, and the admin's dashboard says email is not set up.
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+# Without a host, development prints each message; production sends nothing,
+# so a reset link never lands in a server log.
+EMAIL_DELIVERY_BACKEND = os.environ.get("EMAIL_BACKEND") or (
+    "django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST
+    else "django.core.mail.backends.console.EmailBackend" if DEBUG
+    else "django.core.mail.backends.dummy.EmailBackend"
+)
+# Set to one address and every email goes there instead of to the people it
+# names, so a test system holding real-looking addresses mails nobody else.
+EMAIL_SEND_ONLY_TO = os.environ.get("EMAIL_SEND_ONLY_TO", "")
+EMAIL_BACKEND = "apps.common.mail.SendOnlyToBackend" if EMAIL_SEND_ONLY_TO else EMAIL_DELIVERY_BACKEND
+# Where the file backend writes each message, when EMAIL_BACKEND names it.
+EMAIL_FILE_PATH = os.environ.get("EMAIL_FILE_PATH", str(BASE_DIR / "sent_mail"))
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", f"Resolver <{EMAIL_HOST_USER or 'resolver@localhost'}>"
+)
+
+# The web app's address, for links in emails.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+# How long a password reset link works, in seconds.
+PASSWORD_RESET_TIMEOUT = 60 * 60
 
 USE_I18N = True
 
@@ -245,6 +283,9 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": False,
+    # Each token carries a hash of the password, so changing it ends every
+    # session at once, access tokens included.
+    "CHECK_REVOKE_TOKEN": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "USER_ID_FIELD": "id",

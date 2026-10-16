@@ -4,6 +4,8 @@ import { Toaster } from "./components/ui/sonner";
 import { HomeRedirect, ProtectedRoute } from "./app/auth/ProtectedRoute";
 import { LoginForm } from "./app/auth/LoginForm";
 import { RegisterForm } from "./app/auth/RegisterForm";
+import { ForgotPasswordForm } from "./app/auth/ForgotPasswordForm";
+import { ResetPasswordForm } from "./app/auth/ResetPasswordForm";
 import { DashboardShell } from "./app/dashboard/DashboardShell";
 import { NotFoundPage } from "./app/NotFoundPage";
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -34,6 +36,8 @@ const App = () => {
           {/* Public Authentication Routes */}
           <Route path="/login" element={<LoginForm />} />
           <Route path="/register" element={<RegisterForm />} />
+          <Route path="/forgot-password" element={<ForgotPasswordForm />} />
+          <Route path="/reset-password" element={<ResetPasswordForm />} />
 
           {/* Protected Dashboard Routes — DashboardShell wires WebSocket for all roles */}
           <Route element={<DashboardShell />}>

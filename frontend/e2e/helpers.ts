@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 
 // Accounts created by `backend/manage.py seed`. Every seeded user shares one
@@ -88,4 +91,29 @@ export async function openTicketByNumber(page: Page, ticketNo: string): Promise<
 /** Unique suffix so a failed earlier run's leftovers never collide. */
 export function uniqueSuffix(): string {
   return Date.now().toString(36);
+}
+
+/** Where e2e/backend.mjs has Django write each email, one file per send. */
+const MAIL_DIR = join(tmpdir(), 'resolver-e2e-mail');
+
+/** The newest password reset link emailed to `email`, or null if none was sent. */
+export function latestResetLink(email: string): string | null {
+  let files: string[];
+  try {
+    files = readdirSync(MAIL_DIR).map((f) => join(MAIL_DIR, f));
+  } catch {
+    return null;
+  }
+  files.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+  for (const file of files) {
+    for (const raw of readFileSync(file, 'utf-8').split(/^-{70,}$/m).reverse()) {
+      if (!new RegExp(`^To: ${email}$`, 'mi').test(raw)) continue;
+      // Decoded as a mail client would: the body is quoted-printable, so `=` is
+      // written `=3D` and a long link wraps with a trailing `=`.
+      const message = raw.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      const link = message.match(/https?:\/\/\S+\/reset-password\?uid=[\w-]+&token=[\w-]+/);
+      if (link) return link[0];
+    }
+  }
+  return null;
 }

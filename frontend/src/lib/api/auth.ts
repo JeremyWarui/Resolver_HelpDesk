@@ -193,3 +193,15 @@ export function clearSession(): void {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
 }
+
+/** Ask for a reset link. The answer is the same whether or not the address has an account. */
+export async function requestPasswordReset(email: string): Promise<string> {
+  const { data } = await apiClient.post<{ detail: string }>('/auth/password-reset/', { email });
+  return data.detail;
+}
+
+/** Set a new password from the uid and token in a reset link. */
+export async function confirmPasswordReset(payload: { uid: string; token: string; password: string }): Promise<string> {
+  const { data } = await apiClient.post<{ detail: string }>('/auth/password-reset/confirm/', payload);
+  return data.detail;
+}

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -157,13 +157,9 @@ export function LoginForm() {
           </Form>
 
           <div className="text-center">
-            <button
-              type="button"
-              onClick={() => toast.info('Contact your administrator to reset your password.')}
-              className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
-            >
+            <Link to="/forgot-password" className="text-sm font-semibold text-foreground underline-offset-4 hover:underline">
               Forgot your password?
-            </button>
+            </Link>
           </div>
 
           <div className="pt-4">

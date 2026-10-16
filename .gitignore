@@ -34,3 +34,6 @@ playwright-report/
 
 # Visual Studio
 .vs/
+
+# Emails written by the file mail backend
+backend/sent_mail/

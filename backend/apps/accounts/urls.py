@@ -18,6 +18,8 @@ from apps.accounts.views import (
     jwt_logout,
     jwt_refresh,
     jwt_register,
+    password_reset_confirm,
+    password_reset_request,
     public_campus_list,
 )
 
@@ -28,6 +30,8 @@ urlpatterns = [
     path("auth/refresh/", jwt_refresh, name="auth-refresh"),
     path("auth/logout/", jwt_logout, name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
+    path("auth/password-reset/", password_reset_request, name="auth-password-reset"),
+    path("auth/password-reset/confirm/", password_reset_confirm, name="auth-password-reset-confirm"),
     # `org` serves the campus; the posts behind it are read here.
     path("campus-roster/", CampusRosterView.as_view(), name="campus-roster"),
     path("users/", UserListCreateView.as_view(), name="user-list"),

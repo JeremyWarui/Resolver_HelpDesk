@@ -9,18 +9,21 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.identity import display_name
 from apps.accounts.models import RoleAssignment, TechnicianTrade
+from apps.accounts.password_reset import ResetRefused, normalise, reset_password, send_reset_link
 from apps.accounts.scope import visible_campuses
 from apps.accounts.serializers import (
     CampusRosterSerializer,
@@ -396,3 +399,63 @@ class ScopedTechnicianRosterView(APIView):
             row["campus_ids"] = sorted(campuses[row["id"]])
 
         return Response(sorted(rows, key=lambda row: row["full_name"].lower()))
+
+
+def _field(request, key):
+    """A text field from the body, or None when the body is not an object or the value is not text."""
+    data = request.data if isinstance(request.data, dict) else {}
+    value = data.get(key)
+    return value if isinstance(value, str) else None
+
+
+class _ResetByEmailThrottle(SimpleRateThrottle):
+    """Counts reset requests per address, in the form `send_reset_link` matches it by."""
+
+    scope = "password_reset_email"
+
+    def get_cache_key(self, request, view):
+        email = normalise(_field(request, "email"))
+        return self.cache_format % {"scope": self.scope, "ident": email} if email else None
+
+
+class _ResetByIpThrottle(SimpleRateThrottle):
+    scope = "password_reset_ip"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
+class _ResetConfirmThrottle(_ResetByIpThrottle):
+    scope = "password_reset_confirm"
+
+
+RESET_SENT = "If an account uses that address, a link to reset its password is on its way."
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([_ResetByIpThrottle, _ResetByEmailThrottle])
+def password_reset_request(request):
+    """POST /auth/password-reset/ — {email}. The same answer whether or not the account exists."""
+    email = (_field(request, "email") or "").strip()
+    if not email:
+        return Response({"email": ["Enter your email address."]}, status=status.HTTP_400_BAD_REQUEST)
+    send_reset_link(email)
+    return Response({"detail": RESET_SENT})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([_ResetConfirmThrottle])
+def password_reset_confirm(request):
+    """POST /auth/password-reset/confirm/ — {uid, token, password} sets the new password."""
+    try:
+        reset_password(_field(request, "uid"), _field(request, "token"), _field(request, "password") or "")
+    except ResetRefused:
+        return Response(
+            {"token": ["This link has expired or has already been used. Ask for a new one."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except DjangoValidationError as exc:
+        return Response({"password": list(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({"detail": "Your password has been changed. Sign in with the new one."})
