@@ -93,24 +93,15 @@ export default function ManagerReportsPage() {
 function headline(data: OverviewEnvelope | null): StatConfig[] {
   const c = data?.current;
   const p = data?.previous;
-  const d = data?.change;
-  const badge = (diff: number | null | undefined, unit: string, higherIsBetter = true) => {
-    if (diff == null) return undefined;
-    if (diff === 0) return { value: 'no change', color: 'gray' as const };
-    const better = higherIsBetter ? diff > 0 : diff < 0;
-    return { value: `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}${unit}`, color: better ? ('green' as const) : ('red' as const) };
-  };
   return [
     {
       id: 'on-time', title: 'Resolved on time', value: pct(c?.resolution_sla_pct ?? null),
       description: p?.resolution_sla_pct != null ? `${p.resolution_sla_pct}% the period before` : 'Settled work, by its deadline',
-      badge: badge(d?.resolution_sla_pts, ' pts'),
       icon: <CheckCircle2 className="h-5 w-5 text-emerald-700" />, iconBgColor: 'bg-emerald-100',
     },
     {
       id: 'fix', title: 'Average time to fix', value: formatSeconds(c?.resolution_seconds_avg ?? null),
       description: p?.resolution_seconds_avg != null ? `${formatSeconds(p.resolution_seconds_avg)} the period before` : 'Holds left out',
-      badge: badge(d?.resolution_hours, 'h', false),
       icon: <Hourglass className="h-5 w-5 text-violet-600" />, iconBgColor: 'bg-violet-100',
     },
     {
@@ -126,7 +117,6 @@ function headline(data: OverviewEnvelope | null): StatConfig[] {
     {
       id: 'rating', title: 'Rating', value: c?.rating_avg == null ? '—' : `${c.rating_avg} / 5`,
       description: `${c?.rating_count ?? 0} ratings`,
-      badge: badge(d?.rating, ''),
       icon: <Star className="h-5 w-5 text-amber-500" />, iconBgColor: 'bg-amber-50',
     },
   ];

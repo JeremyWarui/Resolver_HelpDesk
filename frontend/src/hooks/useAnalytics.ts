@@ -4,10 +4,10 @@
 // it lives beside the hook it joins rather than in a directory of its own.
 
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getAnalytics, getDashboard, getOverview } from '@/lib/api/analytics';
 import { useFacilities } from '@/hooks/useOrganizations';
-import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, Facility, OverviewEnvelope, OverviewParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, DashboardParams, Facility, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** The reporting envelope for the signed-in user. `group_by` is checked server-side. */
 export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boolean }) {
@@ -30,13 +30,15 @@ export function useOverview(params: OverviewParams) {
   return { data: data ?? null, loading: isLoading, error };
 }
 
-/** The manager's dashboard, refreshed every minute while it is open. */
-export function useManagerDashboard() {
+/** The manager's dashboard, refreshed every minute while it is open. A new
+ *  chart period keeps the last figures on screen until its own arrive. */
+export function useManagerDashboard(params: DashboardParams) {
   const { data, isLoading, error } = useQuery<DashboardEnvelope>({
-    queryKey: ['analytics', 'dashboard'],
-    queryFn: getDashboard,
+    queryKey: ['analytics', 'dashboard', params],
+    queryFn: () => getDashboard(params),
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
+    placeholderData: keepPreviousData,
   });
   return { data: data ?? null, loading: isLoading, error };
 }

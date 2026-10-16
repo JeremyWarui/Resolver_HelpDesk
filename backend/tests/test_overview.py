@@ -281,11 +281,12 @@ def test_a_technician_covering_two_campuses_counts_at_each(
     assert (rows["Nairobi"]["jobs_each"], rows["Mombasa"]["jobs_each"]) == (1.0, 0.0)
 
 
-def test_the_headline_change_is_the_servers(api, manager, requester, nrb, electrical, priorities):
+def test_the_headline_reads_the_period_against_the_one_before(api, manager, requester, nrb, electrical, priorities):
     _settle(factories.make_ticket(requester, nrb, electrical), days_ago=2)
     _settle(factories.make_ticket(requester, nrb, electrical), late=True, days_ago=40)
 
-    change = _get(api, manager, days=30)["change"]
+    data = _get(api, manager, days=30)
 
-    assert change["resolution_sla_pts"] == 100.0
-    assert change["rating"] is None
+    assert (data["current"]["resolution_sla_pct"], data["previous"]["resolution_sla_pct"]) == (100.0, 0.0)
+    assert data["previous"]["rating_avg"] is None
+    assert "change" not in data

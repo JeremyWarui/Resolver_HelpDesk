@@ -16,9 +16,9 @@ pytestmark = pytest.mark.django_db
 URL = "analytics:dashboard"
 
 
-def _get(api, user):
+def _get(api, user, **params):
     api.force_authenticate(user)
-    response = api.get(reverse(URL))
+    response = api.get(reverse(URL), params)
     assert response.status_code == 200, response.content[:300]
     return response.json()
 
@@ -75,12 +75,60 @@ def test_a_day_counts_what_was_resolved_in_it_whenever_it_was_raised(
     old = _raised(factories.make_ticket(requester, nrb, electrical), days_ago=30)
     Ticket.objects.filter(pk=old.pk).update(status="resolved", resolved_at=timezone.now())
 
-    days = _get(api, manager)["days"]
+    trend = _get(api, manager)["trend"]
 
-    assert len(days) == dashboard.DAYS
+    assert (trend["days"], trend["bucket"], len(trend["rows"])) == (dashboard.DAYS, "day", dashboard.DAYS)
     today = timezone.now().astimezone(metrics.REPORT_TZ).date().isoformat()
-    assert days[-1] == {"day": today, "raised": 0, "resolved": 1}
-    assert sum(d["raised"] for d in days) == 0
+    assert trend["rows"][-1] == {"start": today, "raised": 0, "resolved": 1}
+    assert sum(r["raised"] for r in trend["rows"]) == 0
+
+
+def test_a_quarter_trend_is_cut_into_weeks_that_count_every_day(
+    api, manager, requester, nrb, electrical, priorities
+):
+    for days_ago in (0, 6, 40, 89, 95):
+        _raised(factories.make_ticket(requester, nrb, electrical), days_ago=days_ago)
+
+    trend = _get(api, manager, trend_days=90)["trend"]
+
+    assert (trend["days"], trend["bucket"], len(trend["rows"])) == (90, "week", 13)
+    assert sum(r["raised"] for r in trend["rows"]) == 4
+
+
+@pytest.mark.parametrize("bad", ["14", "abc", "-7", ""])
+def test_a_period_that_is_not_offered_falls_back_to_the_week(api, manager, bad):
+    data = _get(api, manager, trend_days=bad, open_days=bad)
+
+    assert (data["trend"]["days"], data["open_days"]) == (dashboard.DAYS, None)
+
+
+def test_open_work_narrows_to_what_was_raised_in_its_period_and_the_cards_do_not(
+    api, manager, requester, nrb, electrical, priorities
+):
+    factories.make_ticket(requester, nrb, electrical)
+    _raised(factories.make_ticket(requester, nrb, electrical), days_ago=20)
+
+    every = _get(api, manager)
+    recent = _get(api, manager, open_days=7)
+    nairobi = lambda data: next(c for c in data["campuses"] if c["label"] == "Nairobi")
+
+    assert (nairobi(every)["open_now"], nairobi(recent)["open_now"]) == (2, 1)
+    assert (recent["open_days"], recent["live"]["open_now"]) == (7, 2)
+
+
+def test_the_facility_rows_are_the_reports_rows_over_the_week(
+    api, manager, requester, nrb, electrical, priorities
+):
+    block = factories.make_facility(nrb, "Wamalwa")
+    socket = factories.make_service_item(electrical)
+    for _ in range(overview.REPEAT_AT):
+        factories.make_ticket(requester, nrb, electrical, service_item=socket, facility=block)
+
+    data = _get(api, manager)
+
+    reports = overview.facilities(Ticket.objects.all(), dashboard.week())[:dashboard.FACILITY_ROWS]
+    assert sorted(f["key"] for f in data["facilities"]) == sorted(f["key"] for f in reports)
+    assert [(f["label"], f["total"], f["flag"]) for f in data["facilities"]] == [("Wamalwa", 3, "act")]
 
 
 def test_every_campus_has_a_bar_even_when_calm(api, manager, requester, nrb, msa, electrical, priorities):
@@ -117,6 +165,23 @@ def test_the_campus_table_is_the_reports_table_over_the_week(
     assert data["campus_table"] == overview.campus_table(Ticket.objects.all(), window)
     assert [(r["label"], r["total"], r["open_now"]) for r in data["campus_table"]] == [("Nairobi", 1, 2)]
     assert data["target_pct"] == metrics.SLA_TARGET_PCT
+
+
+def test_the_dashboard_lists_the_buildings_most_faults_first(
+    api, manager, requester, nrb, electrical, priorities
+):
+    hostel, library = factories.make_facility(nrb, "Hostel"), factories.make_facility(nrb, "Library")
+    socket = factories.make_service_item(electrical)
+    for _ in range(overview.REPEAT_AT):  # one fault over and over: act on it
+        factories.make_ticket(requester, nrb, electrical, service_item=socket, facility=hostel)
+    for n in range(6):  # many different faults: worth watching
+        item = factories.make_service_item(electrical, f"Fault {n}")
+        factories.make_ticket(requester, nrb, electrical, service_item=item, facility=library)
+    factories.make_ticket(requester, nrb, electrical)
+
+    rows = _get(api, manager)["facilities"]
+
+    assert [(f["label"], f["flag"]) for f in rows] == [("Library", "watch"), ("Hostel", "act")]
 
 
 def test_the_week_starts_at_kenyan_midnight_six_days_back():

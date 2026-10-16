@@ -126,7 +126,6 @@ export interface OverviewEnvelope {
   current: Totals;
   previous: Pick<Totals, 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'total'>;
   /** Each headline figure minus the period before's; null when either is missing. */
-  change: { resolution_sla_pts: number | null; resolution_hours: number | null; rating: number | null };
   unassigned_now: number;
   at_hod_now: number;
   insights: OverviewInsight[];
@@ -154,11 +153,23 @@ export interface DashboardEnvelope {
   live: { open_now: number; waiting: number; with_technician: number; on_hold: number; overdue: number; at_hod: number };
   this_week: WeekFigures;
   last_week: WeekFigures;
-  /** One row per day of the week: raised that day, and resolved that day whenever raised. */
-  days: { day: string; raised: number; resolved: number }[];
+  /** Raised and resolved over the chart's period: a row per day, or per seven days from the first. */
+  trend: { days: DashboardPeriod; bucket: Bucket; rows: { start: string; raised: number; resolved: number }[] };
+  /** Open work by campus covers work raised in this many days; null is all of it. */
+  open_days: DashboardPeriod | null;
   target_pct: number;
   /** The Reports page's Campuses table, over the week. */
   campus_table: OverviewCampus[];
   /** Live work by stage, for every campus, calm ones included. */
   campuses: { key: number; label: string; open_now: number; waiting: number; with_technician: number; on_hold: number }[];
+  /** The Reports page's Facility Health rows over the week, the first few. */
+  facilities: OverviewFacility[];
+}
+
+/** The periods the dashboard's two charts offer, in days. */
+export type DashboardPeriod = 7 | 30 | 90;
+
+export interface DashboardParams {
+  trend_days: DashboardPeriod;
+  open_days: DashboardPeriod | null;
 }

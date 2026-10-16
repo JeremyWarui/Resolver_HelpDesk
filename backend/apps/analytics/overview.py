@@ -47,7 +47,7 @@ def build(qs, window: dict) -> dict:
         campus_rows, live_campus_rows, metrics.technicians_by_campus(campus_ids)
     )
     gaps = _staffing_gaps(qs, metrics.staffed_pairs(campus_ids))
-    facilities = _facilities(qs, window)
+    facility_rows = facilities(qs, window)
 
     return {
         "target_pct": metrics.SLA_TARGET_PCT,
@@ -58,17 +58,10 @@ def build(qs, window: dict) -> dict:
             "rating_avg": previous["rating_avg"],
             "total": previous["total"],
         },
-        "change": {
-            "resolution_sla_pts": _change(current["resolution_sla_pct"], previous["resolution_sla_pct"]),
-            "resolution_hours": _change(
-                _hours(current["resolution_seconds_avg"]), _hours(previous["resolution_seconds_avg"])
-            ),
-            "rating": _change(current["rating_avg"], previous["rating_avg"]),
-        },
         "unassigned_now": sum(row["unassigned"] for row in live_by_campus.values()),
         "at_hod_now": sum(row["at_hod"] for row in live_by_campus.values()),
-        "insights": _insights(campuses, campus_rows, trade_rows, cells, gaps, facilities, qs, window),
-        "facilities": facilities,
+        "insights": _insights(campuses, campus_rows, trade_rows, cells, gaps, facility_rows, qs, window),
+        "facilities": facility_rows,
         "campuses": campuses,
         "trades": [
             {k: row[k] for k in ("key", "label", "total", "resolution_sla_pct", "rating_avg")}
@@ -78,15 +71,6 @@ def build(qs, window: dict) -> dict:
         "trend": metrics.trend(qs, window, window["bucket"]),
         "bottlenecks": metrics.bottlenecks(qs),
     }
-
-
-def _change(now, before):
-    """How far a figure moved since the period before, or None if either is missing."""
-    return round(now - before, 1) if now is not None and before is not None else None
-
-
-def _hours(seconds):
-    return seconds / 3600 if seconds is not None else None
 
 
 def campus_table(qs, window: dict) -> list:
@@ -156,7 +140,7 @@ def _staffing_gaps(qs, staffed) -> list:
     return sorted(gaps, key=lambda g: (-g["open"], g["campus"], g["trade"]))
 
 
-def _facilities(qs, window) -> list:
+def facilities(qs, window) -> list:
     """Buildings with a pattern worth acting on, most urgent first.
 
     A building whose same fault came back REPEAT_AT times is flagged to act on,

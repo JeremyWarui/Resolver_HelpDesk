@@ -12,16 +12,20 @@ interface Dashboard {
   last_week: { total: number };
   campuses: { label: string; waiting: number; with_technician: number; on_hold: number }[];
   campus_table: { label: string; total: number; open_now: number; overdue: number; at_hod: number }[];
+  facilities: { label: string; campus: string; total: number; trades: { label: string; total: number }[] }[];
 }
 
-async function dashboard(page: Page): Promise<Dashboard> {
-  return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/analytics/dashboard/', {
+async function dashboard(page: Page, query = ''): Promise<Dashboard> {
+  return page.evaluate(async (q) => {
+    const r = await fetch(`http://localhost:8000/api/v1/analytics/dashboard/${q}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();
-  });
+  }, query);
 }
+
+const bar = (c: Dashboard['campuses'][number]) =>
+  `${c.label}: ${c.waiting} waiting, ${c.with_technician} with a technician, ${c.on_hold} on hold`;
 
 test('the manager dashboard shows the server’s figures and no ticket list', async ({ page }) => {
   await login(page, USERS.manager);
@@ -36,9 +40,7 @@ test('the manager dashboard shows the server’s figures and no ticket list', as
 
   const campuses = page.getByLabel('Open work by campus', { exact: true });
   for (const c of data.campuses) {
-    await expect(campuses.getByRole('img', {
-      name: `${c.label}: ${c.waiting} waiting, ${c.with_technician} with a technician, ${c.on_hold} on hold`,
-    })).toBeVisible();
+    await expect(campuses.getByRole('img', { name: bar(c) })).toBeVisible();
   }
 
   // The Reports page's Campuses table, over the week: a header and a row per campus.
@@ -49,10 +51,45 @@ test('the manager dashboard shows the server’s figures and no ticket list', as
       .toHaveText(new RegExp(`^${c.label}\\s*${c.total}\\s*${c.open_now}\\s*${c.overdue}\\s*${c.at_hod}\\s*`));
   }
 
+  // Facility Health: building, faults reported, and the trades they fell in.
+  const facilities = page.getByLabel('Facility Health', { exact: true });
+  await expect(facilities.getByRole('row')).toHaveCount(data.facilities.length + 1);
+  for (const [i, f] of data.facilities.entries()) {
+    const row = facilities.getByRole('row').nth(i + 1);
+    await expect(row).toContainText(`${f.label}${f.campus}`);
+    await expect(row).toContainText(`${f.total}${f.trades.map((t) => `${t.label} ${t.total}`).join(' · ')}`);
+  }
+
   await expect(page.getByText('Raised and resolved, day by day')).toBeVisible();
   // An overview: no ticket table, no ticket filters.
   await expect(page.getByText('Recent Tickets')).toHaveCount(0);
   await expect(page.getByPlaceholder(/Search by ID/)).toHaveCount(0);
+});
+
+test('each chart reads its own period, and the cards stay on the week', async ({ page }) => {
+  await login(page, USERS.manager);
+  const before = await dashboard(page);
+  const openNow = page.locator('p', { hasText: /^Open now$/ }).locator('xpath=..');
+
+  await page.getByRole('combobox', { name: 'Raised and resolved period' }).click();
+  await page.getByRole('option', { name: 'This quarter' }).click();
+  await expect(page.getByText('Raised and resolved, week by week')).toBeVisible();
+
+  await page.getByRole('combobox', { name: 'Open work period' }).click();
+  await page.getByRole('option', { name: 'Raised this week' }).click();
+  const recent = await dashboard(page, '?open_days=7');
+  const campuses = page.getByLabel('Open work by campus', { exact: true });
+  for (const c of recent.campuses) {
+    await expect(campuses.getByRole('img', { name: bar(c) })).toBeVisible();
+  }
+  await expect(openNow).toContainText(String(before.live.open_now));
+});
+
+test('Facility Health links through to Reports', async ({ page }) => {
+  await login(page, USERS.manager);
+  await page.getByRole('button', { name: 'See more in Reports' }).click();
+  await expect(page.locator('header h1')).toHaveText('Reports');
+  await expect(page.getByLabel('Facility Health', { exact: true })).toBeVisible();
 });
 
 test('the HOS keeps their own dashboard', async ({ page }) => {

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppBarChart } from '@/components/shared/data/AppBarChart';
@@ -14,6 +15,8 @@ interface TicketVolumeChartProps {
   settledLabel?: string;
   /** Bar width in px; a long period reads better with narrow bars. */
   barSize?: number;
+  /** Sits at the right of the title, such as a period picker. */
+  action?: ReactNode;
 }
 
 /** Tickets raised over the window, against how many of them are settled: two
@@ -26,6 +29,7 @@ export function TicketVolumeChart({
   bucket = 'day',
   settledLabel = 'Settled',
   barSize,
+  action,
 }: TicketVolumeChartProps) {
   const series = [
     { key: 'raised', name: 'Raised' },
@@ -39,8 +43,9 @@ export function TicketVolumeChart({
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="pb-4 pt-6 px-6">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4 pt-6 px-6">
         <CardTitle className="text-base">{title}</CardTitle>
+        {action}
       </CardHeader>
       <CardContent className="px-6 pb-6 pt-4">
         {loading ? (

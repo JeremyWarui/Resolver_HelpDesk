@@ -16,8 +16,8 @@ const NotificationsPage = lazy(() => import('@/features/shared/NotificationsPage
 const ManagerLayout = () => (
   <RoleDashboardLayout
     role="manager"
-    sections={({ onTicketSelect }) => ({
-      dashboard:   <ManagerDashboard />,
+    sections={({ onTicketSelect, onNavigate }) => ({
+      dashboard:   <ManagerDashboard onSeeMore={() => onNavigate('reports')} />,
       tickets:     <RoleTicketsPage role="manager" />,
       reports:     <ManagerReportsPage />,
       technicians: <TechniciansPage manage={false} />,

@@ -146,7 +146,11 @@ class OverviewView(ReportingView):
 
 
 class DashboardView(ReportingView):
-    """GET /analytics/dashboard/: the manager's dashboard, right now and this week."""
+    """GET /analytics/dashboard/: the manager's dashboard, right now and this week.
+
+    `?trend_days=` and `?open_days=` set the two charts' periods (7, 30 or 90);
+    any other value falls back to the week and to all open work.
+    """
 
     ROLES = ("manager",)
 
@@ -154,4 +158,9 @@ class DashboardView(ReportingView):
         role, qs = scoped_for(request)
         if role not in self.ROLES:
             raise PermissionDenied("The dashboard overview is the manager's.")
-        return Response(dashboard.build(qs))
+        params = request.query_params
+        return Response(dashboard.build(
+            qs,
+            trend_days=dashboard.period(params.get("trend_days")) or dashboard.DAYS,
+            open_days=dashboard.period(params.get("open_days")),
+        ))

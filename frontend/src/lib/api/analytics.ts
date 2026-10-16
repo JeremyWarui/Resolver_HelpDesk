@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, OverviewEnvelope, OverviewParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, DashboardParams, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** Every figure the system reports, in one call. Scope comes from the JWT. */
 export async function getAnalytics(params?: AnalyticsParams): Promise<AnalyticsEnvelope> {
@@ -13,9 +13,11 @@ export async function getOverview(params: OverviewParams): Promise<OverviewEnvel
   return data;
 }
 
-/** The manager's dashboard: right now and this week. */
-export async function getDashboard(): Promise<DashboardEnvelope> {
-  const { data } = await apiClient.get<DashboardEnvelope>('/analytics/dashboard/');
+/** The manager's dashboard: right now and this week, each chart over its own period. */
+export async function getDashboard(params: DashboardParams): Promise<DashboardEnvelope> {
+  const { data } = await apiClient.get<DashboardEnvelope>('/analytics/dashboard/', {
+    params: { trend_days: params.trend_days, open_days: params.open_days ?? undefined },
+  });
   return data;
 }
 
