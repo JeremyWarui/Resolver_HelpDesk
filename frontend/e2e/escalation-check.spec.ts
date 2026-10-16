@@ -12,7 +12,7 @@ interface Status {
 
 async function status(page: Page): Promise<Status> {
   return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/escalations/', {
+    const r = await fetch('http://localhost:8001/api/v1/escalations/', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();

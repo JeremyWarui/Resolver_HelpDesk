@@ -78,12 +78,14 @@ test('the rail filters the list, it never restructures the card', async ({ page 
   await expect(page.getByRole('listitem').first()).toBeVisible();
   expect((await row('Standby Generator')).trim()).toBe(facilityAtAll);
 
-  // The same rule on the page this one was modelled on. A technician who works
-  // two trades must still show both while the rail is filtered to one of them.
+  // The same rule on the page this one was modelled on. Daniel works three
+  // trades at Embu; filtered to Embu, his row still reads as it does under All.
   await page.goto('/dashboard/technicians');
-  await expect(page.getByRole('listitem').first()).toBeVisible({ timeout: 20_000 });
+  // The open-jobs badge arrives with its own request; read the row once it has.
+  const daniel = page.getByRole('listitem').filter({ hasText: 'Daniel Kiptoo' }).first();
+  await expect(daniel).toContainText(/\d+ open/, { timeout: 20_000 });
   const techAtAll = (await row('Daniel Kiptoo')).trim();
-  await page.getByRole('button', { name: /Masonry/ }).first().click();
+  await page.getByRole('button', { name: /^Embu/ }).first().click();
   await expect(page.getByRole('listitem').first()).toBeVisible();
   expect((await row('Daniel Kiptoo')).trim()).toBe(techAtAll);
 });

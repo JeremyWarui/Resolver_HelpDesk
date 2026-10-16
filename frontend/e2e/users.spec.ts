@@ -64,7 +64,7 @@ test('Needs fixing lists the accounts the server flags, each with its fix', asyn
   await loginAsAdmin(page);
   await page.goto('/dashboard/users');
   const users = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/users/?page_size=100', {
+    const r = await fetch('http://localhost:8001/api/v1/users/?page_size=100', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return (await r.json()).results as { email: string; is_active: boolean; problems: { label: string }[] }[];

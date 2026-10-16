@@ -5,7 +5,7 @@ import { login, USERS } from './helpers';
 // comments load a page at a time, and a star narrows them. Read-only; the
 // seeded demo data rates fixes every day.
 
-const API = 'http://localhost:8000/api/v1';
+const API = 'http://localhost:8001/api/v1';
 const STAR_LABELS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
 
 interface Summary {

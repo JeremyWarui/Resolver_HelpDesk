@@ -4,7 +4,7 @@ import { login, seedPassword, USERS } from './helpers';
 // The Notifications page: every role has it in the sidebar with an unread
 // count, it filters server-side, and a row opens its ticket.
 
-const API = 'http://localhost:8000/api/v1';
+const API = 'http://localhost:8001/api/v1';
 
 async function token(request: APIRequestContext, email: string): Promise<string> {
   const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });
@@ -60,7 +60,7 @@ test('an assignment reaches the requester, unread, and opens its ticket', async 
 test('the header names who is signed in, and the sidebar is the way to notifications', async ({ page }) => {
   await login(page, USERS.technician);
   const me = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/auth/me/', {
+    const r = await fetch('http://localhost:8001/api/v1/auth/me/', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();
@@ -74,7 +74,7 @@ test('the header names who is signed in, and the sidebar is the way to notificat
 
   // On a phone the drawer hides the badge, so the menu button says what is unread.
   const unread = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/notifications/?limit=1', {
+    const r = await fetch('http://localhost:8001/api/v1/notifications/?limit=1', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return (await r.json()).unread_count as number;

@@ -16,7 +16,7 @@ interface Desk {
 
 async function desk(page: Page): Promise<Desk> {
   return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/analytics/desk/', {
+    const r = await fetch('http://localhost:8001/api/v1/analytics/desk/', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();

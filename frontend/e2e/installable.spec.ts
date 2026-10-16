@@ -3,10 +3,10 @@ import { seedPassword, USERS } from './helpers';
 
 // The production build is an installable app: Chrome reports no installability
 // errors, the service worker takes control, and the installed app starts at `/`.
-// Runs against `vite preview` (port 4173), which serves the built bundle.
+// Runs against `vite preview` (port 4174), which serves the built bundle.
 
-const PREVIEW = 'http://localhost:4173';
-const API = 'http://localhost:8000/api/v1';
+const PREVIEW = 'http://localhost:4174';
+const API = 'http://localhost:8001/api/v1';
 
 test('the built app is installable', async ({ page }) => {
   await page.goto(`${PREVIEW}/login`);

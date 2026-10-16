@@ -44,9 +44,9 @@ test('My Feedback lists only ratings on jobs assigned to the technician', async 
   await login(page, USERS.technicianOtherTrade);
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
-  const me = await (await page.request.get('http://localhost:8000/api/v1/auth/me/', { headers })).json();
+  const me = await (await page.request.get('http://localhost:8001/api/v1/auth/me/', { headers })).json();
 
-  const feed = await page.request.get('http://localhost:8000/api/v1/tickets/feedback/', { headers });
+  const feed = await page.request.get('http://localhost:8001/api/v1/tickets/feedback/', { headers });
   expect(feed.status()).toBe(200);
   const rows = (await feed.json()).results as { assigned_to: { id: number } | null }[];
   expect(rows.length, 'the seed rated some of this technician’s jobs').toBeGreaterThan(0);

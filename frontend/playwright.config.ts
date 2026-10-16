@@ -1,12 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// E2E smoke tests. Both servers start automatically and are reused when already
-// running.
-//
-// The backend writes to whatever database `backend/.env` points at, so specs
-// must be self-cleaning: create, verify, delete. Tickets are the exception —
-// TicketLog is append-only — so the lifecycle spec prefixes everything it
-// creates with `E2E` and leaves it.
+// E2E tests on their own servers and their own database. `e2e/backend.mjs`
+// migrates and seeds a fresh SQLite file and serves it on 8001; vite runs on
+// 5174 and the production preview on 4174, both pointed at it. None of these
+// is ever reused, so a developer's servers on 8000 and 5173, and the database
+// behind them, are never touched.
 export default defineConfig({
   testDir: './e2e',
   timeout: 90_000,
@@ -16,37 +14,33 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5174',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command:
-        process.platform === 'win32'
-          ? '..\\venv\\Scripts\\python manage.py runserver 8000 --noreload'
-          : '../venv/bin/python manage.py runserver 8000 --noreload',
-      cwd: '../backend',
-      // Not /admin/login/ (Django's admin is not routed here) and not
-      // /auth/login/ (GET returns 405, which Playwright does not accept as
-      // "up"). An unauthenticated GET here answers 401, which it does.
-      url: 'http://localhost:8000/api/v1/tickets/',
-      reuseExistingServer: true,
-      timeout: 120_000,
+      command: 'node e2e/backend.mjs',
+      // An unauthenticated GET here answers 401, which Playwright takes as up.
+      url: 'http://localhost:8001/api/v1/tickets/',
+      reuseExistingServer: false,
+      timeout: 300_000,
     },
     {
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: true,
+      command: 'npm run dev -- --port 5174 --strictPort',
+      url: 'http://localhost:5174',
+      env: { VITE_API_URL_DEV: 'http://localhost:8001/api/v1' },
+      reuseExistingServer: false,
       timeout: 120_000,
     },
     {
       // The built bundle, for installable.spec.ts: the service worker and the
       // manifest exist only in a production build.
-      command: 'npm run build && npm run preview -- --port 4173 --strictPort',
-      url: 'http://localhost:4173',
-      reuseExistingServer: true,
+      command: 'npm run build && npm run preview -- --port 4174 --strictPort',
+      url: 'http://localhost:4174',
+      env: { PREVIEW_API: 'http://localhost:8001', PREVIEW_ORIGIN: 'http://localhost:4174' },
+      reuseExistingServer: false,
       timeout: 180_000,
     },
   ],

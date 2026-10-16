@@ -67,7 +67,7 @@ test('a facility can actually be created', async ({ page }) => {
   await page.keyboard.press('Escape');
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const cleanup = await page.request.delete(
-    `http://localhost:8000/api/v1/facilities/${body.id}/`,
+    `http://localhost:8001/api/v1/facilities/${body.id}/`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   expect(cleanup.status()).toBe(204);

@@ -69,7 +69,7 @@ test('an out-of-trade technician is refused the claim outright', async ({ page }
   await login(page, USERS.technicianOtherTrade);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8000/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   // The pk is client-supplied, so scope is re-checked on the action itself and
@@ -81,7 +81,7 @@ test('the HOS is not offered a claim — supervisors assign, they do not take', 
   await login(page, USERS.hos);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8000/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(res.status(), 'only technicians may claim').toBe(403);
@@ -138,7 +138,7 @@ test('a second claim on the same ticket loses, with a 409', async ({ page }) => 
   await login(page, USERS.technician);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8000/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(res.status(), 'an already-claimed ticket must be refused').toBe(409);

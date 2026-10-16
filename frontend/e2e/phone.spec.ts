@@ -158,7 +158,7 @@ test('the note leaves My Requests alone, and a technician or requester never see
 test('a requester pages through every active request on the dashboard', async ({ page }) => {
   await signIn(page, 'requester');
   const total = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/tickets/?mine=1&status=active&page_size=1', {
+    const r = await fetch('http://localhost:8001/api/v1/tickets/?mine=1&status=active&page_size=1', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return (await r.json()).count as number;

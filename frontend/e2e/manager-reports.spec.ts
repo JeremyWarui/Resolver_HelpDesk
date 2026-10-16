@@ -4,7 +4,7 @@ import { login, USERS } from './helpers';
 // The manager's report reads one overview: every section agrees with
 // /analytics/overview/, and picking a campus narrows all of them. Read-only.
 
-const API = 'http://localhost:8000/api/v1';
+const API = 'http://localhost:8001/api/v1';
 
 interface Overview {
   current: { resolution_sla_pct: number | null; overdue: number; open_backlog: number };

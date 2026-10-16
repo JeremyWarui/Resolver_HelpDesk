@@ -14,7 +14,7 @@ interface Cover {
 
 async function cover(page: Page): Promise<Cover> {
   return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8000/api/v1/analytics/cover/', {
+    const r = await fetch('http://localhost:8001/api/v1/analytics/cover/', {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();

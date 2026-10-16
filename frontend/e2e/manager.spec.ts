@@ -38,7 +38,7 @@ test('the manager lists every campus’s tickets but cannot open one', async ({ 
   // tickets to it.
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
-  const api = 'http://localhost:8000/api/v1';
+  const api = 'http://localhost:8001/api/v1';
   const campusList = await (await page.request.get(`${api}/campuses/`, { headers })).json();
   const campuses: { id: number; code: string }[] = campusList.results ?? campusList;
   expect(campuses.length).toBe(5);
@@ -79,12 +79,12 @@ test('the server refuses the manager a ticket that is not their own', async ({ p
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
 
-  const list = await page.request.get('http://localhost:8000/api/v1/tickets/', { headers });
+  const list = await page.request.get('http://localhost:8001/api/v1/tickets/', { headers });
   expect(list.status()).toBe(200);
   const first = (await list.json()).results[0];
   expect(first, 'the list is not empty').toBeTruthy();
 
-  const detail = await page.request.get(`http://localhost:8000/api/v1/tickets/${first.id}/`, {
+  const detail = await page.request.get(`http://localhost:8001/api/v1/tickets/${first.id}/`, {
     headers,
   });
   expect(detail.status()).toBe(403);

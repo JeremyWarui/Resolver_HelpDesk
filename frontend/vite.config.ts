@@ -51,16 +51,17 @@ export default defineConfig({
   },
   // preview proxy — forwards the API and uploaded files to local Django so
   // phone/LAN testing works. Origin is pinned to localhost:4173 so Django's
-  // CORS_ALLOWED_ORIGINS matches whichever LAN IP the phone used.
+  // CORS_ALLOWED_ORIGINS matches whichever LAN IP the phone used. The e2e
+  // suite points both at its own servers through PREVIEW_API and PREVIEW_ORIGIN.
   preview: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.PREVIEW_API ?? 'http://localhost:8000',
         changeOrigin: true,
-        headers: { 'Origin': 'http://localhost:4173' },
+        headers: { 'Origin': process.env.PREVIEW_ORIGIN ?? 'http://localhost:4173' },
       },
       '/media': {
-        target: 'http://localhost:8000',
+        target: process.env.PREVIEW_API ?? 'http://localhost:8000',
         changeOrigin: true,
       },
     },

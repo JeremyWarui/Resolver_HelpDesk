@@ -19,7 +19,7 @@ interface Overview {
 
 async function get<T>(page: Page, path: string): Promise<T> {
   return page.evaluate(async (p) => {
-    const r = await fetch(`http://localhost:8000/api/v1/analytics/${p}`, {
+    const r = await fetch(`http://localhost:8001/api/v1/analytics/${p}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
     });
     return r.json();
@@ -61,7 +61,7 @@ for (const role of ['hos', 'hod'] as const) {
 
 /** Raise one Nairobi plumbing ticket as the requester, so there is always work waiting. */
 async function raiseOne(page: Page) {
-  const api = 'http://localhost:8000/api/v1';
+  const api = 'http://localhost:8001/api/v1';
   const auth = await page.request.post(`${api}/auth/login/`, {
     data: { email: USERS.requester, password: seedPassword() },
   });

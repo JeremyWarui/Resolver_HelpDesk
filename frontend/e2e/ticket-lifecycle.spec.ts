@@ -32,7 +32,7 @@ const COMMENT = `Washer is worn through; replacing it today (${suffix}).`;
 let ticketNo = '';
 let ticketId = 0;
 
-const API = 'http://localhost:8000/api/v1';
+const API = 'http://localhost:8001/api/v1';
 
 async function authAs(request: APIRequestContext, email: string) {
   const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });

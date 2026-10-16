@@ -121,7 +121,7 @@ test('Section Tickets asks for live work by default', async ({ page }) => {
 });
 
 test('Start work on a card moves the job on, and the card then offers Update status', async ({ page, request }) => {
-  const API = 'http://localhost:8000/api/v1';
+  const API = 'http://localhost:8001/api/v1';
   const token = async (email: string) => {
     const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });
     return { Authorization: `Bearer ${(await res.json()).accessToken}` };

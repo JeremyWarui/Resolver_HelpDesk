@@ -120,13 +120,13 @@ test('the plumber cannot see it, and is refused it by id', async ({ page }) => {
 
   // Then by id, because the pk is client-supplied and a list that omits a row
   // proves nothing about the endpoint that takes its number.
-  const read = await page.request.get(`http://localhost:8000/api/v1/tickets/${ticketId}/`, {
+  const read = await page.request.get(`http://localhost:8001/api/v1/tickets/${ticketId}/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(read.status(), 'a plumber must not read a carpentry ticket').toBe(403);
 
   const write = await page.request.post(
-    `http://localhost:8000/api/v1/tickets/${ticketId}/status/`,
+    `http://localhost:8001/api/v1/tickets/${ticketId}/status/`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: { status: 'in_progress', note: 'should never land' },
@@ -262,7 +262,7 @@ test('the requester sees it resolved, and the plumber still cannot', async ({ pa
   // now against a ticket that has a resolution note worth leaking.
   await login(page, USERS.technician);
   const token = await bearer(page);
-  const read = await page.request.get(`http://localhost:8000/api/v1/tickets/${ticketId}/`, {
+  const read = await page.request.get(`http://localhost:8001/api/v1/tickets/${ticketId}/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(read.status(), 'a resolved ticket is not a public one').toBe(403);
