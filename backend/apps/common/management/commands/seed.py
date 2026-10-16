@@ -31,6 +31,7 @@ from apps.notifications.notify import (
 )
 from apps.org.models import Campus, ServiceItem, Trade
 from apps.sla.models import PRIORITY_LEVELS, Priority
+from apps.system_feedback.models import SystemFeedback
 from apps.tickets.constants import (
     ALL_STATUSES,
     PENDING_REASON_CODES,
@@ -64,6 +65,163 @@ SUPERVISOR_NOTES = [
     "Checking in — flag it to me if you are blocked.",
 ]
 
+# The HOS's note to the technician when handing a job over. Only the
+# technician hears it; the requester's trail leaves it out.
+HANDOVER_NOTES = [
+    "Occupant is in from 8am; call before you go up.",
+    "Second report this month. Find the cause, not just the symptom.",
+    "Keys are with the hostel warden.",
+    "Take the stepladder; it is above the false ceiling.",
+    "Use the stock in store B before raising an order.",
+]
+
+# What a requester writes in the description, by service item: their words,
+# not the catalogue's.
+DESCRIPTIONS = {
+    "Repair door or door frame": [
+        "The door drags on the floor and will not close without a shove.",
+        "Frame has split by the hinge side; the door hangs loose.",
+    ],
+    "Replace lock or hinges": [
+        "Lock turns but the latch does not catch. Room cannot be secured.",
+        "Top hinge has pulled out of the frame.",
+    ],
+    "Repair furniture": [
+        "Two chairs in the room have broken legs.",
+        "Desk drawer runner snapped; the drawer falls out.",
+    ],
+    "Fit or repair shelving": [
+        "Shelf above the desk has come away from the wall.",
+        "Need two shelves fitted for files; brackets are here.",
+    ],
+    "Repair window frame": [
+        "Window will not shut fully and rain comes in.",
+        "Frame is rotten at the bottom corner; glass is loose.",
+    ],
+    "Ceiling board repair": [
+        "Ceiling board sagging after the last rains, near the light.",
+        "A board fell in the corridor; the gap shows the roof.",
+    ],
+    "Repair cracked wall": [
+        "Crack running from the window to the floor, getting wider.",
+        "Wall behind the sink is cracked and damp.",
+    ],
+    "Repair floor or tiles": [
+        "Several tiles lifted by the entrance; people are tripping.",
+        "Floor screed broken in the middle of the room.",
+    ],
+    "Repair paving or walkway": [
+        "Paving slabs sunk on the walkway to the hostel; water pools there.",
+        "Kerb broken at the car park entrance.",
+    ],
+    "Repair drainage channel": [
+        "Drain cover missing on the path, deep gap.",
+        "Channel blocked with silt; water floods the walkway when it rains.",
+    ],
+    "Plaster repair": [
+        "Plaster flaking off the wall behind the door.",
+        "Patch of plaster fell off after the socket was moved.",
+    ],
+    "Repaint room": [
+        "Room walls are marked and peeling; due a repaint.",
+        "Repaint needed after the leak repair, stains still showing.",
+    ],
+    "Touch-up paint": [
+        "Scuffs along the corridor from furniture moving.",
+        "Door frame paint chipped, bare wood showing.",
+    ],
+    "Repaint exterior wall": [
+        "Outside wall facing the road is faded and streaked.",
+        "Exterior paint blistering under the gutter.",
+    ],
+    "Varnish woodwork": [
+        "Reception counter varnish worn through.",
+        "Wooden benches outside need varnish before the rains.",
+    ],
+    "Remove graffiti or stains": [
+        "Writing on the wall by the stairs.",
+        "Water stain on the ceiling and wall from the old leak.",
+    ],
+    "Leaking tap or pipe": [
+        "Tap in the washroom will not stop dripping.",
+        "Pipe under the sink leaking into the cupboard.",
+    ],
+    "Blocked toilet, sink or drain": [
+        "Toilet blocked and overflowing; washroom closed.",
+        "Sink drains very slowly and smells.",
+    ],
+    "Faulty cistern": [
+        "Cistern keeps running after flushing.",
+        "Flush handle broken; cistern does not fill.",
+    ],
+    "Water heater fault": [
+        "No hot water in the shower block since morning.",
+        "Heater trips the power when switched on.",
+    ],
+    "No water supply": [
+        "No water in the block since last night.",
+        "Taps on the first floor dry; ground floor is fine.",
+    ],
+    "Burst pipe": [
+        "Pipe burst outside the kitchen, water everywhere.",
+        "Water spraying from the wall in the washroom.",
+    ],
+    "Faulty socket or switch": [
+        "Socket by the desk sparks when a plug goes in.",
+        "Light switch is loose and hot to touch.",
+    ],
+    "Lighting fault": [
+        "Corridor lights out on the second floor.",
+        "Tube light flickering all day in the office.",
+    ],
+    "Power outage in room": [
+        "No power in the room; the rest of the floor has power.",
+        "Sockets dead since the storm.",
+    ],
+    "Faulty air conditioner": [
+        "AC blowing warm air and dripping water.",
+        "Air conditioner makes a loud noise and switches off.",
+    ],
+    "Generator fault": [
+        "Generator did not start during the outage.",
+        "Generator runs but the changeover does not switch.",
+    ],
+    "Faulty appliance": [
+        "Kettle in the staff room trips the socket.",
+        "Fridge not cooling.",
+    ],
+}
+
+# A rating's comment matches its stars. Most people leave none.
+RATING_COMMENTS = {
+    5: ["Quick turnaround, thank you.", "Fixed properly, and the area was left clean."],
+    4: ["Well handled.", "Good job, took a day longer than hoped."],
+    3: ["Fixed, but I had to follow up twice.", "Works now. Took a while."],
+    2: ["Same fault came back within a week.", "Nobody told me when they were coming."],
+}
+
+# What people say about Resolver itself, from the sidebar's Send feedback:
+# (first, last, category, message, page, reviewed).
+SYSTEM_FEEDBACK = [
+    ("Caroline", "Wafula", "praise",
+     "Raising a fault from my phone took a minute. Much easier than calling.", "/user", True),
+    ("Esther", "Wairimu", "idea",
+     "Let me attach a photo when I resolve a job, to show it is done.", "/tech", False),
+    ("Peter", "Kimani", "problem",
+     "The escalated list does not say how long a job has been with me.", "/hos/escalated", False),
+    ("Dennis", "Kimutai", "other",
+     "Could the location list include the new lecture block?", "/user", True),
+    ("Grace", "Achieng", "idea",
+     "A weekly summary email of what is still open would help.", "/hos", False),
+    ("Wanjiku", "Kamau", "praise",
+     "The campus comparison answers most of what the board asks me.", "/director/reports", True),
+    ("Anthony", "Gitau", "problem",
+     "When holding a job I could not say the occupant needs to clear the room first.", "/tech", False),
+]
+
+# Messages older than this have been seen by their recipients.
+READ_AFTER_DAYS = 1
+
 PENDING_NOTES = {
     "material_not_in_store": "Replacement parts not in the store.",
     "awaiting_material_requested": "LPO raised — supplier has not delivered.",
@@ -75,19 +233,34 @@ PENDING_NOTES = {
 
 
 def demo_age_minutes(rng):
-    """How long ago a demo ticket was raised, weighted toward recent.
+    """How long ago a demo ticket was raised: densest now, thinning smoothly back.
 
-    Spread evenly over 90 days, two thirds of the data would sit outside the
-    30-day window the analytics pages open on. Real desks are denser in the
-    recent past, so weighting the draw makes the default view representative
-    and still leaves a tail for the trend line.
+    A smooth decay keeps the trend line free of steps, gives the 30-day view
+    most of the data, and puts enough work in the last few days for each
+    technician to hold a real queue.
     """
-    band = rng.choices(
-        [(0, 30), (30, 60), (60, DEMO_WINDOW_DAYS)],
-        weights=[65, 23, 12],
-    )[0]
-    low, high = band
-    return rng.randint(max(low * 24 * 60, 30), high * 24 * 60)
+    days = min(rng.expovariate(1 / 20), DEMO_WINDOW_DAYS)
+    return max(int(days * 24 * 60), 30)
+
+
+def demo_priority(rng, priorities, status):
+    """Low until the HOS sets it; then weighted the way a section's work runs.
+
+    Urgent work is cleared first, so little of what is still live is High or
+    Critical.
+    """
+    if status == "open":
+        return priorities["Low"]
+    weights = [40, 35, 18, 7] if status in TERMINAL_STATUSES else [80, 15, 4, 1]
+    name = rng.choices(["Low", "Medium", "High", "Critical"], weights=weights)[0]
+    return priorities[name]
+
+
+def by_now(after, when, now, rng):
+    """`when`, or if that is still to come, a moment between `after` and now."""
+    if when <= now:
+        return when
+    return after + (now - after) * rng.uniform(0.3, 0.9)
 
 
 CAMPUSES = [
@@ -229,9 +402,9 @@ SUPERVISORS = {
     "BAR": (("Cherop", "Kiptoo"), ("Mercy", "Jepkosgei")),
 }
 
-DEMO_TICKET_COUNT = 150
+DEMO_TICKET_COUNT = 420
 DEMO_WINDOW_DAYS = 90
-# Past this age, most demo tickets in a staffed section are finished.
+# Past this age every demo ticket is finished (`STATUS_BY_AGE`).
 SETTLED_AFTER_DAYS = 14
 
 # campus_code -> trade codes staffed there. Deliberately uneven: a masonry
@@ -260,16 +433,24 @@ REQUESTER_NAMES = [
     ("Loise", "Wanjala"),
 ]
 
-# How often each status turns up in the demo backlog: mostly settled work with
-# a live tail. The weights are seed's; the statuses are tickets.constants'.
-STATUS_WEIGHTS = {
-    "open": 4,
-    "assigned": 3,
-    "in_progress": 4,
-    "pending": 2,
-    "resolved": 5,
-    "closed": 6,
-}
+# A demo ticket's status follows from how long ago it was raised: new work is
+# live, a week-old job is mostly finished, and nothing past SETTLED_AFTER_DAYS
+# is still open or waiting on a rating. (up to this many days old, weights)
+STATUS_BY_AGE = [
+    (1, {"open": 30, "assigned": 22, "in_progress": 38, "pending": 4, "resolved": 6}),
+    (2, {"open": 8, "assigned": 10, "in_progress": 36, "pending": 10, "resolved": 26, "closed": 10}),
+    (7, {"open": 1, "assigned": 1, "in_progress": 3, "pending": 6, "resolved": 24, "closed": 65}),
+    (SETTLED_AFTER_DAYS, {"in_progress": 1, "pending": 3, "resolved": 8, "closed": 88}),
+    (None, {"closed": 1}),
+]
+
+
+def status_for_age(rng, age_minutes):
+    """A demo ticket's status, drawn from the band its age falls in."""
+    days = age_minutes / (24 * 60)
+    weights = next(w for limit, w in STATUS_BY_AGE if limit is None or days < limit)
+    return rng.choices(list(weights), weights=list(weights.values()))[0]
+
 
 # One generator per facility type in FACILITY_TYPES: the room, floor or spot a
 # requester would type.
@@ -325,6 +506,9 @@ class Command(BaseCommand):
                     campuses, trades, requesters, priorities, posts
                 )
                 self._run_escalations()
+                self._mark_old_notifications_read()
+                self._stamp_updated_at()
+                self._seed_system_feedback()
 
         self._print_demo_logins()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
@@ -336,9 +520,18 @@ class Command(BaseCommand):
         Seed follows the declarations, it never defines them, and the failure it
         guards against is silent: an unlisted status simply never gets generated.
         """
-        self._same_keys(STATUS_WEIGHTS, ALL_STATUSES, "demo status weights")
+        self._same_keys(
+            {code for _, weights in STATUS_BY_AGE for code in weights},
+            ALL_STATUSES,
+            "demo statuses by age",
+        )
         self._same_keys(PENDING_NOTES, PENDING_REASON_CODES, "hold-reason notes")
         self._same_keys(LOCATION_DETAILS, FACILITY_TYPES, "demo location details")
+        self._same_keys(
+            DESCRIPTIONS,
+            [name for names in SERVICE_ITEMS.values() for name in names],
+            "demo descriptions",
+        )
 
         # One name is one email is one account, so the pool cannot be reused.
         needed = sum(len(codes) for codes in TRADE_STAFFING.values())
@@ -406,8 +599,77 @@ class Command(BaseCommand):
         moves = 0
         while moved := run_escalations():
             moves += moved
+        self._date_escalations()
         self.stdout.write(f"  Escalations: {moves} level change(s) applied")
 
+    @staticmethod
+    def _date_escalations():
+        """Move each escalation, and its messages, to when the ticket crossed the threshold.
+
+        The engine stamps what it does with the moment it runs, which for
+        inherited demo work would put every escalation at the seed's own time.
+        Its messages name the level, which is how they are matched to the step.
+        """
+        from apps.tickets.escalation import thresholds
+
+        now = timezone.now()
+        steps = TicketLog.objects.filter(event_type="escalated").select_related(
+            "ticket__priority"
+        )
+        for log in steps:
+            ticket = log.ticket
+            minutes = dict(thresholds(ticket.priority))[log.to_value]
+            when = min(
+                ticket.clock_started_at + ticket.accumulated_pause + timedelta(minutes=minutes),
+                now,
+            )
+            TicketLog.objects.filter(pk=log.pk).update(created_at=when)
+            Notification.objects.filter(
+                ticket=ticket, event_type="ticket_escalated",
+                body__icontains=log.to_value,
+            ).update(created_at=when)
+
+    def _stamp_updated_at(self):
+        """Set each ticket's updated_at, an auto_now column, to its last trail event."""
+        from django.db.models import Max, OuterRef, Subquery
+
+        last = (
+            TicketLog.objects.filter(ticket=OuterRef("pk"))
+            .order_by()
+            .values("ticket")
+            .annotate(at=Max("created_at"))
+            .values("at")
+        )
+        Ticket.objects.update(updated_at=Subquery(last))
+
+    def _mark_old_notifications_read(self):
+        """Mark messages older than READ_AFTER_DAYS read, as their recipients would have."""
+        cutoff = timezone.now() - timedelta(days=READ_AFTER_DAYS)
+        read = Notification.objects.filter(created_at__lt=cutoff).update(read=True)
+        unread = Notification.objects.filter(read=False).count()
+        self.stdout.write(f"  Notifications: {read} read, {unread} unread")
+
+    def _seed_system_feedback(self):
+        """A few things people have said about Resolver, some already reviewed."""
+        if SystemFeedback.objects.exists():
+            return
+        now = timezone.now()
+        for n, (first, last, category, message, page, reviewed) in enumerate(
+            SYSTEM_FEEDBACK, start=1
+        ):
+            author = User.objects.get(email=f"{first}.{last}@ksg.ac.ke".lower())
+            entry = SystemFeedback.objects.create(
+                author=author,
+                author_role=author.role_assignment.role,
+                category=category,
+                message=message,
+                page=page,
+                reviewed=reviewed,
+            )
+            SystemFeedback.objects.filter(pk=entry.pk).update(
+                created_at=now - timedelta(days=n * 3, hours=n)
+            )
+        self.stdout.write(f"  System feedback: {len(SYSTEM_FEEDBACK)}")
 
     def _seed_facility_types(self):
         for code, name in FACILITY_TYPES.items():
@@ -630,23 +892,23 @@ class Command(BaseCommand):
 
         rng = random.Random(20260808)  # deterministic — same demo data every run
         now = timezone.now()
+        # Every list a draw picks from is in pk order, so the same seed gives
+        # the same data on any database.
         items_by_trade = {
-            code: list(ServiceItem.objects.filter(trade=sub))
+            code: list(ServiceItem.objects.filter(trade=sub).order_by("pk"))
             for code, sub in trades.items()
         }
         facilities_by_campus = {
             code: list(
-                Facility.objects.filter(campus__code=code).select_related("facility_type")
+                Facility.objects.filter(campus__code=code)
+                .select_related("facility_type").order_by("pk")
             )
             for code in campuses
         }
-        # Every technician on the pair, not one: a dict kept whichever link came last,
-        # so multi-trade people never received work in their second trade.
+        # Every technician on the pair, so multi-trade people get work in each trade.
         technicians = defaultdict(list)
-        for link in TechnicianTrade.objects.select_related("user"):
+        for link in TechnicianTrade.objects.select_related("user").order_by("pk"):
             technicians[(link.campus_id, link.trade_id)].append(link.user)
-
-        statuses = [s for s, weight in STATUS_WEIGHTS.items() for _ in range(weight)]
 
         staffed_pairs = [
             (campus_code, trade_code)
@@ -671,9 +933,14 @@ class Command(BaseCommand):
 
         created = 0
         for index in range(DEMO_TICKET_COUNT):
-            # Every sixth ticket lands in an unstaffed trade, so the "routed
-            # but nobody to assign" state is visible without swamping the data.
-            pool = unstaffed_pairs if index % 6 == 5 and unstaffed_pairs else staffed_pairs
+            age_minutes = demo_age_minutes(rng)
+            # Every twelfth recent ticket lands in an unstaffed trade, so the
+            # "routed but nobody to assign" state shows without piling up.
+            unstaffed = (
+                index % 12 == 5 and unstaffed_pairs
+                and age_minutes < SETTLED_AFTER_DAYS * 24 * 60
+            )
+            pool = unstaffed_pairs if unstaffed else staffed_pairs
             campus_code, trade_code = rng.choice(pool)
             campus = campuses[campus_code]
             trade = trades[trade_code]
@@ -683,23 +950,15 @@ class Command(BaseCommand):
             else:
                 requester = rng.choice(requesters_by_campus[campus_code])
             item = rng.choice(items_by_trade[trade_code])
-            status = rng.choice(statuses)
+            status = status_for_age(rng, age_minutes)
 
             candidates = technicians.get((campus.id, trade.id)) or []
             technician = rng.choice(candidates) if candidates else None
 
-            age_minutes = demo_age_minutes(rng)
-            created_at = now - timedelta(minutes=age_minutes)
-            # A staffed section finishes most of its old work; a backlog of
-            # two-month-old open jobs would make every overdue figure the story.
-            if age_minutes > SETTLED_AFTER_DAYS * 24 * 60 and rng.random() < 0.85:
-                status = rng.choice(["resolved", "closed", "closed", "closed"])
             if technician is None:
                 status = "open"
-            priority = priorities["Low"] if status == "open" else rng.choice(
-                [priorities["Low"], priorities["Medium"],
-                 priorities["High"], priorities["Critical"]]
-            )
+            created_at = now - timedelta(minutes=age_minutes)
+            priority = demo_priority(rng, priorities, status)
 
             facility = self._pick_facility(facilities_by_campus[campus_code], rng)
             ticket = self._create_ticket(
@@ -707,7 +966,7 @@ class Command(BaseCommand):
                 item=item, priority=priority, status=status,
                 technician=technician, created_at=created_at,
                 facility=facility, rng=rng,
-                description=f"{item.name} reported by {display_name(requester)}.",
+                description=rng.choice(DESCRIPTIONS[item.name]),
             )
 
             self._write_history(
@@ -769,20 +1028,19 @@ class Command(BaseCommand):
             candidates = technicians.get((campus.id, trade.id)) or []
             for _ in range(rng.randint(3, 5)):
                 requester = rng.choice(requesters_by_campus[campus_code])
-                status = rng.choice(["closed", "closed", "resolved", "in_progress", "open"])
+                age = demo_age_minutes(rng)
+                status = status_for_age(rng, age)
                 technician = rng.choice(candidates) if candidates else None
                 if technician is None:
                     status = "open"
-                priority = priorities["Low"] if status == "open" else rng.choice(
-                    [priorities["Low"], priorities["Medium"], priorities["High"]]
-                )
-                created_at = now - timedelta(minutes=demo_age_minutes(rng))
+                priority = demo_priority(rng, priorities, status)
+                created_at = now - timedelta(minutes=age)
                 ticket = self._create_ticket(
                     requester=requester, trade=trade,
                     item=item, priority=priority, status=status,
                     technician=technician, created_at=created_at,
                     facility=facility, rng=rng,
-                    description=f"{item.name} reported at {facility.name}.",
+                    description=rng.choice(DESCRIPTIONS[item.name]),
                 )
                 self._write_history(
                     ticket, technician, created_at, rng,
@@ -927,7 +1185,7 @@ class Command(BaseCommand):
     def _write_history(self, ticket, technician, created_at, rng, hos, now):
         """Write the trail, working log and feed the ticket's status implies.
 
-        Every moment is stamped as it happened and clamped to `now`.
+        Every moment is stamped as it happened, and none later than now (`by_now`).
         """
         self._log(
             ticket, created_at, event_type="created",
@@ -942,35 +1200,57 @@ class Command(BaseCommand):
             assigned_at = created_at + response_window * rng.uniform(0.1, 0.9)
         else:
             assigned_at = created_at + response_window * rng.uniform(1.2, 3.0)
-        assigned_at = min(assigned_at, now)
+        assigned_at = by_now(created_at, assigned_at, now, rng)
 
-        # Two ways a ticket reaches a technician, and the trail says which.
-        claimed = rng.random() < 0.4
-        self._log(
-            ticket, assigned_at, event_type="assigned",
-            actor=technician if claimed else hos,
-            to_value=display_name(technician),
-        )
-        self._notify(
-            assigned_at, emit_ticket_assigned, ticket,
-            technician if claimed else hos,
-            # A claim starts the work; the seed leaves some claimed tickets at assigned.
-            claimed=claimed and ticket.status != "assigned",
-        )
+        # Two ways a ticket reaches a technician, and the trail says which. A
+        # claim takes it straight to in progress at Low; a ticket still at
+        # assigned, or one with a real priority, was handed over by the HOS.
+        claimable = ticket.status != "assigned" and ticket.priority.name == "Low"
+        claimed = claimable and rng.random() < 0.4
+        if claimed:
+            # `claim_ticket`: the assignment and both hops in one moment, one message.
+            self._log(
+                ticket, assigned_at, event_type="assigned", actor=technician,
+                to_value=display_name(technician),
+            )
+            for old, new in (("open", "assigned"), ("assigned", "in_progress")):
+                self._log(
+                    ticket, assigned_at, event_type="status_changed", actor=technician,
+                    from_value=old, to_value=new,
+                )
+            self._notify(assigned_at, emit_ticket_assigned, ticket, technician, claimed=True)
+            started_at = assigned_at
+        else:
+            # `assign_ticket`: the HOS sets the real priority as they hand it over.
+            handover = rng.choice(HANDOVER_NOTES) if rng.random() < 0.5 else ""
+            if ticket.priority.name != "Low":
+                self._log(
+                    ticket, assigned_at - timedelta(seconds=1), event_type="priority_changed",
+                    actor=hos, from_value="Low", to_value=ticket.priority.name,
+                )
+            self._log(
+                ticket, assigned_at, event_type="assigned", actor=hos,
+                to_value=display_name(technician), reason=handover,
+            )
+            self._notify(assigned_at, emit_ticket_assigned, ticket, hos, note=handover)
 
-        if ticket.status == "assigned":
-            return
+            if ticket.status == "assigned":
+                return
 
-        started_at = min(assigned_at + timedelta(minutes=rng.randint(5, 240)), now)
-        self._log(
-            ticket, started_at, event_type="status_changed", actor=technician,
-            from_value="assigned", to_value="in_progress",
-        )
+            started_at = by_now(
+                assigned_at, assigned_at + timedelta(minutes=rng.randint(5, 240)), now, rng
+            )
+            self._log(
+                ticket, started_at, event_type="status_changed", actor=technician,
+                from_value="assigned", to_value="in_progress",
+            )
         if not claimed:
-            # A claim's one message already said work had started.
+            # A claim's one message already said work had started. Some starts
+            # carry a progress note, which goes to the requester.
+            progress = rng.choice(PROGRESS_NOTES) if rng.random() < 0.4 else ""
             self._notify(
                 started_at, emit_ticket_status_changed, ticket, technician, "assigned",
-                new_status="in_progress",
+                new_status="in_progress", note=progress,
             )
 
         if ticket.status == "pending":
@@ -978,7 +1258,7 @@ class Command(BaseCommand):
             # anything else.
             reason = rng.choices(list(PENDING_NOTES), weights=[30, 24, 16, 14, 9, 7])[0]
             # After work started, or the trail reads "held" before "in progress".
-            paused_at = min(started_at + timedelta(hours=rng.randint(1, 12)), now)
+            paused_at = by_now(started_at, started_at + timedelta(hours=rng.randint(1, 12)), now, rng)
             Ticket.objects.filter(pk=ticket.pk).update(
                 paused_at=paused_at,
                 pending_reason=reason,
@@ -997,15 +1277,15 @@ class Command(BaseCommand):
 
         resolved_at = None
         if ticket.status in TERMINAL_STATUSES:
-            # Relative to the ticket's own SLA window: a flat draw ignores priority, so
-            # only 7% of resolved tickets met their deadline and every gauge read 0%.
+            # Most finish inside the ticket's own resolution window, some late.
             window = timedelta(minutes=ticket.priority.resolution_minutes)
             if rng.random() < 0.78:
                 resolved_at = created_at + window * rng.uniform(0.2, 0.95)
             else:
                 resolved_at = created_at + window * rng.uniform(1.1, 2.5)
-            # A Low ticket has a three-day window; a recent one would settle tomorrow.
-            resolved_at = min(resolved_at, now)
+            # Work takes time once started, however short the window.
+            resolved_at = max(resolved_at, started_at + timedelta(minutes=rng.randint(30, 240)))
+            resolved_at = by_now(started_at, resolved_at, now, rng)
             Ticket.objects.filter(pk=ticket.pk).update(resolved_at=resolved_at)
 
         self._write_working_log(
@@ -1027,7 +1307,7 @@ class Command(BaseCommand):
         # one is still waiting on its requester.
         rated_at = None
         if ticket.status == "closed":
-            closed_at = min(resolved_at + timedelta(hours=rng.randint(2, 48)), now)
+            closed_at = by_now(resolved_at, resolved_at + timedelta(hours=rng.randint(2, 48)), now, rng)
             Ticket.objects.filter(pk=ticket.pk).update(closed_at=closed_at)
             self._log(
                 ticket, closed_at, event_type="closed", actor=ticket.raised_by,
@@ -1040,13 +1320,10 @@ class Command(BaseCommand):
             rated_at = closed_at
 
         if rated_at is not None and rng.random() < 0.7:
-            rating = rng.choice([3, 4, 4, 5, 5, 5])
+            rating = rng.choices([2, 3, 4, 5], weights=[1, 2, 4, 5])[0]
+            comment = rng.choice(RATING_COMMENTS[rating]) if rng.random() < 0.55 else ""
             Ticket.objects.filter(pk=ticket.pk).update(
-                rating=rating,
-                rating_comment=rng.choice(
-                    ["", "", "Quick turnaround, thank you.", "Well handled."]
-                ),
-                rated_at=rated_at,
+                rating=rating, rating_comment=comment, rated_at=rated_at,
             )
             # `rate_ticket` logs the rating just before the close it causes.
             self._log(
@@ -1062,8 +1339,7 @@ class Command(BaseCommand):
         Comments close permanently when the ticket does, so the moment matters.
         """
         if resolved_at is not None:
-            when = resolved_at - timedelta(minutes=rng.randint(5, 90))
-            when = max(when, started_at + timedelta(minutes=1))
+            when = started_at + (resolved_at - started_at) * rng.uniform(0.5, 0.95)
             self._write_comment(
                 ticket, technician, when, rng.choice(COMPLETION_NOTES)
             )
@@ -1074,12 +1350,12 @@ class Command(BaseCommand):
             paused = Ticket.objects.filter(pk=ticket.pk).values_list("paused_at", flat=True).first()
             return "pending" if paused is not None and when >= paused else "in_progress"
 
-        when = min(started_at + timedelta(minutes=rng.randint(10, 180)), now)
+        when = by_now(started_at, started_at + timedelta(minutes=rng.randint(10, 180)), now, rng)
         self._write_comment(
             ticket, technician, when, rng.choice(PROGRESS_NOTES), status_at(when),
         )
         if hos is not None and rng.random() < 0.35:
-            when = min(started_at + timedelta(hours=rng.randint(4, 30)), now)
+            when = by_now(started_at, started_at + timedelta(hours=rng.randint(4, 30)), now, rng)
             self._write_comment(
                 ticket, hos, when, rng.choice(SUPERVISOR_NOTES), status_at(when),
             )
