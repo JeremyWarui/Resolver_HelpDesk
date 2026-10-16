@@ -1,25 +1,120 @@
-"""The manager oversees the estate; the manager does not work tickets.
+"""The manager reads the whole organisation and opens no ticket.
 
-A manager's scope is every campus, so every 403 below is a role refusal, not a
-scope refusal — they are fully in scope for these tickets.
+The ticket list, the figures and the ratings cover every campus. Opening or
+acting on a ticket is refused, except one the manager raised themselves.
 """
 
 import pytest
 from django.urls import reverse
 
+from tests import factories
 
 pytestmark = pytest.mark.django_db
 
 
-def test_a_manager_can_read_the_ticket_they_may_not_touch(
+def test_a_manager_reads_the_reporting_for_every_campus(
     api,
     manager,
     nrb_electrical_ticket,
+    msa_electrical_ticket,
 ):
-    """The control for every 403 below: in scope, and still refused."""
     api.force_authenticate(manager)
-    response = api.get(reverse("ticket-detail", args=[nrb_electrical_ticket.pk]))
-    assert response.status_code == 200
+    body = api.get(reverse("analytics:analytics"))
+
+    assert body.status_code == 200
+    assert body.data["totals"]["open_backlog"] == 2
+
+
+@pytest.mark.parametrize("dimension", ["campus", "trade", "facility", "technician"])
+def test_a_manager_may_break_the_figures_down_by(
+    api,
+    manager,
+    nrb_electrical_ticket,
+    msa_electrical_ticket,
+    nrb_electrician,
+    msa_electrician,
+    dimension,
+):
+    for ticket, tech in (
+        (nrb_electrical_ticket, nrb_electrician),
+        (msa_electrical_ticket, msa_electrician),
+    ):
+        ticket.assigned_to = tech
+        ticket.status = "assigned"
+        ticket.save(update_fields=["assigned_to", "status"])
+
+    api.force_authenticate(manager)
+    body = api.get(reverse("analytics:analytics"), {"group_by": dimension}).data
+
+    assert body["scope"]["group_by"] == [dimension]
+    assert sum(row["total"] for row in body["breakdown"]) == 2
+
+
+def test_a_manager_breakdown_by_campus_carries_response_and_resolution_times(
+    api, manager, nrb_electrical_ticket, msa_electrical_ticket
+):
+    api.force_authenticate(manager)
+    rows = api.get(reverse("analytics:analytics"), {"group_by": "campus"}).data[
+        "breakdown"
+    ]
+
+    assert len(rows) == 2
+    for row in rows:
+        assert "response_seconds_avg" in row
+        assert "resolution_seconds_avg" in row
+        assert "resolution_sla_pct" in row
+
+
+def test_a_manager_lists_every_campuses_tickets(
+    api, manager, nrb_electrical_ticket, msa_electrical_ticket
+):
+    api.force_authenticate(manager)
+    rows = api.get(reverse("ticket-list")).json()["results"]
+    assert {r["id"] for r in rows} == {nrb_electrical_ticket.pk, msa_electrical_ticket.pk}
+
+
+def test_a_manager_cannot_open_a_ticket(api, manager, nrb_electrical_ticket):
+    api.force_authenticate(manager)
+    pk = nrb_electrical_ticket.pk
+    for name in ("ticket-detail", "ticket-logs", "ticket-comments", "ticket-attachments"):
+        assert api.get(reverse(name, args=[pk])).status_code == 403, name
+
+
+def test_a_manager_reads_every_campuses_ratings_and_filter_options(
+    api, manager, nrb_electrical_ticket, msa_electrical_ticket
+):
+    factories.rate_ticket(nrb_electrical_ticket, 4)
+    factories.rate_ticket(msa_electrical_ticket, 2)
+    api.force_authenticate(manager)
+
+    rows = api.get(reverse("ticket-feedback-list")).json()["results"]
+    assert {r["ticket_no"] for r in rows} == {
+        nrb_electrical_ticket.ticket_no,
+        msa_electrical_ticket.ticket_no,
+    }
+    options = api.get(reverse("ticket-filter-options")).json()
+    assert len(options["campuses"]) == 2
+
+
+def test_a_manager_reads_the_campus_registers_but_cannot_change_them(
+    api, manager, nrb
+):
+    api.force_authenticate(manager)
+    assert api.get(reverse("campus-list")).status_code == 200
+    assert api.get(reverse("campus-roster")).status_code == 200
+    assert api.post(
+        reverse("campus-list"), {"name": "New", "code": "NEW"}, format="json"
+    ).status_code == 403
+    assert api.patch(
+        reverse("campus-detail", args=[nrb.pk]), {"name": "X"}, format="json"
+    ).status_code == 403
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_electrician", "requester"])
+def test_only_the_admin_and_manager_read_the_campus_registers(api, request, role):
+    api.force_authenticate(request.getfixturevalue(role))
+    assert api.get(reverse("campus-list")).status_code == 403
+    assert api.get(reverse("campus-roster")).status_code == 403
 
 
 def test_a_manager_cannot_change_a_ticket_status(
@@ -66,63 +161,13 @@ def test_a_manager_cannot_claim_a_ticket(api, manager, nrb_electrical_ticket):
     assert response.status_code == 403
 
 
-def test_a_manager_cannot_delete_someone_elses_attachment(
-    api,
-    manager,
-    requester,
-    nrb_electrical_ticket,
-    settings,
-    tmp_path,
-):
-    """Deleting another person's evidence is a supervisor action, not oversight."""
-    settings.MEDIA_ROOT = str(tmp_path)
-    from tests.test_attachments import an_image
-
-    api.force_authenticate(requester)
-    upload = api.post(
-        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
-        {"files": an_image()},
-        format="multipart",
-    )
-    assert upload.status_code == 201
-    (row,) = upload.data
-
-    api.force_authenticate(manager)
-    response = api.delete(
-        reverse("ticket-attachment-detail", args=[nrb_electrical_ticket.pk, row["id"]])
-    )
-    assert response.status_code == 403
-    assert nrb_electrical_ticket.attachments.count() == 1
-
-
-def test_a_manager_reads_the_reporting_for_every_campus(
-    api,
-    manager,
-    nrb_electrical_ticket,
-    msa_electrical_ticket,
-):
-    """Reporting is the manager's whole reason to log in, and it is gated by
-    scope alone — there is no role list to fall off."""
-    api.force_authenticate(manager)
-    body = api.get(reverse("analytics:analytics"))
-
-    assert body.status_code == 200
-    assert body.data["totals"]["open_backlog"] == 2
-
-
-def test_a_manager_cannot_upload_an_attachment(
+def test_a_manager_cannot_upload_to_someone_elses_ticket(
     api,
     manager,
     nrb_electrical_ticket,
     settings,
     tmp_path,
 ):
-    """Adding evidence to a ticket is working it, not overseeing it.
-
-    The manager passes every scope check here — they read every campus — so
-    without the role refusal an upload is the one write that reaches the
-    ticket. Reading the files stays open, which the assertion below holds.
-    """
     settings.MEDIA_ROOT = str(tmp_path)
     from tests.test_attachments import an_image
 
@@ -136,9 +181,14 @@ def test_a_manager_cannot_upload_an_attachment(
     assert response.status_code == 403
     assert nrb_electrical_ticket.attachments.count() == 0
 
-    assert (
-        api.get(
-            reverse("ticket-attachments", args=[nrb_electrical_ticket.pk])
-        ).status_code
-        == 200
-    )
+
+def test_a_manager_still_reads_a_ticket_they_raised(
+    api, manager, nrb, electrical, priorities
+):
+    """Everyone can raise a ticket, the manager included, and see their own."""
+    own = factories.make_ticket(manager, nrb, electrical)
+    api.force_authenticate(manager)
+
+    assert api.get(reverse("ticket-detail", args=[own.pk])).status_code == 200
+    rows = api.get(reverse("ticket-list"), {"mine": "1"}).json()["results"]
+    assert [r["id"] for r in rows] == [own.pk]

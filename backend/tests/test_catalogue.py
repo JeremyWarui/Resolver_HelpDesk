@@ -106,7 +106,7 @@ def test_a_ticket_can_be_raised_at_a_newly_added_campus(
         {
             "service_item": item.pk,
             "description": "No power",
-            "location": {"facility": facility.pk, "values": {}},
+            "location": {"facility": facility.pk, "detail": "Bay 4"},
         },
         format="json",
     )

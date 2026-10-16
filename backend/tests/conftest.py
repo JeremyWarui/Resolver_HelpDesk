@@ -107,37 +107,26 @@ def msa_requester(msa):
 
 @pytest.fixture
 def facility_types(db):
-    """One row per type the validator knows. Every ticket carries a location,
-    so nearly every creation test needs at least one of these to exist."""
-    from apps.facilities.models import FacilityType
-    from apps.facilities.validators import TYPE_SPECS
+    """One row per facility type. Every ticket carries a location, so nearly
+    every creation test needs at least one of these to exist."""
+    from apps.facilities.models import FACILITY_TYPES, FacilityType
 
     return {
-        code: FacilityType.objects.create(
-            name=code.replace("_", " ").title(), code=code
-        )
-        for code in TYPE_SPECS
+        code: FacilityType.objects.create(name=name, code=code)
+        for code, name in FACILITY_TYPES.items()
     }
 
 
 @pytest.fixture
 def somewhere(facility_types, nrb):
-    """The least a ticket can say about where it is.
-
-    One grounds row at Nairobi, which asks for nothing else: the payload for
-    tests that must supply a location but are not about locations. Tests that
-    care about the place build their own.
-    """
+    """A location payload at Nairobi, for tests that must supply one but are
+    not about locations."""
     from apps.facilities.models import Facility
 
     facility = Facility.objects.create(
         campus=nrb, facility_type=facility_types["grounds"], name="North Lawn"
     )
-    return {
-        "facility_type": facility_types["grounds"].pk,
-        "facility": facility.pk,
-        "values": {},
-    }
+    return {"facility": facility.pk, "detail": "By the gate"}
 
 
 @pytest.fixture

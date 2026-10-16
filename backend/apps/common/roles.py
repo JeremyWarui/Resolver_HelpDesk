@@ -1,14 +1,14 @@
 """Which role the caller holds, and what that role is allowed to do.
 
 Reporting is not gated by a role set: every role reads the same figures over
-its own scope, and `scoped_ticket_qs` is what narrows them.
+its own scope, and `reporting_ticket_qs` is what narrows them.
 """
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 # May act on someone else's ticket: assign, set priority, move status, delete
-# another person's attachment. A manager reads only; a technician works a
-# ticket but does not decide who holds it.
+# another person's attachment. A technician works a ticket but does not
+# decide who holds it.
 TICKET_SUPERVISOR_ROLES = ("admin", "hod", "hos")
 
 
@@ -40,6 +40,22 @@ class IsAdminGroup(BasePermission):
             and request.user.is_authenticated
             and resolve_role(request) == "admin"
         )
+
+
+class IsAdminOrManagerReadOnly(BasePermission):
+    """Read for the admin and the manager, write for the admin only.
+
+    The registers the whole organisation is read from: campuses and who heads
+    them.
+    """
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        role = resolve_role(request)
+        if request.method in SAFE_METHODS:
+            return role in ("admin", "manager")
+        return role == "admin"
 
 
 class IsAdminOrReadOnly(BasePermission):

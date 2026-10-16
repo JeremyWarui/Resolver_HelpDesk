@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "apps.tickets",
     "apps.analytics",
     "apps.notifications",
+    "apps.system_feedback",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -73,6 +74,8 @@ REST_FRAMEWORK = {
     # Views name a pagination class only to deviate from this.
     "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.DefaultPagination",
     "PAGE_SIZE": 20,
+    # Only views that name a scope are limited.
+    "DEFAULT_THROTTLE_RATES": {"system_feedback": "10/hour"},
 }
 
 
@@ -221,6 +224,9 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# The report downloads name their file here; a browser hides it otherwise.
+CORS_EXPOSE_HEADERS = ["Content-Disposition"]
 
 SIMPLE_JWT = {
     # Short-lived on purpose: jwt_refresh() re-derives role and scope claims from

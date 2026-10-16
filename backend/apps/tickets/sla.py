@@ -59,3 +59,18 @@ def q_met():
     return q_settled_with_due() & Q(
         resolved_at__isnull=False, resolved_at__lte=F("resolution_due_at")
     )
+
+
+def sla_outcome(ticket, now=None):
+    """One ticket's standing: "met", "missed", "overdue", or None.
+
+    The single-row form of `q_met`, `q_settled_with_due` and `is_overdue`, for
+    a report that lists tickets. A settled ticket with no target is None, as
+    it is left out of every percentage.
+    """
+    if ticket.status in TERMINAL_STATUSES:
+        if ticket.resolution_due_at is None:
+            return None
+        met = ticket.resolved_at is not None and ticket.resolved_at <= ticket.resolution_due_at
+        return "met" if met else "missed"
+    return "overdue" if is_overdue(ticket, now) else None

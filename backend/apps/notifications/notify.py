@@ -1,4 +1,8 @@
-"""In-app notification emitters, one per domain event.
+"""In-app notifications: one message per thing that happened to a ticket.
+
+A message names who acted and what they did, and carries what they typed,
+when they typed something, to the people it was written for. One action sends
+one message to each recipient, and nobody is told about their own action.
 
 Every emitter is wrapped in `@_never_fails`: these rows are the courtesy, the
 ticket is the work. The frontend polls `/notifications/`; nothing is pushed.
@@ -6,7 +10,9 @@ ticket is the work. The frontend polls `/notifications/`; nothing is pushed.
 
 import functools
 import logging
+
 from apps.accounts.identity import display_name
+from apps.tickets.constants import REQUESTER_COMMENT_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +22,7 @@ def _never_fails(emit):
 
     The guarantee has to live at the emitter boundary, not only inside the bulk
     insert: these functions also read related objects and format names, and any
-    of that can raise on data the caller never anticipated. Without this the
-    promise held for a database error and broke for an attribute error.
+    of that can raise on data the caller never anticipated.
     """
 
     @functools.wraps(emit)
@@ -28,11 +33,6 @@ def _never_fails(emit):
             logger.warning("%s failed: %s", emit.__name__, exc, exc_info=True)
 
     return guarded
-
-
-def _campus_id(ticket) -> int | None:
-    """Return the campus a ticket belongs to. Already a column on the row."""
-    return ticket.requester_campus_id
 
 
 def _role_holder_ids(role, **scope) -> list[int]:
@@ -55,161 +55,234 @@ def _role_holder_ids(role, **scope) -> list[int]:
         return []
 
 
+def _hos_ids(ticket) -> list[int]:
+    """The head of section at the ticket's campus."""
+    return _role_holder_ids("hos", campus_id=ticket.requester_campus_id)
+
+
 def _supervisor_ids(ticket) -> list[int]:
-    """The HOS and HOD who should hear about this ticket. Order is immaterial —
-    `_notify_users` de-duplicates."""
-    campus_id = _campus_id(ticket)
-    return _role_holder_ids("hos", campus_id=campus_id) + _role_holder_ids(
-        "hod", campus_id=campus_id
-    )
+    """The HOS and HOD at the ticket's campus."""
+    return _hos_ids(ticket) + _role_holder_ids("hod", campus_id=ticket.requester_campus_id)
+
+
+def _service(ticket) -> str:
+    """What the ticket is about, as a reader names it."""
+    item = getattr(ticket, "service_item", None)
+    return item.name if item else f"ticket #{ticket.ticket_no}"
+
+
+def _name(user, fallback="Someone") -> str:
+    return display_name(user) or fallback
+
+
+def _clip(text: str, limit: int) -> str:
+    """Fit a column, ending on a whole word with an ellipsis when cut."""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ·,")
+    return f"{cut}…"
 
 
 def _notify_users(
-    user_ids: list[int],
+    user_ids,
     event_type: str,
     title: str,
     body: str,
     ticket=None,
+    actor=None,
+    note: str = "",
 ) -> None:
-    """Persist in-app notifications for a list of users (bulk insert, no-op on error)."""
-    if not user_ids:
+    """Write one message per recipient, never to the actor (bulk insert, no-op on error)."""
+    actor_id = getattr(actor, "pk", None)
+    recipients = {uid for uid in user_ids if uid and uid != actor_id}
+    if not recipients:
         return
     try:
+        from django.db import transaction
+
         from apps.notifications.models import Notification
 
-        Notification.objects.bulk_create(
-            [
-                Notification(
-                    user_id=uid,
-                    event_type=event_type,
-                    title=title,
-                    body=body,
-                    ticket=ticket,
-                )
-                for uid in set(user_ids)
-            ]
-        )
+        rows = [
+            Notification(
+                user_id=uid,
+                event_type=event_type,
+                title=_clip(title, 128),
+                body=_clip(body, 256),
+                ticket=ticket,
+                actor=actor,
+                note=(note or "").strip(),
+            )
+            for uid in recipients
+        ]
+        # A savepoint: a failed insert must not abort the caller's transaction.
+        with transaction.atomic():
+            Notification.objects.bulk_create(rows)
     except Exception as exc:
         logger.warning("_notify_users failed: %s", exc)
 
 
 @_never_fails
-def emit_ticket_created(ticket) -> None:
-    recipients = _supervisor_ids(ticket)
+def emit_ticket_created(ticket, actor=None) -> None:
+    """The campus's supervisors hear of every new request."""
+    raiser = actor or ticket.raised_by
+    facility = getattr(ticket.facility, "name", None) if ticket.facility_id else None
     _notify_users(
-        recipients,
+        _supervisor_ids(ticket),
         "ticket_created",
-        "New ticket raised",
-        f"Ticket #{ticket.ticket_no} has been submitted in your section.",
+        f"New request: {_service(ticket)}",
+        f"{_name(raiser)} reported it"
+        + (f" at {facility}" if facility else "")
+        + f" · #{ticket.ticket_no}",
         ticket,
+        actor=raiser,
     )
 
 
 @_never_fails
-def emit_ticket_assigned(ticket, previous_assignee=None) -> None:
+def emit_ticket_assigned(ticket, actor, previous_assignee=None, note="", claimed=False) -> None:
+    """Who has the job now, as one message to each person concerned.
+
+    The technician hears the HOS's handover note; the previous technician and
+    the requester hear only who has it. A person in two of those places hears
+    once, as the first. Handing the job to the technician who already has it
+    is no news, so only a note, if there is one, goes to them.
+    """
     assignee = ticket.assigned_to
-    assignee_name = display_name(assignee) if assignee else None
-    is_reassignment = previous_assignee is not None
-    if assignee:
-        title = (
-            "Ticket reassigned to you" if is_reassignment else "Ticket assigned to you"
-        )
-        _notify_users(
-            [assignee.id],
-            "ticket_assigned",
-            title,
-            f"Ticket #{ticket.ticket_no} has been assigned to you.",
-            ticket,
-        )
-
-    if is_reassignment and previous_assignee:
-        prev_name = assignee_name or "another technician"
-        _notify_users(
-            [previous_assignee.id],
-            "ticket_assigned",
-            "Ticket reassigned",
-            f"Ticket #{ticket.ticket_no} has been reassigned to {prev_name}.",
-            ticket,
-        )
-
-    requester_title = "Ticket reassigned" if is_reassignment else "Ticket assigned"
-    requester_body = (
-        f"Ticket #{ticket.ticket_no} has been reassigned to {assignee_name or 'a technician'}."
-        if is_reassignment
-        else f"Ticket #{ticket.ticket_no} has been assigned to {assignee_name or 'a technician'}."
+    service = _service(ticket)
+    assignee_name = _name(assignee, "a technician")
+    no = f"#{ticket.ticket_no}"
+    same_hands = (
+        previous_assignee is not None and assignee is not None
+        and previous_assignee.pk == assignee.pk
     )
-    _notify_users(
-        [ticket.raised_by_id],
-        "ticket_assigned",
-        requester_title,
-        requester_body,
-        ticket,
-    )
+
+    messages = []  # (user_id, title, body, note), first one per person wins
+    if assignee is not None and not (same_hands and not note):
+        if same_hands:
+            title = f"{_name(actor)} sent you a note on {service}"
+        else:
+            verb = "reassigned" if previous_assignee is not None else "assigned"
+            title = f"{_name(actor)} {verb} you {service}"
+        messages.append((assignee.pk, title, no, note))
+    if not same_hands:
+        if previous_assignee is not None:
+            messages.append(
+                (previous_assignee.pk, f"{service} was reassigned",
+                 f"{assignee_name} has it now · {no}", "")
+            )
+        if claimed:
+            title = f"{assignee_name} has started on your request"
+        elif previous_assignee is not None:
+            title = f"{assignee_name} is now handling your request"
+        else:
+            title = f"{assignee_name} will handle your request"
+        messages.append((ticket.raised_by_id, title, f"{service} · {no}", ""))
+
+    told = set()
+    for uid, title, body, text in messages:
+        if uid in told:
+            continue
+        told.add(uid)
+        _notify_users([uid], "ticket_assigned", title, body, ticket, actor=actor, note=text)
 
 
 @_never_fails
-def emit_ticket_status_changed(ticket) -> None:
-    _notify_users(
-        [ticket.raised_by_id],
-        "ticket_status_changed",
-        "Ticket updated",
-        f"Ticket #{ticket.ticket_no} status changed to {ticket.status.replace('_', ' ')}.",
-        ticket,
-    )
+def emit_ticket_status_changed(
+    ticket, actor, old_status, new_status=None, note="", hold_reason="", previous_assignee_id=None
+) -> None:
+    """A move the people waiting on the ticket need to hear about, with its note.
+
+    Work starting or resuming goes to the requester; a hold and its reason go
+    to the requester and the HOS, and so does a resume; a reopen goes to the
+    HOS, who must assign it again, and to the technician who had it. A ticket
+    closed by its requester's rating tells nobody: they did it.
+
+    `new_status` defaults to the ticket's; the seed passes it, replaying a
+    history on a ticket already at its final status.
+    """
+    service = _service(ticket)
+    who = _name(actor)
+    no = f"#{ticket.ticket_no}"
+    status = new_status or ticket.status
+
+    if status == "in_progress":
+        resumed = old_status == "pending"
+        recipients = [ticket.raised_by_id] + (_hos_ids(ticket) if resumed else [])
+        _notify_users(
+            recipients,
+            "ticket_status_changed",
+            f"{who} {'resumed' if resumed else 'started'} work on {service}",
+            no,
+            ticket,
+            actor=actor,
+            note=note,
+        )
+    elif status == "pending":
+        changed = old_status == "pending"
+        _notify_users(
+            [ticket.raised_by_id] + _hos_ids(ticket),
+            "ticket_status_changed",
+            f"{who} changed the hold reason on {service}" if changed else f"{who} put {service} on hold",
+            f"{hold_reason} · {no}" if hold_reason else no,
+            ticket,
+            actor=actor,
+            note=note,
+        )
+    elif status == "open":
+        _notify_users(
+            _hos_ids(ticket) + [previous_assignee_id],
+            "ticket_status_changed",
+            f"{who} reopened {service}",
+            f"It needs assigning again · {no}",
+            ticket,
+            actor=actor,
+            note=note,
+        )
+    elif status == "closed":
+        _notify_users(
+            [ticket.raised_by_id],
+            "ticket_status_changed",
+            f"{service} was closed",
+            no,
+            ticket,
+            actor=actor,
+            note=note,
+        )
 
 
 @_never_fails
-def emit_ticket_resolved(ticket) -> None:
+def emit_ticket_resolved(ticket, actor, note="") -> None:
+    """The requester hears it is fixed and is asked to rate it; the HOS hears too."""
+    title = f"{_name(actor)} resolved {_service(ticket)}"
+    no = f"#{ticket.ticket_no}"
     _notify_users(
-        [ticket.raised_by_id],
-        "ticket_resolved",
-        "Your ticket has been resolved",
-        f"Ticket #{ticket.ticket_no} has been resolved. Please rate your experience.",
-        ticket,
+        [ticket.raised_by_id], "ticket_resolved", title,
+        f"Rate the fix to close it · {no}", ticket, actor=actor, note=note,
+    )
+    _notify_users(
+        [uid for uid in _hos_ids(ticket) if uid != ticket.raised_by_id],
+        "ticket_resolved", title, no, ticket, actor=actor, note=note,
     )
 
 
 @_never_fails
 def emit_comment_added(ticket, comment) -> None:
-    """Tell the assigned technician that a comment landed on their job.
+    """Tell the assignee, and the requester when they may read it, of a new comment.
 
-    Never the requester. Comments are the staff working log and the requester
-    is refused the thread, so notifying them — with a preview of the body, as
-    this once did — would hand them through the feed exactly what the endpoint
-    withholds. They hear about the work through status changes instead.
+    The requester hears only while the ticket is pending or resolved, the
+    statuses at which the comments endpoint shows them the thread.
     """
-    author = comment.author
-    if not ticket.assigned_to_id:
-        return
-    if author and author.id == ticket.assigned_to_id:
-        return
-
-    author_name = display_name(author) if author else "Someone"
-    preview = (comment.body or "")[:100]
-    _notify_users(
-        [ticket.assigned_to_id],
-        "comment_added",
-        "New comment on your ticket",
-        f"{author_name} commented on #{ticket.ticket_no}: {preview}",
-        ticket,
-    )
-
-
-@_never_fails
-def emit_sla_breach(ticket) -> None:
-    """A ticket has passed its resolution deadline.
-
-    Goes to the supervisors, not the technician: by the time this fires the
-    deadline is already gone, and the decision it calls for — reassign, chase,
-    reprioritise — is theirs. The assignee already sees the ticket turn red.
-    """
-    recipients = _supervisor_ids(ticket)
+    recipients = [ticket.assigned_to_id]
+    if ticket.status in REQUESTER_COMMENT_STATUSES:
+        recipients.append(ticket.raised_by_id)
     _notify_users(
         recipients,
-        "sla_breach",
-        "SLA breached",
-        f"Ticket #{ticket.ticket_no} has passed its resolution deadline.",
+        "comment_added",
+        f"{_name(comment.author)} commented on {_service(ticket)}",
+        f"#{ticket.ticket_no}",
         ticket,
+        actor=comment.author,
+        note=comment.body or "",
     )
 
 
@@ -218,21 +291,19 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
     """Tell the two people an escalation actually concerns.
 
     `holder` is the post the ticket escalated TO, resolved structurally by
-    `tickets.escalation.resolve_active_holder` — the same user the
-    TicketLog records as `level_user`. It is passed in rather than looked up
-    again, because notifying someone other than the person the ticket was
-    handed to is how an escalation goes unanswered.
-
-    The assignee is told separately: the ticket is leaving their level.
+    `tickets.escalation.resolve_active_holder` — the same user the TicketLog
+    records as `level_user`. The assignee is told separately: the ticket is
+    leaving their level.
     """
     level = ticket.current_level.upper()
+    service = _service(ticket)
 
     if holder is not None:
         _notify_users(
             [holder.pk],
             "ticket_escalated",
-            "Ticket escalated to you",
-            f"Ticket #{ticket.ticket_no} has been escalated to you as {level}.",
+            f"{service} escalated to you",
+            f"It reached you as {level} · #{ticket.ticket_no}",
             ticket,
         )
 
@@ -241,7 +312,7 @@ def emit_ticket_escalated(ticket, holder=None) -> None:
         _notify_users(
             [ticket.assigned_to_id],
             "ticket_escalated",
-            "Your ticket was escalated",
-            f"Ticket #{ticket.ticket_no}, assigned to you, has been escalated to {level}.",
+            f"Your job {service} was escalated",
+            f"It went to the {level} · #{ticket.ticket_no}",
             ticket,
         )

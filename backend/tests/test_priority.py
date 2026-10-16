@@ -76,7 +76,7 @@ def test_priority_change_is_logged(
     assert log.actor_id == nrb_hos.pk
 
 
-def test_raising_priority_tightens_the_sla_from_creation(
+def test_raising_priority_tightens_the_sla_from_the_clock_start(
     api,
     nrb_hos,
     nrb_electrician,
@@ -85,7 +85,8 @@ def test_raising_priority_tightens_the_sla_from_creation(
 ):
     """The clock started when the requester raised it. Re-basing the window on
     the assignment time would hand back the hours the ticket already waited."""
-    created_at = nrb_electrical_ticket.created_at
+    factories.age_ticket(nrb_electrical_ticket, hours=1)
+    started = nrb_electrical_ticket.clock_started_at
     api.force_authenticate(nrb_hos)
     api.post(
         reverse("ticket-assign", args=[nrb_electrical_ticket.pk]),
@@ -93,7 +94,7 @@ def test_raising_priority_tightens_the_sla_from_creation(
         format="json",
     )
     nrb_electrical_ticket.refresh_from_db()
-    expected = created_at + timedelta(minutes=critical_priority.resolution_minutes)
+    expected = started + timedelta(minutes=critical_priority.resolution_minutes)
     assert nrb_electrical_ticket.resolution_due_at == expected
 
 

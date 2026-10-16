@@ -55,8 +55,7 @@ def test_the_ticket_number_survives_every_later_save(
 def test_a_ticket_carries_its_location_back_out(
     api, requester, nrb, electrical, facility_types, priorities
 ):
-    """Location is two columns now, still nested under `location` for the
-    client, with the type read through the facility rather than stored twice."""
+    """Nested under `location`, with the type read through the facility."""
     from apps.facilities.models import Facility
 
     block = Facility.objects.create(
@@ -70,10 +69,7 @@ def test_a_ticket_carries_its_location_back_out(
         {
             "service_item": item.pk,
             "description": "no power",
-            "location": {
-                "facility": block.pk,
-                "values": {"floor": "2", "room": "204"},
-            },
+            "location": {"facility": block.pk, "detail": "Floor 2, Room 204"},
         },
         format="json",
     )
@@ -82,7 +78,7 @@ def test_a_ticket_carries_its_location_back_out(
     body = api.get(reverse("ticket-detail", args=[created.json()["id"]])).json()
     assert body["location"]["facility"]["name"] == "Admin Block"
     assert body["location"]["facility_type"]["code"] == "office_block"
-    assert body["location"]["values"] == {"floor": "2", "room": "204"}
+    assert body["location"]["detail"] == "Floor 2, Room 204"
 
 
 def test_a_rating_shows_on_the_ticket_it_belongs_to(

@@ -30,15 +30,16 @@ def ticket_base_qs():
 
 
 def scoped_ticket_qs(user, role):
-    """Return a Ticket queryset scoped to what `user` can see for the given `role`.
+    """Return the tickets `user` may open, for the given `role`.
 
-    Four shapes, and they fail closed. An admin and a manager read every
-    campus; an HOS and an HOD read their own; a technician reads the
-    (campus, trade) pairs they hold; everyone else reads what they raised.
+    Fails closed. An admin reads every campus; an HOS and an HOD read their
+    own; a technician reads the (campus, trade) pairs they hold; a plain user
+    reads what they raised. A manager opens no tickets here: they read the
+    ticket list (`listed_ticket_qs`) and the figures (`reporting_ticket_qs`).
     """
     base = ticket_base_qs().order_by("-updated_at")
 
-    if role in ("admin", "manager"):
+    if role == "admin":
         return base
 
     if role == "user":
@@ -61,3 +62,25 @@ def scoped_ticket_qs(user, role):
         return base.filter(role_holds_campus(user, role, prefix="requester_campus_id"))
 
     return base.none()
+
+
+def listed_ticket_qs(user, role):
+    """The tickets a role's ticket table lists.
+
+    The same as `scoped_ticket_qs`, except the manager, who sees every
+    campus's rows without being able to open one.
+    """
+    if role == "manager":
+        return ticket_base_qs().order_by("-updated_at")
+    return scoped_ticket_qs(user, role)
+
+
+def reporting_ticket_qs(user, role):
+    """The tickets a role's figures and ratings are computed over.
+
+    The manager's cover every campus. A technician's cover the jobs assigned
+    to them, not their whole trade: the report is about their own work.
+    """
+    if role == "technician":
+        return ticket_base_qs().order_by("-updated_at").filter(assigned_to=user)
+    return listed_ticket_qs(user, role)

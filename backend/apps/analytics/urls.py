@@ -1,8 +1,8 @@
 """
 Reporting routes, included by resolver/api_urls.py under /api/v1/.
 
-One route: `analytics/` returns every figure the system reports, as JSON. A
-dashboard renders all of it at once, so there is nothing to split it into.
+`analytics/` returns every figure the system reports, as JSON. The two export
+routes return the same figures as an Excel workbook and a PDF summary.
 """
 
 from django.urls import path
@@ -13,4 +13,6 @@ app_name = "analytics"
 
 urlpatterns = [
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
+    path("analytics/export/xlsx/", views.ExcelExportView.as_view(), name="export-xlsx"),
+    path("analytics/export/pdf/", views.PdfExportView.as_view(), name="export-pdf"),
 ]

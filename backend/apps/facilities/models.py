@@ -2,17 +2,22 @@
 
 from django.db import models
 
+# The facility types the system ships with, as code -> display name. Both
+# `seed` and the test factories create their rows from this one table.
+FACILITY_TYPES = {
+    "office_block": "Office Block",
+    "hostel": "Hostel",
+    "building": "Building",
+    "residential": "Staff Quarters",
+    "equipment": "Equipment",
+    "grounds": "Grounds / Field",
+}
+
 
 class FacilityType(models.Model):
-    """A small, fixed enumeration of facility kinds (e.g. office_block, building).
-
-    The rows mirror `facilities.validators.TYPE_SPECS`, which declares the set
-    and the location form each type maps to on the frontend. Seed reads it; add
-    a type there, not here.
-    """
+    """A kind of facility, used to group the register (e.g. office_block, hostel)."""
 
     name = models.CharField(max_length=80, unique=True)
-    # Stable key: picks the location form, and keys into TYPE_SPECS.
     code = models.CharField(max_length=20, unique=True)
 
     class Meta:

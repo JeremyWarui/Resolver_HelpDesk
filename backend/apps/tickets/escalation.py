@@ -38,7 +38,7 @@ def thresholds(priority):
 def active_elapsed(ticket, now):
     """How long the clock has actually run — time spent on hold does not count."""
     end = ticket.paused_at if ticket.paused_at is not None else now
-    return (end - ticket.created_at) - ticket.accumulated_pause
+    return (end - ticket.clock_started_at) - ticket.accumulated_pause
 
 
 def run_escalation_for_ticket(ticket, now):

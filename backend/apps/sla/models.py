@@ -10,9 +10,7 @@ from django.db import models
 
 # The four levels the system ships with, in rank order, as
 # (name, rank, response, resolution, escalate_to_hos, escalate_to_hod) minutes.
-# Declared here rather than in the seeder for the same reason
-# `facilities.validators.TYPE_SPECS` is: the set is fixed, the code owns it, and
-# both `seed` and the test factories create their rows from this one table.
+# Both `seed` and the test factories create their rows from this one table.
 PRIORITY_LEVELS = [
     ("Low", 1, 480, 4320, 2880, 5760),  # 8h response, 3d resolution
     ("Medium", 2, 240, 1440, 720, 1440),  # 4h response, 1d resolution

@@ -10,7 +10,7 @@ from django.db.models import Prefetch
 from rest_framework import generics, viewsets
 from rest_framework.permissions import IsAuthenticated
 
-from apps.common.roles import IsAdminGroup, IsAdminOrReadOnly
+from apps.common.roles import IsAdminOrManagerReadOnly, IsAdminOrReadOnly
 from apps.org.models import Campus, ServiceItem, Trade
 from apps.org.serializers import (
     CampusSerializer,
@@ -26,7 +26,7 @@ class CampusViewSet(viewsets.ModelViewSet):
 
     queryset = Campus.objects.order_by("name")
     serializer_class = CampusSerializer
-    permission_classes = [IsAdminGroup]
+    permission_classes = [IsAdminOrManagerReadOnly]
 
 
 class TradeViewSet(viewsets.ModelViewSet):

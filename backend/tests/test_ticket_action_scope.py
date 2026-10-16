@@ -228,16 +228,40 @@ def _feedback(api, user):
     return response.json()["results"]
 
 
-def test_a_technician_sees_only_their_own_trade(
-    api,
-    nrb_electrician,
-    rated_electrical,
-    rated_plumbing,
+def test_a_requester_has_no_ratings_list(api, requester, rated_electrical):
+    api.force_authenticate(requester)
+    assert api.get(reverse("ticket-feedback-list")).status_code == 403
+
+
+def test_a_technician_reads_the_ratings_on_jobs_assigned_to_them(
+    api, nrb, electrical, nrb_electrician, requester, priorities
 ):
-    """A trade's reputation is shared, so this is not "ratings on work I did" —
-    but it stops at the trade boundary, exactly as the ticket list does."""
+    """What the requester said about their own work, not their trade-mates'."""
+    colleague = factories.make_technician("elec_two", nrb, [electrical])
+    mine = factories.make_ticket(
+        requester, nrb, electrical, assigned_to=nrb_electrician, status="closed"
+    )
+    theirs = factories.make_ticket(
+        requester, nrb, electrical, assigned_to=colleague, status="closed"
+    )
+    factories.rate_ticket(mine, 5, "Sorted the same day")
+    factories.rate_ticket(theirs, 1)
+
     rows = _feedback(api, nrb_electrician)
-    assert [row["ticket_no"] for row in rows] == [rated_electrical.ticket_no]
+    assert [(r["ticket_no"], r["comment"]) for r in rows] == [
+        (mine.ticket_no, "Sorted the same day")
+    ]
+
+
+def test_an_hos_sees_the_ratings_on_their_campus_only(
+    api, nrb_hos, rated_electrical, rated_plumbing, msa_electrical_ticket
+):
+    factories.rate_ticket(msa_electrical_ticket, 3)
+    rows = _feedback(api, nrb_hos)
+    assert {row["ticket_no"] for row in rows} == {
+        rated_electrical.ticket_no,
+        rated_plumbing.ticket_no,
+    }
 
 
 def test_feedback_requires_authentication(api):
@@ -291,7 +315,7 @@ def test_a_technician_may_not_assign_a_ticket(
 
     The technician is squarely in scope for this ticket — it is their own
     campus and their own trade — so this is a role refusal, not a scope one.
-    Assignment and priority are the HOS's calls (REVIEW.md §4).
+    Assignment and priority are the HOS's calls.
     """
     mate = factories.make_technician("nrb_electrician_2", nrb, [electrical])
 

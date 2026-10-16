@@ -18,8 +18,6 @@ import os
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
 from apps.tickets.models import (
     Ticket,
@@ -28,7 +26,6 @@ from apps.tickets.models import (
     TicketComment,
 )
 from apps.tickets.serializers import (
-    AuditLogRowSerializer,
     TicketCreateSerializer,
     TicketReadSerializer,
     TicketDetailReadSerializer,
@@ -44,7 +41,7 @@ from apps.tickets.constants import (
     ACTIVE_STATUSES,
     ESCALATED_LEVELS,
     PENDING_REASONS,
-    TERMINAL_STATUSES,
+    REQUESTER_COMMENT_STATUSES,
 )
 from apps.tickets.attachments import (
     process_upload,
@@ -52,19 +49,22 @@ from apps.tickets.attachments import (
     MIME_TO_EXT,
 )
 from apps.tickets.lifecycle import (
+    AlreadyRated,
     assign_ticket,
     claim_ticket,
+    rate_ticket,
     transition_status,
     TransitionError,
 )
-from apps.tickets.scope import scoped_ticket_qs, ticket_base_qs
+from apps.tickets.scope import (
+    listed_ticket_qs,
+    reporting_ticket_qs,
+    scoped_ticket_qs,
+    ticket_base_qs,
+)
 from apps.tickets.sla import q_overdue
 from apps.common.pagination import AppendOnlyFeedPagination
-from apps.common.roles import (
-    IsAdminGroup,
-    TICKET_SUPERVISOR_ROLES,
-    resolve_role,
-)
+from apps.common.roles import TICKET_SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import emit_ticket_created, emit_comment_added
 from apps.accounts.identity import display_name_parts
 
@@ -90,14 +90,19 @@ def get_ticket_for_request_or_403(
     return ticket
 
 
-def refuse_read_only_roles(request):
-    """Refuse the manager any write on a ticket.
+def views_as_requester(request, ticket):
+    """Whether the caller sees this ticket only as the person who raised it.
 
-    Their scope is every campus and their authority none of it, so scope alone
-    lets them through.
+    Staff who raised a ticket inside their own scope still work it as staff:
+    the electrician who reports a fault in their own trade can claim it and
+    keep its working log.
     """
-    if resolve_role(request) == "manager":
-        raise PermissionDenied("A manager has read-only oversight of tickets.")
+    if ticket.raised_by_id != request.user.pk:
+        return False
+    role = resolve_role(request)
+    if role in (None, "user", "manager"):
+        return True
+    return not scoped_ticket_qs(request.user, role).filter(pk=ticket.pk).exists()
 
 
 class TicketStatusView(APIView):
@@ -225,33 +230,35 @@ class TicketClaimView(APIView):
 
 
 class TicketCommentListCreateView(generics.ListCreateAPIView):
-    """GET and POST /tickets/{pk}/comments/ — the conversation on one ticket."""
+    """GET and POST /tickets/{pk}/comments/ — the staff working log on one ticket.
+
+    Staff in scope read and post, including staff who raised the ticket. A
+    requester who is not staff on it reads it only while the ticket is pending
+    or resolved, and never posts.
+    """
 
     permission_classes = [IsAuthenticated]
     serializer_class = TicketCommentSerializer
     pagination_class = AppendOnlyFeedPagination
 
     def get_queryset(self):
-        """The staff working log for this ticket. Never the requester's to read."""
-        ticket = self._ticket_for_staff()
-        return TicketComment.objects.filter(ticket=ticket).order_by("-created_at")
-
-    def _ticket_for_staff(self):
-        """Scope-check the ticket, then refuse the two roles with no business here.
-
-        The requester is out because comments are the staff log, not a
-        conversation with them; the manager is out because their access is
-        read-only oversight, never operational.
-        """
+        """This ticket's comments, newest first, if this caller may read them."""
         ticket = get_ticket_for_request_or_403(self.request, self.kwargs["pk"])
-        if ticket.raised_by_id == self.request.user.pk:
-            raise PermissionDenied("Comments on a ticket are not shown to its raiser.")
-        refuse_read_only_roles(self.request)
-        return ticket
+        if (
+            views_as_requester(self.request, ticket)
+            and ticket.status not in REQUESTER_COMMENT_STATUSES
+        ):
+            raise PermissionDenied(
+                "Comments are shown to the requester while the ticket is "
+                "pending or resolved."
+            )
+        return TicketComment.objects.filter(ticket=ticket).order_by("-created_at")
 
     def perform_create(self, serializer):
         """Post a comment, if the ticket is open to comments and this caller may."""
-        ticket = self._ticket_for_staff()
+        ticket = get_ticket_for_request_or_403(self.request, self.kwargs["pk"])
+        if views_as_requester(self.request, ticket):
+            raise PermissionDenied("The requester cannot post comments.")
 
         if ticket.status == "closed":
             raise drf_serializers.ValidationError(
@@ -285,49 +292,34 @@ class TicketFeedbackView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        """Record the rating. Requester only, once, and only after it is resolved."""
-        ticket = get_ticket_for_request_or_403(request, pk)
-
-        if ticket.raised_by != request.user:
-            raise PermissionDenied("Only the requester can submit feedback.")
-
-        if ticket.status not in TERMINAL_STATUSES:
-            return Response(
-                {
-                    "detail": "Feedback can only be submitted once the ticket is resolved."
-                },
-                status=400,
+        """Rate and close. Requester only, once per resolution."""
+        with transaction.atomic():
+            ticket = get_ticket_for_request_or_403(
+                request, pk, qs=Ticket.objects.select_for_update()
             )
+            if ticket.raised_by_id != request.user.pk:
+                raise PermissionDenied("Only the requester can submit feedback.")
 
-        # `rated_at`, not `rating`: a one-star rating is still a rating.
-        if ticket.rated_at is not None:
-            return Response(
-                {"detail": "Feedback has already been submitted."},
-                status=409,
-            )
-
-        serializer = TicketFeedbackSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        ticket.rating = serializer.validated_data["rating"]
-        ticket.rating_comment = serializer.validated_data["comment"]
-        ticket.rated_at = timezone.now()
-        ticket.save(
-            update_fields=["rating", "rating_comment", "rated_at", "updated_at"]
-        )
-
-        TicketLog.objects.create(
-            ticket=ticket,
-            actor=request.user,
-            event_type="rated",
-            to_value=str(ticket.rating),
-        )
+            serializer = TicketFeedbackSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            try:
+                rate_ticket(
+                    ticket,
+                    request.user,
+                    serializer.validated_data["rating"],
+                    serializer.validated_data["comment"],
+                )
+            except AlreadyRated as e:
+                return Response({"detail": str(e)}, status=409)
+            except TransitionError as e:
+                return Response({"detail": str(e)}, status=400)
 
         return Response(
             {
                 "rating": ticket.rating,
                 "comment": ticket.rating_comment,
                 "created_at": ticket.rated_at,
+                "status": ticket.status,
             },
             status=201,
         )
@@ -336,9 +328,8 @@ class TicketFeedbackView(APIView):
 class TicketLogListView(generics.ListAPIView):
     """GET /tickets/{pk}/logs/ — the ticket's timeline, newest first.
 
-    This is what the requester gets in place of comments: the trail of what
-    happened to their ticket — opened, assigned, started, paused, resolved,
-    closed — without the staff working log.
+    The requester's copy leaves out comment events: the comments themselves
+    are shown to them only at some statuses.
     """
 
     permission_classes = [IsAuthenticated]
@@ -353,12 +344,17 @@ class TicketLogListView(generics.ListAPIView):
             .select_related("actor", "level_user")
             .order_by("-created_at")
         )
-        if ticket.raised_by_id == self.request.user.pk:
-            # A "Comment added" row the requester can never open is a dead end
-            # pointing at the staff log. The trail itself stays complete for
-            # staff and in the admin audit log.
+        self.as_requester = views_as_requester(self.request, ticket)
+        if self.as_requester:
             qs = qs.exclude(event_type="comment_added")
         return qs
+
+    def get_serializer_context(self):
+        # The HOS's handover note is written for the technician alone.
+        return {
+            **super().get_serializer_context(),
+            "hide_handover": getattr(self, "as_requester", False),
+        }
 
 
 class TicketListCreateView(generics.ListCreateAPIView):
@@ -396,9 +392,12 @@ class TicketListCreateView(generics.ListCreateAPIView):
             # The literal "user", never the caller's role: ?mine=1 can only narrow.
             qs = scoped_ticket_qs(user, "user")
         else:
-            qs = scoped_ticket_qs(user, resolve_role(self.request))
+            qs = listed_ticket_qs(user, resolve_role(self.request))
 
-        if params.get("status"):
+        # "active" is every live status at once: what a worklist shows by default.
+        if params.get("status") == "active":
+            qs = qs.filter(status__in=ACTIVE_STATUSES)
+        elif params.get("status"):
             qs = qs.filter(status=params["status"])
         if params.get("priority"):
             qs = qs.filter(priority_id=params["priority"])
@@ -469,7 +468,7 @@ class TicketFilterOptionsView(APIView):
     def get(self, request):
         """The four lists, plus the hold vocabulary."""
         role = resolve_role(request)
-        scoped = scoped_ticket_qs(request.user, role)
+        scoped = listed_ticket_qs(request.user, role)
 
         campus_rows = (
             scoped.values("requester_campus_id", "requester_campus__name")
@@ -528,6 +527,13 @@ class TicketDetailView(generics.RetrieveAPIView):
             qs=ticket_base_qs(),
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        """The ticket, plus whether this caller sees it only as its requester."""
+        ticket = self.get_object()
+        data = self.get_serializer(ticket).data
+        data["viewer_is_requester"] = views_as_requester(request, ticket)
+        return Response(data)
+
 
 class TicketAttachmentView(APIView):
     """GET and POST /tickets/{pk}/attachments/ — the files on one ticket.
@@ -550,8 +556,6 @@ class TicketAttachmentView(APIView):
     def post(self, request, pk):
         """Upload one or more files, compressing each before it is stored."""
         ticket = get_ticket_for_request_or_403(request, pk)
-        # An upload is a write on the ticket.
-        refuse_read_only_roles(request)
 
         current_count = ticket.attachments.count()
         if current_count >= MAX_ATTACHMENTS_PER_TICKET:
@@ -634,53 +638,23 @@ class TicketAttachmentDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class AdminAuditLogView(generics.ListAPIView):
-    """GET /admin/audit-log/ — every TicketLog row in the system, admin only.
-
-    The one read here that is not ticket-scoped, which is the point of an audit
-    log. Admin is the `admin` role, never `user.is_staff`.
-    """
-
-    permission_classes = [IsAuthenticated, IsAdminGroup]
-    serializer_class = AuditLogRowSerializer
-
-    def get_queryset(self):
-        """Every log row, filtered by whatever the admin asked for."""
-        qs = TicketLog.objects.select_related("actor", "ticket").order_by("-created_at")
-
-        params = self.request.query_params
-        if actor := params.get("actor"):
-            # The list renders names, so searching username alone misses rows in view.
-            qs = qs.filter(
-                Q(actor__username__icontains=actor)
-                | Q(actor__first_name__icontains=actor)
-                | Q(actor__last_name__icontains=actor)
-            )
-        if action := params.get("action"):
-            qs = qs.filter(event_type=action)
-        if date_from := params.get("date_from"):
-            qs = qs.filter(created_at__gte=date_from)
-        if date_to := params.get("date_to"):
-            qs = qs.filter(created_at__lte=date_to)
-
-        return qs
-
-
 class TicketFeedbackListView(generics.ListAPIView):
-    """GET /tickets/feedback/ — the rated tickets inside the caller's scope.
+    """GET /tickets/feedback/ — ratings over the caller's reporting scope.
 
-    Ordinary ticket scope, so a technician sees the ratings on every ticket in
-    their (campus, trade) pairs, including work they did not do. A trade's
-    reputation is shared.
+    A technician reads the ratings on jobs assigned to them; a supervisor
+    their campus; the manager and admin every campus. A requester has none.
     """
 
     permission_classes = [IsAuthenticated]
     serializer_class = TicketFeedbackRowSerializer
+    ROLES = ("admin", "manager", "hod", "hos", "technician")
 
     def get_queryset(self):
-        """Rated tickets the caller can see, newest rating first."""
+        """Rated tickets the caller reports on, newest rating first."""
         role = resolve_role(self.request)
-        qs = scoped_ticket_qs(self.request.user, role).filter(rated_at__isnull=False)
+        if role not in self.ROLES:
+            raise PermissionDenied("Ratings are listed for staff only.")
+        qs = reporting_ticket_qs(self.request.user, role).filter(rated_at__isnull=False)
 
         params = self.request.query_params
         if params.get("rating"):

@@ -11,7 +11,7 @@ from apps.accounts.identity import display_name
 from apps.accounts.models import SCOPE_FIELD_BY_ROLE, RoleAssignment, TechnicianTrade
 from apps.accounts.posts import add_trade, assign_role
 from apps.accounts.scope import post_holder, visible_campuses
-from apps.tickets.scope import scoped_ticket_qs
+from apps.tickets.scope import reporting_ticket_qs, scoped_ticket_qs
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -40,7 +40,9 @@ def test_granting_a_post_grants_its_scope(role, nrb, nrb_electrical_ticket):
 
     assert RoleAssignment.objects.get(user=user).role == role
     assert _holder(role, nrb) == user.pk
-    assert scoped_ticket_qs(user, role).filter(pk=nrb_electrical_ticket.pk).exists()
+    assert (
+        reporting_ticket_qs(user, role).filter(pk=nrb_electrical_ticket.pk).exists()
+    )
 
 
 @pytest.mark.parametrize("role", SUPERVISOR_ROLES)

@@ -21,6 +21,10 @@ RUNNING_STATUSES = ("open", "assigned", "in_progress")
 
 TERMINAL_STATUSES = ("resolved", "closed")
 
+# When the requester may read the comments on their ticket: while it is held,
+# so they can see why, and once it is resolved, so they can see what was done.
+REQUESTER_COMMENT_STATUSES = ("pending", "resolved")
+
 ALL_STATUSES = ACTIVE_STATUSES + TERMINAL_STATUSES
 
 # Escalation is structural: technician to HOS to HOD, in that order.

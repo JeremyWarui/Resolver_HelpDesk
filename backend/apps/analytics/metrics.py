@@ -21,6 +21,7 @@ divides for itself is a client that eventually divides differently.
 """
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from django.db.models import (
     Avg,
@@ -56,7 +57,12 @@ from apps.tickets.sla import q_met, q_overdue, q_settled_with_due
 
 BUCKETS = {"day": TruncDay, "week": TruncWeek, "month": TruncMonth}
 
+# The campuses are in Kenya, so a day in a trend runs midnight to midnight here,
+# not in UTC; the exports print times in it too.
+REPORT_TZ = ZoneInfo("Africa/Nairobi")
+
 DEFAULT_DAYS = 30
+MAX_DAYS = 3650
 
 # The name as `accounts.identity.display_name_parts` builds it, so one person is
 # not called two things. Trim collapses blanks to "", NullIf falls back to username.
@@ -99,7 +105,7 @@ def _aware(value):
 
 def _days(value) -> int:
     try:
-        return max(int(value), 1)
+        return min(max(int(value), 1), MAX_DAYS)
     except (TypeError, ValueError):
         return DEFAULT_DAYS
 
@@ -166,10 +172,16 @@ def _figure_set() -> dict:
         "open": Count("id", filter=Q(status__in=ACTIVE_STATUSES)),
         "settled": Count("id", filter=settled),
         "escalated": Count("id", filter=Q(current_level__in=ESCALATED_LEVELS)),
+        "escalated_hos": Count("id", filter=Q(current_level="hos")),
+        "escalated_hod": Count("id", filter=Q(current_level="hod")),
+        "closed": Count("id", filter=Q(status="closed")),
+        "closed_rated": Count("id", filter=Q(status="closed", rated_at__isnull=False)),
         # Holds come out: a job that waited three days on a part nobody could
-        # supply did not take three days of anybody's work.
+        # supply did not take three days of anybody's work. Measured from the
+        # clock's start, so a reopened ticket is timed on its latest attempt,
+        # the same attempt its SLA outcome judges.
         "resolution_seconds_avg": Avg(
-            _duration(F("resolved_at") - F("created_at") - F("accumulated_pause")),
+            _duration(F("resolved_at") - F("clock_started_at") - F("accumulated_pause")),
             filter=settled & Q(resolved_at__isnull=False),
         ),
         "resolution_sla_measurable": Count("id", filter=q_settled_with_due()),
@@ -212,6 +224,10 @@ def _report(row: dict) -> dict:
     measurable = row.pop("resolution_sla_measurable")
     row["missed"] = measurable - met
     row["resolution_sla_pct"] = _pct(met, measurable)
+    # Completion is how much of the period's work is finished; the SLA
+    # percentage is how much of the finished work was on time.
+    row["completion_pct"] = _pct(row["settled"], row["total"])
+    row["rated_pct"] = _pct(row.pop("closed_rated"), row["closed"])
     row["response_sla_pct"] = _pct(
         row.pop("response_sla_met"), row.pop("response_sla_measurable")
     )
@@ -306,7 +322,7 @@ def trend(qs, window: dict, bucket: str) -> list:
     truncate = BUCKETS.get(bucket, TruncDay)
     return list(
         raised_in(qs, window)
-        .annotate(bucket=truncate("created_at"))
+        .annotate(bucket=truncate("created_at", tzinfo=REPORT_TZ))
         .values("bucket")
         .annotate(
             total=Count("id"),

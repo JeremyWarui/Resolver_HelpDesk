@@ -1,22 +1,21 @@
 """Facilities and the location a ticket carries.
 
-Every location is a registered facility at the requester's own campus, and each
-type asks for whatever its own name does not already say.
+Every location is a registered facility at the requester's own campus, plus
+one line of free text saying where in it.
 """
 
 import pytest
 from django.urls import reverse
-from rest_framework.serializers import ValidationError
 
 from apps.facilities.models import Facility
-from apps.facilities.validators import validate_location
+from apps.tickets.models import Ticket
+from tests import factories
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
 def wamalwa(nrb, facility_types):
-    """A hostel — identified by room, because occupants rotate per course."""
     return Facility.objects.create(
         campus=nrb,
         facility_type=facility_types["hostel"],
@@ -33,62 +32,100 @@ def admin_block(nrb, facility_types):
     )
 
 
-def test_every_location_names_a_registered_facility(nrb, facility_types):
-    """No type is located by free text: a location outside the registry is a
-    location outside every report drawn from it.
-    """
-    with pytest.raises(ValidationError):
-        validate_location(None, {}, nrb.id)
+@pytest.fixture
+def raise_at(api, requester, electrical, priorities):
+    """POST a ticket at `location` as the Nairobi requester."""
+    item = factories.make_service_item(electrical)
+
+    def post(location):
+        api.force_authenticate(requester)
+        return api.post(
+            reverse("ticket-list"),
+            {"service_item": item.pk, "location": location, "description": "x"},
+            format="json",
+        )
+
+    return post
 
 
-def test_equipment_is_identified_by_the_asset_itself(nrb, facility_types):
-    """A generator is registered by name like any other place, so the wizard
-    has nothing left to ask about which one it is."""
-    generator = Facility.objects.create(
-        campus=nrb,
-        facility_type=facility_types["equipment"],
-        name="Standby Generator",
-    )
-    result = validate_location(generator, {}, nrb.id)
-    assert result["facility"] == generator
-    assert result["values"] == {}
+def test_a_ticket_stores_its_facility_and_the_spot_in_it(raise_at, wamalwa):
+    response = raise_at({"facility": wamalwa.pk, "detail": "  Room B-214  "})
+
+    assert response.status_code == 201
+    ticket = Ticket.objects.get(pk=response.json()["id"])
+    assert ticket.facility == wamalwa
+    assert ticket.location_detail == "Room B-214"
 
 
-def test_staff_quarters_still_name_the_tenant(nrb, facility_types):
-    """The block is the facility, but the technician needs to know whose door
-    to knock on to arrange access."""
-    quarters = Facility.objects.create(
-        campus=nrb, facility_type=facility_types["residential"], name="Staff Quarters A"
-    )
-    result = validate_location(quarters, {"tenant_name": "J. Mwangi"}, nrb.id)
-    assert result["values"]["tenant_name"] == "J. Mwangi"
+def test_the_detail_shape_returns_the_location(api, raise_at, requester, wamalwa):
+    ticket_id = raise_at({"facility": wamalwa.pk, "detail": "Room B-214"}).json()["id"]
 
-    with pytest.raises(ValidationError):
-        validate_location(quarters, {}, nrb.id)
+    location = api.get(reverse("ticket-detail", args=[ticket_id])).json()["location"]
+    assert location["facility"]["name"] == "Wamalwa"
+    assert location["facility_type"]["code"] == "hostel"
+    assert location["detail"] == "Room B-214"
 
 
-def test_a_valid_hostel_location_is_accepted(wamalwa, nrb, facility_types):
-    result = validate_location(wamalwa, {"room_number": "B-214"}, nrb.id)
-    assert result["values"]["room_number"] == "B-214"
+@pytest.mark.parametrize("detail", [None, "", "   "])
+def test_a_location_without_the_spot_is_rejected(raise_at, wamalwa, detail):
+    location = {"facility": wamalwa.pk}
+    if detail is not None:
+        location["detail"] = detail
+    assert raise_at(location).status_code == 400
 
 
-def test_a_missing_required_field_is_rejected(wamalwa, nrb, facility_types):
-    with pytest.raises(ValidationError):
-        validate_location(wamalwa, {}, nrb.id)
+def test_the_spot_is_at_most_200_characters(raise_at, wamalwa):
+    assert raise_at({"facility": wamalwa.pk, "detail": "x" * 201}).status_code == 400
+    assert raise_at({"facility": wamalwa.pk, "detail": "x" * 200}).status_code == 201
 
 
-def test_fields_from_another_type_are_rejected(wamalwa, nrb, facility_types):
-    """A hostel has no floors-and-rooms form; accepting one would store a
-    location no technician can act on."""
-    with pytest.raises(ValidationError):
-        validate_location(wamalwa, {"room_number": "B-1", "floor": "2"}, nrb.id)
+def test_a_location_without_a_facility_is_rejected(raise_at):
+    assert raise_at({"detail": "Room 4"}).status_code == 400
 
 
-def test_a_facility_from_another_campus_is_rejected(wamalwa, msa, facility_types):
-    """Otherwise a Mombasa requester could file against a Nairobi hostel and
+def test_a_facility_from_another_campus_is_rejected(raise_at, msa, facility_types):
+    """Otherwise a Nairobi requester could file against a Mombasa hostel and
     the ticket would route to a technician who cannot reach it."""
-    with pytest.raises(ValidationError):
-        validate_location(wamalwa, {"room_number": "B-1"}, msa.id)
+    elsewhere = Facility.objects.create(
+        campus=msa, facility_type=facility_types["hostel"], name="Coast Hostel"
+    )
+    response = raise_at({"facility": elsewhere.pk, "detail": "Room 1"})
+    assert response.status_code == 400
+    assert not Ticket.objects.exists()
+
+
+@pytest.fixture
+def two_campuses(nrb, msa, facility_types):
+    return (
+        Facility.objects.create(campus=nrb, facility_type=facility_types["hostel"], name="NRB Hall"),
+        Facility.objects.create(campus=msa, facility_type=facility_types["hostel"], name="MSA Hall"),
+    )
+
+
+def _facility_names(api, user):
+    api.force_authenticate(user)
+    rows = api.get(reverse("facility-list"), {"page_size": 100}).json()["results"]
+    return {r["name"] for r in rows}
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod", "requester", "nrb_electrician"])
+def test_campus_staff_and_requesters_read_only_their_own_campus_facilities(
+    api, request, two_campuses, role
+):
+    assert _facility_names(api, request.getfixturevalue(role)) == {"NRB Hall"}
+
+
+@pytest.mark.parametrize("role", ["admin_user", "manager"])
+def test_the_admin_and_manager_read_every_campus_facilities(
+    api, request, two_campuses, role
+):
+    assert _facility_names(api, request.getfixturevalue(role)) == {"NRB Hall", "MSA Hall"}
+
+
+def test_an_hos_cannot_reach_another_campus_facility_by_id(api, nrb_hos, two_campuses):
+    api.force_authenticate(nrb_hos)
+    _, elsewhere = two_campuses
+    assert api.get(reverse("facility-detail", args=[elsewhere.pk])).status_code == 404
 
 
 def test_a_facility_row_carries_its_type(

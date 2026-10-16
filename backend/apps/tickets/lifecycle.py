@@ -8,6 +8,7 @@ the notification.
 
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.identity import display_name
@@ -40,6 +41,10 @@ class TransitionError(Exception):
     """A status change that is not allowed from where the ticket is now."""
 
 
+class AlreadyRated(TransitionError):
+    """The ticket carries a rating for its current resolution."""
+
+
 def transition_status(
     ticket,
     new_status,
@@ -47,13 +52,18 @@ def transition_status(
     reason="",
     pending_reason="",
     pending_reason_note="",
+    notify=True,
 ):
     """Validate and apply a status transition, handling SLA pause/resume and logging.
 
-    `reason` is the free-text audit note kept for every transition.
-    `pending_reason` is one of the six codes, required on the way into `pending`
-    and cleared on the way out.
+    `reason` is the free-text audit note kept for every transition, and goes to
+    the people told of the move. `pending_reason` is one of the six codes,
+    required on the way into `pending` and cleared on the way out. `notify`
+    is off when the caller sends one message for several moves.
     """
+
+    if ticket.status == "pending" and new_status == "pending":
+        return _change_hold_reason(ticket, actor, reason, pending_reason, pending_reason_note)
 
     if new_status not in ALLOWED.get(ticket.status, set()):
         raise TransitionError(
@@ -70,6 +80,7 @@ def transition_status(
             raise TransitionError(f"Unknown pending reason: '{pending_reason}'.")
 
     old_status = ticket.status
+    previous_assignee_id = ticket.assigned_to_id
     now = timezone.now()
     is_reopen = old_status in TERMINAL_STATUSES and new_status == "open"
 
@@ -99,9 +110,11 @@ def transition_status(
         ticket.closed_at = now
 
     if is_reopen:
-        # Stale resolution timestamps would corrupt is_breaching and resolved-time
-        # analytics on a live ticket. Breach history stays in TicketLog.
+        # A reopened ticket starts over: unassigned, at the technician level, on
+        # a fresh clock. Its earlier history stays in TicketLog.
         ticket.assigned_to = None
+        ticket.current_level = "technician"
+        ticket.clock_started_at = now
         ticket.response_due_at, ticket.resolution_due_at = ticket.priority.due_dates(
             now
         )
@@ -111,12 +124,19 @@ def transition_status(
         ticket.closed_at = None
         ticket.pending_reason = ""
         ticket.pending_reason_note = ""
+        # The rating judged the work that failed; the next resolution gets its
+        # own. The old one stays on the trail as its `rated` row.
+        ticket.rating = None
+        ticket.rating_comment = ""
+        ticket.rated_at = None
 
     ticket.status = new_status
     ticket.save(
         update_fields=[
             "status",
             "assigned_to",
+            "current_level",
+            "clock_started_at",
             "paused_at",
             "accumulated_pause",
             "pending_reason",
@@ -125,6 +145,9 @@ def transition_status(
             "resolution_due_at",
             "resolved_at",
             "closed_at",
+            "rating",
+            "rating_comment",
+            "rated_at",
             "updated_at",
         ]
     )
@@ -155,11 +178,47 @@ def transition_status(
         reason=log_reason,
     )
 
-    if new_status == "resolved":
-        emit_ticket_resolved(ticket)
-    else:
-        emit_ticket_status_changed(ticket)
+    if notify:
+        if new_status == "resolved":
+            emit_ticket_resolved(ticket, actor, note=reason)
+        else:
+            emit_ticket_status_changed(
+                ticket,
+                actor,
+                old_status,
+                # A hold carries the dialog's note and the hold's own note; both are sent.
+                note=(
+                    "\n".join(dict.fromkeys(p for p in (reason, pending_reason_note) if p))
+                    if new_status == "pending"
+                    else reason
+                ),
+                hold_reason=PENDING_REASON_LABELS.get(pending_reason, ""),
+                previous_assignee_id=previous_assignee_id,
+            )
 
+    return ticket
+
+
+@transaction.atomic
+def _change_hold_reason(ticket, actor, reason, pending_reason, pending_reason_note):
+    """Keep a held ticket held, for a new cause: one hold ends, another begins.
+
+    Logged as the two moves it is, and sent as one message, so nobody is told
+    work resumed when it did not.
+    """
+    if (pending_reason or "").strip() == ticket.pending_reason:
+        raise TransitionError("The ticket is already held for that reason.")
+    transition_status(ticket, "in_progress", actor, reason="Hold reason updated", notify=False)
+    transition_status(
+        ticket, "pending", actor,
+        reason=reason, pending_reason=pending_reason,
+        pending_reason_note=pending_reason_note, notify=False,
+    )
+    emit_ticket_status_changed(
+        ticket, actor, "pending", new_status="pending",
+        note="\n".join(dict.fromkeys(p for p in (reason, pending_reason_note) if p)),
+        hold_reason=PENDING_REASON_LABELS.get(ticket.pending_reason, ""),
+    )
     return ticket
 
 
@@ -171,7 +230,8 @@ def claim_ticket(ticket, technician):
     of two simultaneous claims lose.
 
     Drives open → assigned → in_progress through `transition_status`, so a claim
-    leaves the same log rows and notifications as the two moves made by hand.
+    leaves the same log rows as the two moves made by hand, and sends one
+    message for the whole of it.
     """
     if ticket.status != "open" or ticket.assigned_to_id is not None:
         raise TransitionError("Ticket has already been claimed or assigned.")
@@ -186,10 +246,36 @@ def claim_ticket(ticket, technician):
         from_value="",
         to_value=display_name(technician),
     )
-    emit_ticket_assigned(ticket, previous_assignee=None)
+    transition_status(ticket, "assigned", technician, notify=False)
+    transition_status(ticket, "in_progress", technician, notify=False)
+    emit_ticket_assigned(ticket, technician, claimed=True)
+    return ticket
 
-    transition_status(ticket, "assigned", technician)
-    transition_status(ticket, "in_progress", technician)
+
+@transaction.atomic
+def rate_ticket(ticket, actor, rating, comment=""):
+    """Record the requester's rating, and close the ticket if it is resolved.
+
+    Rating is the requester's sign-off, so a rated ticket is a closed one; the
+    two writes share a transaction and cannot be left half done. A ticket
+    closed without a rating may still be rated.
+    """
+    if ticket.status not in TERMINAL_STATUSES:
+        raise TransitionError("Feedback can only be submitted once the ticket is resolved.")
+    # `rated_at`, not `rating`: a one-star rating is still a rating.
+    if ticket.rated_at is not None:
+        raise AlreadyRated("Feedback has already been submitted.")
+
+    ticket.rating = rating
+    ticket.rating_comment = comment
+    ticket.rated_at = timezone.now()
+    ticket.save(update_fields=["rating", "rating_comment", "rated_at", "updated_at"])
+    TicketLog.objects.create(
+        ticket=ticket, actor=actor, event_type="rated", to_value=str(rating)
+    )
+
+    if ticket.status == "resolved":
+        transition_status(ticket, "closed", actor)
     return ticket
 
 
@@ -217,10 +303,10 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     priority_changed = priority is not None and priority.pk != old_priority.pk
     if priority_changed:
         ticket.priority = priority
-        # From created_at, not now: re-basing would hand back time the ticket has
-        # already spent waiting.
+        # From the clock's start, not now: re-basing would hand back time the
+        # ticket has already spent waiting.
         ticket.response_due_at, ticket.resolution_due_at = priority.due_dates(
-            ticket.created_at
+            ticket.clock_started_at
         )
         updated_fields += ["priority", "response_due_at", "resolution_due_at"]
 
@@ -243,5 +329,5 @@ def assign_ticket(ticket, assignee, actor, priority=None, note=""):
         to_value=display_name(assignee),
         reason=note,
     )
-    emit_ticket_assigned(ticket, previous_assignee=previous_assignee)
+    emit_ticket_assigned(ticket, actor, previous_assignee=previous_assignee, note=note)
     return ticket

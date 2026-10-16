@@ -7,9 +7,10 @@ more than one trade. Both are asserted again through the API in
 """
 
 import pytest
+from django.urls import reverse
 
 from apps.accounts.models import TechnicianTrade
-from apps.tickets.scope import scoped_ticket_qs
+from apps.tickets.scope import reporting_ticket_qs, scoped_ticket_qs
 from tests import factories
 
 pytestmark = pytest.mark.django_db
@@ -117,15 +118,46 @@ def test_hod_sees_own_campus_only(
     }
 
 
-def test_manager_sees_all_campuses(
+def test_manager_opens_no_ticket_but_reports_on_every_campus(
     manager,
     nrb_electrical_ticket,
     msa_electrical_ticket,
 ):
-    assert visible(manager, "manager") == {
-        nrb_electrical_ticket.id,
-        msa_electrical_ticket.id,
-    }
+    assert visible(manager, "manager") == set()
+    reported = set(reporting_ticket_qs(manager, "manager").values_list("id", flat=True))
+    assert reported == {nrb_electrical_ticket.id, msa_electrical_ticket.id}
+
+
+def test_a_technician_reports_on_their_own_jobs_not_their_whole_trade(
+    nrb, electrical, nrb_electrician, requester, priorities
+):
+    from tests import factories
+
+    colleague = factories.make_technician("elec_two", nrb, [electrical])
+    mine = factories.make_ticket(requester, nrb, electrical, assigned_to=nrb_electrician)
+    theirs = factories.make_ticket(requester, nrb, electrical, assigned_to=colleague)
+
+    assert {mine.id, theirs.id} <= visible(nrb_electrician, "technician")
+    reported = set(
+        reporting_ticket_qs(nrb_electrician, "technician").values_list("id", flat=True)
+    )
+    assert reported == {mine.id}
+
+
+@pytest.mark.parametrize("role", ["admin", "hos", "hod", "user"])
+def test_every_other_role_reports_on_exactly_what_it_can_open(
+    request, role, nrb_electrical_ticket, msa_electrical_ticket, nrb_plumbing_ticket
+):
+    user = {
+        "admin": "admin_user",
+        "hos": "nrb_hos",
+        "hod": "nrb_hod",
+        "technician": "nrb_electrician",
+        "user": "requester",
+    }[role]
+    user = request.getfixturevalue(user)
+    reported = set(reporting_ticket_qs(user, role).values_list("id", flat=True))
+    assert reported == visible(user, role)
 
 
 def test_requester_sees_only_own_tickets(
@@ -215,3 +247,50 @@ def test_filter_options_offer_only_trades_the_caller_can_see(
     api.force_authenticate(nrb_electrician)
     options = api.get(reverse("ticket-filter-options")).json()
     assert [row["name"] for row in options["trades"]] == ["Electrical"]
+
+
+def test_status_active_lists_live_work_only_and_still_narrows(
+    api, requester, nrb, electrical, priorities, nrb_hos
+):
+    from apps.tickets.models import Ticket
+    from tests import factories
+
+    by_status = {}
+    for status in ("open", "assigned", "in_progress", "pending", "resolved", "closed"):
+        ticket = factories.make_ticket(requester, nrb, electrical)
+        Ticket.objects.filter(pk=ticket.pk).update(status=status)
+        by_status[status] = ticket.pk
+    api.force_authenticate(nrb_hos)
+
+    ids = {t["id"] for t in api.get(reverse("ticket-list"), {"status": "active", "page_size": 100}).json()["results"]}
+
+    assert ids == {by_status[s] for s in ("open", "assigned", "in_progress", "pending")}
+
+
+def test_status_active_never_widens_past_scope(api, msa_hos, requester, nrb, electrical, priorities):
+    from tests import factories
+
+    factories.make_ticket(requester, nrb, electrical)
+    factories.make_ticket(factories.make_user("msa_requester_two", campus=msa_hos.campus), msa_hos.campus, electrical)
+    api.force_authenticate(msa_hos)
+
+    body = api.get(reverse("ticket-list"), {"status": "active"}).json()
+
+    # Their own campus's live ticket, and not Nairobi's.
+    assert body["count"] == 1
+
+
+def test_a_list_row_says_when_its_hold_began(api, requester, nrb, electrical, priorities):
+    from django.utils import timezone
+
+    from apps.tickets.models import Ticket
+    from tests import factories
+
+    held = factories.make_ticket(requester, nrb, electrical)
+    when = timezone.now()
+    Ticket.objects.filter(pk=held.pk).update(status="pending", paused_at=when)
+    api.force_authenticate(requester)
+
+    [row] = api.get(reverse("ticket-list"), {"mine": 1}).json()["results"]
+
+    assert row["paused_at"] is not None

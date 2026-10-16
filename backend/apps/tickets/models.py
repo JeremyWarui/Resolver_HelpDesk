@@ -14,6 +14,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
+from django.utils import timezone
 
 from apps.tickets.constants import LEVELS, PENDING_REASONS, STATUSES
 
@@ -64,16 +65,14 @@ class Ticket(models.Model):
         related_name="assigned_tickets",
     )
 
-    # Where the job is. What `location_values` must contain depends on the
-    # facility's type and is checked by `facilities.validators.validate_location`
-    # before either column is written. The type is not stored again here;
-    # `facility.facility_type` is it.
+    # Where the job is: a registered facility at the requester's campus, and
+    # the room, floor or spot inside it in the requester's own words.
     facility = models.ForeignKey(
         "facilities.Facility",
         on_delete=models.PROTECT,
         related_name="tickets",
     )
-    location_values = models.JSONField(default=dict, blank=True)
+    location_detail = models.CharField(max_length=200, blank=True)
 
     description = models.TextField(blank=True)
     contact_phone = models.CharField(
@@ -85,6 +84,9 @@ class Ticket(models.Model):
     current_level = models.CharField(
         max_length=12, choices=LEVELS, default="technician"
     )
+    # When the SLA clock last started: at raising, and again on reopen.
+    # Escalation and a priority change both measure from here.
+    clock_started_at = models.DateTimeField(default=timezone.now)
     response_due_at = models.DateTimeField(null=True, blank=True)
     resolution_due_at = models.DateTimeField(null=True, blank=True)
     paused_at = models.DateTimeField(null=True, blank=True)
@@ -190,7 +192,6 @@ class TicketLog(models.Model):
         ("closed", "Closed"),
         ("reopened", "Reopened"),
         ("rated", "Rated"),
-        ("sla_breach", "SLA Breach"),
     ]
 
     ticket = models.ForeignKey(

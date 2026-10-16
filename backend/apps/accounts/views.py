@@ -30,7 +30,7 @@ from apps.accounts.serializers import (
     UserCreateSerializer,
     UserUpdateSerializer,
 )
-from apps.common.roles import IsAdminGroup, resolve_role
+from apps.common.roles import IsAdminGroup, IsAdminOrManagerReadOnly, resolve_role
 from apps.org.models import Campus
 
 _logger = logging.getLogger(__name__)
@@ -218,12 +218,12 @@ class MeView(APIView):
 class CampusRosterView(generics.ListAPIView):
     """GET /campus-roster/ — every campus with the post-holders behind it.
 
-    The admin Campuses screen. `org` serves the campus itself; the head and the
+    The Campuses screen, for the admin and the manager. `org` serves the campus itself; the head and the
     technician count are posts, so they are read here, where posts live.
     """
 
     serializer_class = CampusRosterSerializer
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAuthenticated, IsAdminOrManagerReadOnly]
 
     def get_queryset(self):
         return (

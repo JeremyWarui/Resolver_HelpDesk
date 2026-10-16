@@ -9,19 +9,16 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from apps.common.roles import IsAdminOrReadOnly
+from django.db.models import Q
+
+from apps.accounts.scope import UNSCOPED_ROLES, visible_campuses
+from apps.common.roles import IsAdminOrReadOnly, resolve_role
 from apps.facilities.models import Facility, FacilityType
 from apps.facilities.serializers import FacilitySerializer, FacilityTypeSerializer
 
 
 class FacilityTypeViewSet(ReadOnlyModelViewSet):
-    """The six types, read only.
-
-    Each code has a matching entry in `facilities.validators.TYPE_SPECS` and a
-    form in the ticket wizard, so adding a seventh is a code change, not a row
-    an admin can insert. Readable by anyone signed in — the wizard needs it to
-    pick a location form.
-    """
+    """The facility types from `facilities.models.FACILITY_TYPES`, read only."""
 
     queryset = FacilityType.objects.all().order_by("name")
     serializer_class = FacilityTypeSerializer
@@ -29,11 +26,11 @@ class FacilityTypeViewSet(ReadOnlyModelViewSet):
 
 
 class FacilityViewSet(viewsets.ModelViewSet):
-    """The facility registry: admin CRUD, readable by anyone signed in.
+    """The facility registry: admin CRUD, read within the caller's campuses.
 
-    `?campus=` and `?facility_type=` narrow it, which is what the ticket
-    wizard's location dropdown sends. Reads are open because every requester
-    has to pick a facility to raise a ticket at all.
+    The admin and the manager read every campus. Everyone else reads their
+    home campus, where they raise tickets, plus any campus their post or
+    trades cover. `?campus=` and `?facility_type=` narrow it further.
     """
 
     serializer_class = FacilitySerializer
@@ -43,6 +40,12 @@ class FacilityViewSet(viewsets.ModelViewSet):
         qs = Facility.objects.select_related("campus", "facility_type").order_by(
             "campus", "name"
         )
+        user = self.request.user
+        role = resolve_role(self.request)
+        if role not in UNSCOPED_ROLES:
+            qs = qs.filter(
+                Q(campus__in=visible_campuses(user, role)) | Q(campus_id=user.campus_id)
+            )
         campus = self.request.query_params.get("campus")
         facility_type = self.request.query_params.get("facility_type")
         if campus:

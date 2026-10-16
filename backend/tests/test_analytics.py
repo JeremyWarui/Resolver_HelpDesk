@@ -271,6 +271,28 @@ def test_time_spent_on_hold_comes_out_of_the_resolution_time(
     assert 3500 <= _figures(nrb_hos, "hos", window)["resolution_seconds_avg"] <= 3700
 
 
+def test_a_reopened_ticket_is_timed_on_its_latest_attempt(
+    nrb_hos, nrb_electrical_ticket, nrb_electrician, requester, window
+):
+    """Raised two days ago, resolved, reopened, and fixed again within the
+    hour: the figure is that hour, not the two days, as its SLA outcome is."""
+    from apps.tickets.models import Ticket
+
+    ticket = factories.age_ticket(nrb_electrical_ticket, days=2)
+    claim_ticket(ticket, nrb_electrician)
+    transition_status(ticket, "resolved", nrb_electrician)
+    transition_status(ticket, "open", requester)
+
+    Ticket.objects.filter(pk=ticket.pk).update(
+        clock_started_at=timezone.now() - timedelta(hours=1)
+    )
+    ticket.refresh_from_db()
+    claim_ticket(ticket, nrb_electrician)
+    transition_status(ticket, "resolved", nrb_electrician)
+
+    assert 3500 <= _figures(nrb_hos, "hos", window)["resolution_seconds_avg"] <= 3700
+
+
 def test_a_closed_ticket_still_counts_as_settled(
     nrb_hos, nrb_electrical_ticket, nrb_plumbing_ticket, nrb_electrician, nrb_plumber,
     window,

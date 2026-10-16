@@ -89,32 +89,9 @@ def test_another_users_notification_cannot_be_marked_read(api, requester, nrb_ho
 
 
 
-def test_a_comment_never_reaches_the_requester(
-    nrb_electrical_ticket, nrb_electrician, nrb_hos, requester
-):
-    """The requester is refused the comment thread, so the feed must not hand
-    them the body it withholds — this once shipped a 100-character preview."""
-    from apps.notifications.notify import emit_comment_added
-    from apps.tickets.models import TicketComment
-
-    nrb_electrical_ticket.assigned_to = nrb_electrician
-    nrb_electrical_ticket.save(update_fields=["assigned_to"])
-    comment = TicketComment.objects.create(
-        ticket=nrb_electrical_ticket, author=nrb_hos, body="chase the store"
-    )
-
-    emit_comment_added(nrb_electrical_ticket, comment)
-
-    assert not _for(requester, "comment_added").exists()
-    # The assignee is who a comment on their job concerns.
-    assert _for(nrb_electrician, "comment_added").count() == 1
-
-
 def test_a_status_change_tells_the_requester(
     nrb_electrical_ticket, nrb_electrician, nrb_hos, requester
 ):
-    """The requester never reaches the comment thread, so a status change is
-    how they learn the work moved."""
     from apps.tickets.lifecycle import assign_ticket, transition_status
 
     assign_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos)
@@ -159,34 +136,69 @@ def test_reassignment_tells_the_technician_who_lost_the_job(
     assert _for(requester, "ticket_assigned").count() == 2
 
 
-def test_an_sla_breach_tells_the_supervisors_not_the_technician(
-    nrb_electrical_ticket, nrb_electrician, nrb_hos, nrb_hod, requester
+@pytest.mark.parametrize(
+    "status, requester_told",
+    [
+        ("assigned", False),
+        ("in_progress", False),
+        ("pending", True),
+        ("resolved", True),
+    ],
+)
+def test_a_comment_reaches_the_requester_only_when_they_may_read_it(
+    nrb_electrical_ticket, nrb_electrician, nrb_hos, requester, status, requester_told
 ):
-    """By the time this fires the deadline is gone and the decision — reassign,
-    chase, reprioritise — belongs to the supervisors. Driven through the
-    command, because cron is the only thing that ever calls the emitter."""
-    from datetime import timedelta
-
-    from django.core.management import call_command
-    from django.utils import timezone
+    """The requester is told of a comment exactly when the comments endpoint
+    would show it to them; the assignee is told whenever someone else posts."""
+    from apps.notifications.notify import emit_comment_added
+    from apps.tickets.models import TicketComment
 
     nrb_electrical_ticket.assigned_to = nrb_electrician
-    nrb_electrical_ticket.status = "in_progress"
-    nrb_electrical_ticket.resolution_due_at = timezone.now() - timedelta(hours=1)
-    nrb_electrical_ticket.save(
-        update_fields=["assigned_to", "status", "resolution_due_at"]
+    nrb_electrical_ticket.status = status
+    nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
+    comment = TicketComment.objects.create(
+        ticket=nrb_electrical_ticket, author=nrb_hos, body="Parts ordered"
     )
 
-    call_command("check_sla")
+    emit_comment_added(nrb_electrical_ticket, comment)
 
-    assert _for(nrb_hos, "sla_breach").count() == 1
-    assert _for(nrb_hod, "sla_breach").count() == 1
-    assert not _for(nrb_electrician, "sla_breach").exists()
-    assert not _for(requester, "sla_breach").exists()
+    assert _for(requester, "comment_added").exists() is requester_told
+    assert _for(nrb_electrician, "comment_added").count() == 1
 
-    # The command is idempotent, so a second pass must not notify twice.
-    call_command("check_sla")
-    assert _for(nrb_hos, "sla_breach").count() == 1
+
+def test_an_assignee_who_raised_the_ticket_is_told_once(
+    nrb, electrical, nrb_electrician, nrb_hos, priorities
+):
+    from apps.notifications.notify import emit_comment_added
+    from apps.tickets.models import TicketComment
+
+    own = factories.make_ticket(
+        nrb_electrician, nrb, electrical, assigned_to=nrb_electrician, status="pending"
+    )
+    comment = TicketComment.objects.create(ticket=own, author=nrb_hos, body="Approved")
+
+    emit_comment_added(own, comment)
+
+    assert _for(nrb_electrician, "comment_added").count() == 1
+
+
+def test_the_assignee_is_not_told_of_their_own_comment(
+    nrb_electrical_ticket, nrb_electrician, requester
+):
+    from apps.notifications.notify import emit_comment_added
+    from apps.tickets.models import TicketComment
+
+    nrb_electrical_ticket.assigned_to = nrb_electrician
+    nrb_electrical_ticket.status = "pending"
+    nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
+    comment = TicketComment.objects.create(
+        ticket=nrb_electrical_ticket, author=nrb_electrician, body="Waiting on stores"
+    )
+
+    emit_comment_added(nrb_electrical_ticket, comment)
+
+    assert not _for(nrb_electrician, "comment_added").exists()
+    assert _for(requester, "comment_added").count() == 1
 
 
 def test_an_escalation_tells_the_post_it_reached_and_the_assignee(
@@ -235,3 +247,181 @@ def test_a_failing_notification_never_breaks_the_action(
     assert nrb_electrical_ticket.status == "in_progress"
     assert nrb_electrical_ticket.assigned_to_id == nrb_electrician.pk
     assert Notification.objects.count() == 0
+
+
+def _note(user, event="ticket_status_changed", read=False):
+    return Notification.objects.create(
+        user=user, event_type=event, title="t", body="b", read=read
+    )
+
+
+def test_the_feed_filters_to_unread_and_still_counts_the_whole_feed(api, requester):
+    unread = _note(requester)
+    _note(requester, read=True)
+    api.force_authenticate(requester)
+
+    body = api.get(reverse("notifications-list"), {"unread": "1"}).json()
+
+    assert [n["id"] for n in body["results"]] == [unread.pk]
+    assert body["unread_count"] == 1
+
+
+def test_the_feed_filters_to_the_event_types_asked_for(api, requester):
+    comment = _note(requester, "comment_added")
+    resolved = _note(requester, "ticket_resolved")
+    _note(requester, "ticket_assigned")
+    api.force_authenticate(requester)
+
+    body = api.get(
+        reverse("notifications-list"), {"event_type": "comment_added,ticket_resolved"}
+    ).json()
+
+    assert {n["id"] for n in body["results"]} == {comment.pk, resolved.pk}
+
+
+def test_the_feed_pages_with_before_and_says_when_there_is_more(api, requester):
+    notes = [_note(requester) for _ in range(53)]
+    api.force_authenticate(requester)
+
+    first = api.get(reverse("notifications-list")).json()
+    assert len(first["results"]) == 50
+    assert first["has_more"] is True
+    assert first["results"][0]["id"] == notes[-1].pk
+
+    second = api.get(
+        reverse("notifications-list"), {"before": first["results"][-1]["id"]}
+    ).json()
+    assert [n["id"] for n in second["results"]] == [n.pk for n in reversed(notes[:3])]
+    assert second["has_more"] is False
+
+
+def test_the_feed_filters_never_reach_another_users_rows(api, requester, nrb_hos):
+    _note(nrb_hos, "comment_added")
+    api.force_authenticate(requester)
+
+    body = api.get(
+        reverse("notifications-list"), {"event_type": "comment_added", "unread": "1"}
+    ).json()
+
+    assert body["results"] == []
+    assert body["unread_count"] == 0
+
+
+@pytest.mark.parametrize("before", ["abc", "-1", " 5", "\u00b2"])
+def test_a_malformed_before_is_a_400_not_a_server_error(api, requester, before):
+    api.force_authenticate(requester)
+    assert api.get(reverse("notifications-list"), {"before": before}).status_code == 400
+
+
+def test_limit_sets_the_page_size_and_pages_on_from_there(api, requester):
+    notes = [_note(requester) for _ in range(25)]
+    api.force_authenticate(requester)
+
+    first = api.get(reverse("notifications-list"), {"limit": 20}).json()
+    assert [n["id"] for n in first["results"]] == [n.pk for n in reversed(notes[5:])]
+    assert first["has_more"] is True
+
+    second = api.get(
+        reverse("notifications-list"), {"limit": 20, "before": first["results"][-1]["id"]}
+    ).json()
+    assert [n["id"] for n in second["results"]] == [n.pk for n in reversed(notes[:5])]
+    assert second["has_more"] is False
+
+
+def test_limit_is_capped_so_one_call_cannot_pull_the_whole_feed(api, requester):
+    for _ in range(105):
+        _note(requester)
+    api.force_authenticate(requester)
+
+    body = api.get(reverse("notifications-list"), {"limit": 5000}).json()
+
+    assert len(body["results"]) == 100
+    assert body["has_more"] is True
+
+
+@pytest.mark.parametrize("limit", ["0", "-3", "ten", "\u00b2"])
+def test_a_bad_limit_is_a_400(api, requester, limit):
+    api.force_authenticate(requester)
+    assert api.get(reverse("notifications-list"), {"limit": limit}).status_code == 400
+
+
+def test_unread_count_ignores_the_type_and_paging_filters(api, requester):
+    _note(requester, "ticket_assigned")
+    newest = _note(requester, "comment_added")
+    _note(requester, "comment_added", read=True)
+    api.force_authenticate(requester)
+    url = reverse("notifications-list")
+
+    by_type = api.get(url, {"event_type": "comment_added"}).json()
+    paged = api.get(url, {"before": newest.pk}).json()
+
+    assert by_type["unread_count"] == 2
+    assert paged["unread_count"] == 2
+
+
+@pytest.mark.parametrize("rows, more", [(50, False), (51, True)])
+def test_has_more_is_exact_at_the_page_boundary(api, requester, rows, more):
+    for _ in range(rows):
+        _note(requester)
+    api.force_authenticate(requester)
+
+    body = api.get(reverse("notifications-list")).json()
+
+    assert len(body["results"]) == 50
+    assert body["has_more"] is more
+
+
+def test_an_unknown_event_type_is_a_400(api, requester):
+    api.force_authenticate(requester)
+    response = api.get(reverse("notifications-list"), {"event_type": "comment_added,nonsense"})
+    assert response.status_code == 400
+    assert "nonsense" in str(response.json()["event_type"])
+
+
+def test_the_feed_is_in_time_order_whatever_order_the_rows_were_written(api, requester):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    now = timezone.now()
+    older = _note(requester)
+    newer = _note(requester)
+    # Written in one order, dated in the other, as a back-dated import would be.
+    Notification.objects.filter(pk=older.pk).update(created_at=now)
+    Notification.objects.filter(pk=newer.pk).update(created_at=now - timedelta(days=3))
+    api.force_authenticate(requester)
+
+    ids = [n["id"] for n in api.get(reverse("notifications-list")).json()["results"]]
+
+    assert ids == [older.pk, newer.pk]
+
+
+def test_paging_through_one_instant_neither_skips_nor_repeats(api, requester):
+    from django.utils import timezone
+
+    now = timezone.now()
+    notes = [_note(requester) for _ in range(7)]
+    Notification.objects.filter(user=requester).update(created_at=now)
+    api.force_authenticate(requester)
+
+    seen, before = [], None
+    while True:
+        params = {"limit": 3, **({"before": before} if before else {})}
+        body = api.get(reverse("notifications-list"), params).json()
+        seen += [n["id"] for n in body["results"]]
+        if not body["has_more"]:
+            break
+        before = body["results"][-1]["id"]
+
+    assert sorted(seen) == sorted(n.pk for n in notes)
+    assert len(seen) == len(set(seen))
+
+
+def test_paging_from_another_users_row_returns_nothing(api, requester, nrb_hos):
+    _note(requester)
+    theirs = _note(nrb_hos)
+    api.force_authenticate(requester)
+
+    body = api.get(reverse("notifications-list"), {"before": theirs.pk}).json()
+
+    assert body["results"] == []

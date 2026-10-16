@@ -125,7 +125,9 @@ def make_ticket(raised_by, campus, trade, service_item=None, **kwargs):
     kwargs.setdefault("contact_phone", "+254700000000")
     # Due dates come from the same helper production uses; leaving them null would
     # quietly disable every SLA assertion downstream.
-    response_due, resolution_due = kwargs["priority"].due_dates(timezone.now())
+    now = timezone.now()
+    response_due, resolution_due = kwargs["priority"].due_dates(now)
+    kwargs.setdefault("clock_started_at", now)
     kwargs.setdefault("response_due_at", response_due)
     kwargs.setdefault("resolution_due_at", resolution_due)
     return Ticket.objects.create(
@@ -151,8 +153,7 @@ def age_ticket(ticket, **delta):
     `created_at` is auto_now_add and cannot be assigned, so this is an UPDATE
     followed by a refresh.
     """
-    Ticket.objects.filter(pk=ticket.pk).update(
-        created_at=timezone.now() - timedelta(**delta)
-    )
+    then = timezone.now() - timedelta(**delta)
+    Ticket.objects.filter(pk=ticket.pk).update(created_at=then, clock_started_at=then)
     ticket.refresh_from_db()
     return ticket

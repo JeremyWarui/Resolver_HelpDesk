@@ -21,7 +21,7 @@ class DefaultPagination(PageNumberPagination):
 
 
 class AppendOnlyFeedPagination(CursorPagination):
-    """For immutable append-only feeds: logs, comments, audit trail.
+    """For immutable append-only feeds: ticket logs and comments.
 
     A cursor rather than a page number, because rows are inserted while a
     reader is paging and a page number would repeat or skip one.

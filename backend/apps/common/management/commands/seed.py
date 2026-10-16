@@ -20,8 +20,7 @@ from django.utils import timezone
 from apps.accounts.identity import display_name, local_part
 from apps.accounts.models import TechnicianTrade
 from apps.accounts.posts import assign_role
-from apps.facilities.models import Facility, FacilityType
-from apps.facilities.validators import TYPE_SPECS
+from apps.facilities.models import FACILITY_TYPES, Facility, FacilityType
 from apps.notifications.models import Notification
 from apps.notifications.notify import (
     emit_comment_added,
@@ -232,6 +231,8 @@ SUPERVISORS = {
 
 DEMO_TICKET_COUNT = 150
 DEMO_WINDOW_DAYS = 90
+# Past this age, most demo tickets in a staffed section are finished.
+SETTLED_AFTER_DAYS = 14
 
 # campus_code -> trade codes staffed there. Deliberately uneven: a masonry
 # ticket at Baringo routes correctly and has nobody to assign it to.
@@ -270,18 +271,15 @@ STATUS_WEIGHTS = {
     "closed": 6,
 }
 
-# One generator per facility type in TYPE_SPECS, producing a location the API
-# would accept. `_check_demo_tables` proves both halves of that every run.
-LOCATION_VALUES = {
-    "office_block": lambda r: {"floor": str(r.randint(0, 3)), "room": f"{r.randint(1, 4)}{r.randint(10, 40)}"},
-    "hostel": lambda r: {"room_number": f"{r.choice('ABC')}-{r.randint(101, 320)}"},
-    "building": lambda r: {"area": r.choice(["Main hall", "Servery", "Ground floor", "Rear wing", "Entrance"])},
-    "residential": lambda r: {
-        "tenant_name": r.choice(["J. Mwangi", "A. Chepkoech", "S. Omondi", "M. Wairimu"]),
-        "unit_number": f"Q{r.randint(1, 24)}",
-    },
-    "grounds": lambda r: {"landmark": r.choice(["By the gate", "Rear fence", "Near the mast"])},
-    "equipment": lambda r: {},
+# One generator per facility type in FACILITY_TYPES: the room, floor or spot a
+# requester would type.
+LOCATION_DETAILS = {
+    "office_block": lambda r: f"Floor {r.randint(0, 3)}, Room {r.randint(1, 4)}{r.randint(10, 40)}",
+    "hostel": lambda r: f"Room {r.choice('ABC')}-{r.randint(101, 320)}",
+    "building": lambda r: r.choice(["Main hall", "Servery", "Ground floor", "Rear wing", "Entrance"]),
+    "residential": lambda r: f"Unit Q{r.randint(1, 24)}",
+    "grounds": lambda r: r.choice(["By the gate", "Rear fence", "Near the mast"]),
+    "equipment": lambda r: r.choice(["Plant room", "Generator house", "Pump house"]),
 }
 
 
@@ -336,13 +334,11 @@ class Command(BaseCommand):
         that declares it.
 
         Seed follows the declarations, it never defines them, and the failure it
-        guards against is silent: an unlisted status simply never gets generated,
-        and an unlisted facility type gets a location of `{}` that the API would
-        have rejected.
+        guards against is silent: an unlisted status simply never gets generated.
         """
         self._same_keys(STATUS_WEIGHTS, ALL_STATUSES, "demo status weights")
         self._same_keys(PENDING_NOTES, PENDING_REASON_CODES, "hold-reason notes")
-        self._same_keys(LOCATION_VALUES, TYPE_SPECS, "demo location values")
+        self._same_keys(LOCATION_DETAILS, FACILITY_TYPES, "demo location details")
 
         # One name is one email is one account, so the pool cannot be reused.
         needed = sum(len(codes) for codes in TRADE_STAFFING.values())
@@ -365,19 +361,6 @@ class Command(BaseCommand):
                         f"PRIORITY_LEVELS['{name}'] is out of order: "
                         f"{earlier} ({first}) must not exceed {later} ({second})."
                     )
-
-        # Not just the right types: the values themselves must be a location the
-        # API would accept, checked against the same spec that validates one.
-        rng = random.Random(0)
-        for code, build in LOCATION_VALUES.items():
-            spec = TYPE_SPECS[code]
-            values = set(build(rng))
-            if not spec["required"] <= values <= spec["known"]:
-                raise CommandError(
-                    f"seed's demo location for '{code}' would be rejected by "
-                    f"TYPE_SPECS: builds {sorted(values)}, requires "
-                    f"{sorted(spec['required'])}, allows {sorted(spec['known'])}."
-                )
 
     @staticmethod
     def _same_keys(demo, declared, what):
@@ -414,19 +397,22 @@ class Command(BaseCommand):
         priority's threshold climbs technician → HOS → HOD. Running the real
         engine rather than stamping levels by hand means the demo shows what
         production would actually have done.
+
+        Each pass moves a ticket one level, as the hourly job does, so it runs
+        until nothing moves: the backlog it inherits has been waiting for weeks.
         """
         from apps.tickets.escalation import run_escalations
 
-        count = run_escalations()
-        self.stdout.write(f"  Escalations: {count} ticket(s) raised above the technician")
+        moves = 0
+        while moved := run_escalations():
+            moves += moved
+        self.stdout.write(f"  Escalations: {moves} level change(s) applied")
 
 
     def _seed_facility_types(self):
-        for code, spec in TYPE_SPECS.items():
-            FacilityType.objects.get_or_create(
-                code=code, defaults={"name": spec["label"]}
-            )
-        self.stdout.write(f"  FacilityType: {len(TYPE_SPECS)}")
+        for code, name in FACILITY_TYPES.items():
+            FacilityType.objects.get_or_create(code=code, defaults={"name": name})
+        self.stdout.write(f"  FacilityType: {len(FACILITY_TYPES)}")
 
     def _seed_priorities(self):
         priorities = {}
@@ -679,6 +665,10 @@ class Command(BaseCommand):
             code: [hod, hos] for code, (hod, hos) in posts.items()
         }
 
+        requesters_by_campus = defaultdict(list)
+        for user in requesters:
+            requesters_by_campus[user.campus.code].append(user)
+
         created = 0
         for index in range(DEMO_TICKET_COUNT):
             # Every sixth ticket lands in an unstaffed trade, so the "routed
@@ -687,21 +677,25 @@ class Command(BaseCommand):
             campus_code, trade_code = rng.choice(pool)
             campus = campuses[campus_code]
             trade = trades[trade_code]
-            # One in eight is raised by a member of staff at that campus.
+            # Raised by someone based at that campus; one in eight by staff.
             if index % 8 == 3 and staff_raisers.get(campus_code):
                 requester = rng.choice(staff_raisers[campus_code])
             else:
-                requester = rng.choice(requesters)
+                requester = rng.choice(requesters_by_campus[campus_code])
             item = rng.choice(items_by_trade[trade_code])
             status = rng.choice(statuses)
 
             candidates = technicians.get((campus.id, trade.id)) or []
             technician = rng.choice(candidates) if candidates else None
-            if technician is None:
-                status = "open"
 
             age_minutes = demo_age_minutes(rng)
             created_at = now - timedelta(minutes=age_minutes)
+            # A staffed section finishes most of its old work; a backlog of
+            # two-month-old open jobs would make every overdue figure the story.
+            if age_minutes > SETTLED_AFTER_DAYS * 24 * 60 and rng.random() < 0.85:
+                status = rng.choice(["resolved", "closed", "closed", "closed"])
+            if technician is None:
+                status = "open"
             priority = priorities["Low"] if status == "open" else rng.choice(
                 [priorities["Low"], priorities["Medium"],
                  priorities["High"], priorities["Critical"]]
@@ -709,7 +703,7 @@ class Command(BaseCommand):
 
             facility = self._pick_facility(facilities_by_campus[campus_code], rng)
             ticket = self._create_ticket(
-                requester=requester, campus=campus, trade=trade,
+                requester=requester, trade=trade,
                 item=item, priority=priority, status=status,
                 technician=technician, created_at=created_at,
                 facility=facility, rng=rng,
@@ -723,7 +717,7 @@ class Command(BaseCommand):
             created += 1
 
         created += self._seed_chronic_faults(
-            campuses, trades, requesters, priorities, technicians,
+            campuses, trades, requesters_by_campus, priorities, technicians,
             facilities_by_campus, items_by_trade, rng, now, posts,
         )
         self._seed_attachments(rng)
@@ -742,7 +736,7 @@ class Command(BaseCommand):
         return post[1] if post else None
 
     def _seed_chronic_faults(
-        self, campuses, trades, requesters, priorities, technicians,
+        self, campuses, trades, requesters_by_campus, priorities, technicians,
         facilities_by_campus, items_by_trade, rng, now, posts,
     ):
         """A handful of buildings with the same fault, over and over.
@@ -774,7 +768,7 @@ class Command(BaseCommand):
 
             candidates = technicians.get((campus.id, trade.id)) or []
             for _ in range(rng.randint(3, 5)):
-                requester = rng.choice(requesters)
+                requester = rng.choice(requesters_by_campus[campus_code])
                 status = rng.choice(["closed", "closed", "resolved", "in_progress", "open"])
                 technician = rng.choice(candidates) if candidates else None
                 if technician is None:
@@ -784,7 +778,7 @@ class Command(BaseCommand):
                 )
                 created_at = now - timedelta(minutes=demo_age_minutes(rng))
                 ticket = self._create_ticket(
-                    requester=requester, campus=campus, trade=trade,
+                    requester=requester, trade=trade,
                     item=item, priority=priority, status=status,
                     technician=technician, created_at=created_at,
                     facility=facility, rng=rng,
@@ -841,19 +835,28 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  Attachments: {count}")
 
-    def _create_ticket(self, *, requester, campus, trade, item, priority,
+    def _create_ticket(self, *, requester, trade, item, priority,
                        status, technician, created_at, facility, rng, description):
-        """Create one demo ticket and back-date it to `created_at`."""
+        """Create one demo ticket and back-date it to `created_at`.
+
+        The campus is the requester's own, as the API derives it, and the
+        facility must be on it.
+        """
+        if facility.campus_id != requester.campus_id:
+            raise CommandError(
+                f"seed placed {display_name(requester)}'s ticket at "
+                f"{facility.name}, which is not on their campus."
+            )
         response_due_at, resolution_due_at = priority.due_dates(created_at)
         ticket = Ticket.objects.create(
             raised_by=requester,
-            requester_campus=campus,
+            requester_campus=requester.campus,
             service_item=item,
             trade=trade,
             priority=priority,
             assigned_to=None if status == "open" else technician,
             facility=facility,
-            location_values=self._location_values(facility.facility_type, rng),
+            location_detail=LOCATION_DETAILS[facility.facility_type.code](rng),
             description=description,
             contact_phone=self._next_phone(),
             status=status,
@@ -861,7 +864,9 @@ class Command(BaseCommand):
             resolution_due_at=resolution_due_at,
         )
         # created_at is auto_now_add; rewrite it so the demo spans DEMO_WINDOW_DAYS.
-        Ticket.objects.filter(pk=ticket.pk).update(created_at=created_at)
+        Ticket.objects.filter(pk=ticket.pk).update(
+            created_at=created_at, clock_started_at=created_at
+        )
         ticket.refresh_from_db()
         return ticket
 
@@ -871,13 +876,6 @@ class Command(BaseCommand):
         # Weighted, not uniform: an even spread drew a facility chart of equal stubs.
         weights = [4 if i < 2 else 2 if i < 5 else 1 for i in range(len(facilities))]
         return rng.choices(facilities, weights=weights)[0]
-
-    @staticmethod
-    def _location_values(facility_type, rng):
-        """The type's own extra fields come from LOCATION_VALUES — mirroring
-        TYPE_SPECS, which is what the API validates a real submission against."""
-        builder = LOCATION_VALUES.get(facility_type.code)
-        return builder(rng) if builder else {}
 
     @staticmethod
     def _log(ticket, when, **fields):
@@ -904,8 +902,13 @@ class Command(BaseCommand):
         emit(*args, **kwargs)
         Notification.objects.filter(pk__gt=high_water).update(created_at=when)
 
-    def _write_comment(self, ticket, author, when, body):
-        """Write one comment with the trail row and notification the view writes."""
+    def _write_comment(self, ticket, author, when, body, status_then="in_progress"):
+        """Write one comment with the trail row and notification the view writes.
+
+        `status_then` is the ticket's status when the comment was posted, which
+        decides whether its requester was told; the ticket object already holds
+        its final status.
+        """
         comment = TicketComment.objects.create(
             ticket=ticket, author=author, body=body
         )
@@ -914,7 +917,11 @@ class Command(BaseCommand):
             ticket, when, event_type="comment_added",
             actor=author, to_value=str(comment.pk),
         )
-        self._notify(when, emit_comment_added, ticket, comment)
+        final_status, ticket.status = ticket.status, status_then
+        try:
+            self._notify(when, emit_comment_added, ticket, comment)
+        finally:
+            ticket.status = final_status
         return comment
 
     def _write_history(self, ticket, technician, created_at, rng, hos, now):
@@ -944,7 +951,12 @@ class Command(BaseCommand):
             actor=technician if claimed else hos,
             to_value=display_name(technician),
         )
-        self._notify(assigned_at, emit_ticket_assigned, ticket, previous_assignee=None)
+        self._notify(
+            assigned_at, emit_ticket_assigned, ticket,
+            technician if claimed else hos,
+            # A claim starts the work; the seed leaves some claimed tickets at assigned.
+            claimed=claimed and ticket.status != "assigned",
+        )
 
         if ticket.status == "assigned":
             return
@@ -954,12 +966,19 @@ class Command(BaseCommand):
             ticket, started_at, event_type="status_changed", actor=technician,
             from_value="assigned", to_value="in_progress",
         )
+        if not claimed:
+            # A claim's one message already said work had started.
+            self._notify(
+                started_at, emit_ticket_status_changed, ticket, technician, "assigned",
+                new_status="in_progress",
+            )
 
         if ticket.status == "pending":
             # Weighted: a maintenance section is stopped by parts far more often than by
             # anything else.
             reason = rng.choices(list(PENDING_NOTES), weights=[30, 24, 16, 14, 9, 7])[0]
-            paused_at = min(created_at + timedelta(hours=rng.randint(1, 12)), now)
+            # After work started, or the trail reads "held" before "in progress".
+            paused_at = min(started_at + timedelta(hours=rng.randint(1, 12)), now)
             Ticket.objects.filter(pk=ticket.pk).update(
                 paused_at=paused_at,
                 pending_reason=reason,
@@ -969,6 +988,11 @@ class Command(BaseCommand):
                 ticket, paused_at, event_type="status_changed", actor=technician,
                 from_value="in_progress", to_value="pending",
                 reason=f"{PENDING_REASON_LABELS[reason]} — {PENDING_NOTES[reason]}",
+            )
+            self._notify(
+                paused_at, emit_ticket_status_changed, ticket, technician, "in_progress",
+                new_status="pending",
+                note=PENDING_NOTES[reason], hold_reason=PENDING_REASON_LABELS[reason],
             )
 
         resolved_at = None
@@ -989,14 +1013,19 @@ class Command(BaseCommand):
         )
 
         if resolved_at is not None:
+            # Picked by pk, not drawn: an extra draw would shift every later one.
+            resolution_note = COMPLETION_NOTES[ticket.pk % len(COMPLETION_NOTES)]
             self._log(
                 ticket, resolved_at, event_type="resolved", actor=technician,
-                from_value="in_progress", to_value="resolved",
+                from_value="in_progress", to_value="resolved", reason=resolution_note,
             )
-            self._notify(resolved_at, emit_ticket_resolved, ticket)
+            self._notify(
+                resolved_at, emit_ticket_resolved, ticket, technician, note=resolution_note,
+            )
 
-        # `TicketFeedbackView` accepts a rating from either terminal status.
-        rated_at = resolved_at
+        # Rating closes a ticket, so only closed ones carry a rating; a resolved
+        # one is still waiting on its requester.
+        rated_at = None
         if ticket.status == "closed":
             closed_at = min(resolved_at + timedelta(hours=rng.randint(2, 48)), now)
             Ticket.objects.filter(pk=ticket.pk).update(closed_at=closed_at)
@@ -1004,7 +1033,10 @@ class Command(BaseCommand):
                 ticket, closed_at, event_type="closed", actor=ticket.raised_by,
                 from_value="resolved", to_value="closed",
             )
-            self._notify(closed_at, emit_ticket_status_changed, ticket)
+            self._notify(
+                closed_at, emit_ticket_status_changed, ticket, ticket.raised_by, "resolved",
+                new_status="closed",
+            )
             rated_at = closed_at
 
         if rated_at is not None and rng.random() < 0.7:
@@ -1016,9 +1048,9 @@ class Command(BaseCommand):
                 ),
                 rated_at=rated_at,
             )
-            # `TicketFeedbackView` logs the rating, so the demo trail does too.
+            # `rate_ticket` logs the rating just before the close it causes.
             self._log(
-                ticket, rated_at, event_type="rated",
+                ticket, rated_at - timedelta(seconds=1), event_type="rated",
                 actor=ticket.raised_by, to_value=str(rating),
             )
 
@@ -1038,16 +1070,16 @@ class Command(BaseCommand):
             return
 
         # Still live: a progress note, and now and then the HOS chasing it.
+        def status_at(when):
+            paused = Ticket.objects.filter(pk=ticket.pk).values_list("paused_at", flat=True).first()
+            return "pending" if paused is not None and when >= paused else "in_progress"
+
+        when = min(started_at + timedelta(minutes=rng.randint(10, 180)), now)
         self._write_comment(
-            ticket,
-            technician,
-            min(started_at + timedelta(minutes=rng.randint(10, 180)), now),
-            rng.choice(PROGRESS_NOTES),
+            ticket, technician, when, rng.choice(PROGRESS_NOTES), status_at(when),
         )
         if hos is not None and rng.random() < 0.35:
+            when = min(started_at + timedelta(hours=rng.randint(4, 30)), now)
             self._write_comment(
-                ticket,
-                hos,
-                min(started_at + timedelta(hours=rng.randint(4, 30)), now),
-                rng.choice(SUPERVISOR_NOTES),
+                ticket, hos, when, rng.choice(SUPERVISOR_NOTES), status_at(when),
             )

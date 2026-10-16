@@ -18,7 +18,6 @@ from apps.tickets.phone import (
 )
 from apps.sla.models import Priority
 from apps.facilities.models import Facility
-from apps.facilities.validators import validate_location
 from apps.tickets.models import (
     Ticket,
     TicketAttachment,
@@ -26,7 +25,7 @@ from apps.tickets.models import (
     TicketLog,
 )
 from apps.tickets.constants import ALL_STATUSES, PENDING_REASON_CODES
-from apps.tickets.sla import is_overdue
+from apps.tickets.sla import is_overdue, sla_outcome
 from apps.accounts.serializers import UserMinSerializer
 
 User = get_user_model()
@@ -67,17 +66,13 @@ class _FacilityMinSerializer(serializers.Serializer):
 
 
 class _TicketLocationSerializer(serializers.Serializer):
-    """The ticket's own location columns, still nested for the client.
-
-    `source="*"` on the parent field: location is two columns on the Ticket, and
-    the facility names its own type, so nothing here is stored twice.
-    """
+    """The ticket's location columns, nested for the client (`source="*"`)."""
 
     facility_type = _FacilityTypeMinSerializer(
         source="facility.facility_type", read_only=True
     )
     facility = _FacilityMinSerializer(read_only=True)
-    values = serializers.JSONField(source="location_values", read_only=True)
+    detail = serializers.CharField(source="location_detail", read_only=True)
 
 
 class TicketReadSerializer(serializers.ModelSerializer):
@@ -116,9 +111,11 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "facility",
             "description",
             "status",
-            # An HOS's job includes seeing what escalated (REVIEW.md §4).
+            # An HOS's job includes seeing what escalated.
             "current_level",
             "resolution_due_at",
+            # When the current hold began: the held lists say how long.
+            "paused_at",
             "pending_reason_display",
             "is_breaching",
             "has_feedback",
@@ -146,20 +143,26 @@ class TicketDetailReadSerializer(TicketReadSerializer):
 
     feedback = serializers.SerializerMethodField()
     location = _TicketLocationSerializer(source="*", read_only=True)
+    # "met" | "missed" | "overdue" | null, from `tickets/sla.py`, so the
+    # detail never judges a deadline itself.
+    sla_outcome = serializers.SerializerMethodField()
 
     class Meta(TicketReadSerializer.Meta):
         fields = TicketReadSerializer.Meta.fields + [
             "feedback",
+            "sla_outcome",
             "contact_phone",
             "location",
             "response_due_at",
-            "paused_at",
             "accumulated_pause",
             "pending_reason",
             "pending_reason_note",
             "closed_at",
         ]
         read_only_fields = fields
+
+    def get_sla_outcome(self, ticket):
+        return sla_outcome(ticket)
 
     def get_feedback(self, ticket):
         """The submitted rating, or None when the requester has not rated it."""
@@ -173,24 +176,12 @@ class TicketDetailReadSerializer(TicketReadSerializer):
 
 
 class LocationInputSerializer(serializers.Serializer):
-    """The location half of a create request, before it is checked.
-
-    Only the shape is validated here. Whether these values make sense for this
-    facility type is `facilities.validators.validate_location`'s decision, and
-    `TYPE_SPECS` there is the contract.
-
-    The facility is required and is the only id needed: every location is a
-    registered facility at the requester's campus, and it names its own type.
-    """
+    """Where the job is: a facility at the requester's campus, and the spot in it."""
 
     facility = serializers.PrimaryKeyRelatedField(
         queryset=Facility.objects.select_related("facility_type", "campus")
     )
-    values = serializers.DictField(
-        child=serializers.CharField(allow_blank=True),
-        required=False,
-        default=dict,
-    )
+    detail = serializers.CharField(max_length=200, trim_whitespace=True)
 
 
 class TicketCreateSerializer(serializers.Serializer):
@@ -241,18 +232,15 @@ class TicketCreateSerializer(serializers.Serializer):
 
         priority = Priority.default()
 
-        location_input = attrs["location"]
-        location_data = validate_location(
-            location_input["facility"],
-            location_input.get("values", {}),
-            campus.id,
-        )
+        if attrs["location"]["facility"].campus_id != campus.id:
+            raise serializers.ValidationError(
+                {"location": "The facility is not on the requester's campus."}
+            )
 
         # Underscored so DRF leaves them alone; create() pops each one.
         attrs["_trade"] = service_item.trade
         attrs["_priority"] = priority
         attrs["_requester_campus"] = campus
-        attrs["_location_data"] = location_data
 
         return attrs
 
@@ -263,9 +251,7 @@ class TicketCreateSerializer(serializers.Serializer):
         trade = validated_data.pop("_trade")
         priority = validated_data.pop("_priority")
         requester_campus = validated_data.pop("_requester_campus")
-        location_data = validated_data.pop("_location_data")
-
-        validated_data.pop("location", None)
+        location = validated_data["location"]
 
         # The clock starts at creation: time spent unassigned is what the SLA measures.
         now = timezone.now()
@@ -277,10 +263,11 @@ class TicketCreateSerializer(serializers.Serializer):
             service_item=validated_data["service_item"],
             trade=trade,
             priority=priority,
-            facility=location_data["facility"],
-            location_values=location_data["values"],
+            facility=location["facility"],
+            location_detail=location["detail"],
             description=validated_data.get("description", ""),
             contact_phone=validated_data["contact_phone"],
+            clock_started_at=now,
             response_due_at=response_due_at,
             resolution_due_at=resolution_due_at,
         )
@@ -343,15 +330,15 @@ class TicketAssignSerializer(serializers.Serializer):
 
 
 class TicketCommentSerializer(serializers.ModelSerializer):
-    """A comment on a ticket. Staff-facing throughout: the requester never
-    reaches this endpoint, so there is nothing to mark as internal."""
+    """A comment on a ticket. Who may read or post is the view's decision."""
 
     author = UserMinSerializer(read_only=True)
+    body = serializers.CharField(max_length=5000, trim_whitespace=True)
 
     class Meta:
         model = TicketComment
         fields = ["id", "author", "body", "created_at"]
-        read_only_fields = fields
+        read_only_fields = ["id", "author", "created_at"]
 
 
 class TicketFeedbackSerializer(serializers.Serializer):
@@ -442,16 +429,8 @@ class TicketLogSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-
-class AuditLogRowSerializer(TicketLogSerializer):
-    """A TicketLog row as the admin audit table lists it.
-
-    The timeline shape plus the ticket number, because the admin reads across
-    every ticket rather than down one.
-    """
-
-    ticket_no = serializers.CharField(source="ticket.ticket_no", read_only=True)
-
-    class Meta(TicketLogSerializer.Meta):
-        fields = TicketLogSerializer.Meta.fields + ["ticket_no"]
-        read_only_fields = fields
+    def to_representation(self, log):
+        data = super().to_representation(log)
+        if self.context.get("hide_handover") and log.event_type in ("assigned", "reassigned"):
+            data["reason"] = ""
+        return data
