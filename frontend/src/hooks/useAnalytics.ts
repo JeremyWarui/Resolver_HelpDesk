@@ -5,9 +5,9 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getAnalytics } from '@/lib/api/analytics';
+import { getAnalytics, getOverview } from '@/lib/api/analytics';
 import { useFacilities } from '@/hooks/useOrganizations';
-import type { AnalyticsEnvelope, AnalyticsParams, Facility } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, Facility, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** The reporting envelope for the signed-in user. `group_by` is checked server-side. */
 export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boolean }) {
@@ -18,6 +18,16 @@ export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boo
     enabled: options?.enabled ?? true,
   });
   return { data: data ?? null, loading: isLoading, error, refetch };
+}
+
+/** The manager's overview for a period, and optionally one campus. */
+export function useOverview(params: OverviewParams) {
+  const { data, isLoading, error } = useQuery<OverviewEnvelope>({
+    queryKey: ['analytics', 'overview', params.days, params.bucket, params.campus ?? null],
+    queryFn: () => getOverview(params),
+    staleTime: 2 * 60 * 1000,
+  });
+  return { data: data ?? null, loading: isLoading, error };
 }
 
 interface FacilityTradeSlice {

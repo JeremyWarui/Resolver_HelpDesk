@@ -62,21 +62,15 @@ test('the manager reads campuses without the controls to change them', async ({ 
   await expect(page.getByRole('button', { name: /^(Edit|Delete) / })).toHaveCount(0);
 });
 
-test('the manager reports cover response time, campuses, trades and technicians', async ({ page }) => {
+test('the manager reports lead with the period against the one before, then campuses and trades', async ({ page }) => {
   await login(page, USERS.manager);
   await page.getByRole('link', { name: 'Reports', exact: true }).click();
   await expect(page.locator('header h1')).toHaveText('Reports');
 
-  await expect(page.getByText('Avg Response')).toBeVisible();
-  await expect(page.getByText('Avg Resolution')).toBeVisible();
-
-  // The tables mount as they scroll into view.
-  await page.locator('main').first().hover();
-  for (const title of ['Campus Performance', 'Technician Performance', 'Trade Performance']) {
-    await expect(async () => {
-      await page.mouse.wheel(0, 600);
-      await expect(page.getByText(title)).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000 });
+  await expect(page.getByText('Resolved on time', { exact: true })).toBeVisible();
+  await expect(page.getByText('Average time to fix', { exact: true })).toBeVisible();
+  for (const section of ['Needs your attention', 'Facility Health', 'Campuses', 'Trades', 'Trades by campus']) {
+    await expect(page.getByLabel(section, { exact: true })).toBeVisible();
   }
 });
 

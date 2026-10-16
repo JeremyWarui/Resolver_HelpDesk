@@ -13,6 +13,7 @@ app_name = "analytics"
 
 urlpatterns = [
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
+    path("analytics/overview/", views.OverviewView.as_view(), name="overview"),
     path("analytics/export/xlsx/", views.ExcelExportView.as_view(), name="export-xlsx"),
     path("analytics/export/pdf/", views.PdfExportView.as_view(), name="export-pdf"),
 ]

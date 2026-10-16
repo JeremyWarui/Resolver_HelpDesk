@@ -18,12 +18,14 @@ interface AppBarChartProps {
    *  legend appears only for more than one, where it is the only thing saying
    *  which bar is which. */
   series?: { key: string; name?: string; color?: string }[];
+  /** Bar width in px. */
+  barSize?: number;
 }
 
 const DEFAULT_SERIES = [{ key: 'tickets' }];
 
 /** The bar chart every report draws: one series or several, same axes. */
-export function AppBarChart({ data, height = 250, series = DEFAULT_SERIES }: AppBarChartProps) {
+export function AppBarChart({ data, height = 250, series = DEFAULT_SERIES, barSize = 20 }: AppBarChartProps) {
   const multi = series.length > 1;
 
   return (
@@ -46,7 +48,7 @@ export function AppBarChart({ data, height = 250, series = DEFAULT_SERIES }: App
               name={s.name}
               fill={s.color ?? CHART_COLORS[i % CHART_COLORS.length]}
               radius={[4, 4, 0, 0]}
-              barSize={20}
+              barSize={barSize}
             />
           ))}
         </BarChart>

@@ -12,6 +12,8 @@ interface TicketVolumeChartProps {
   bucket?: Bucket;
   /** The name of the second series in the legend and tooltip. */
   settledLabel?: string;
+  /** Bar width in px; a long period reads better with narrow bars. */
+  barSize?: number;
 }
 
 /** Tickets raised over the window, against how many of them are settled: two
@@ -23,6 +25,7 @@ export function TicketVolumeChart({
   height = 250,
   bucket = 'day',
   settledLabel = 'Settled',
+  barSize,
 }: TicketVolumeChartProps) {
   const series = [
     { key: 'raised', name: 'Raised' },
@@ -43,7 +46,7 @@ export function TicketVolumeChart({
         {loading ? (
           <Skeleton style={{ height }} className="w-full rounded-md" />
         ) : (
-          <AppBarChart data={data} height={height} series={series} />
+          <AppBarChart data={data} height={height} series={series} barSize={barSize} />
         )}
       </CardContent>
     </Card>

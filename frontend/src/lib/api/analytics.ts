@@ -1,9 +1,15 @@
 import apiClient from './client';
-import type { AnalyticsEnvelope, AnalyticsParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** Every figure the system reports, in one call. Scope comes from the JWT. */
 export async function getAnalytics(params?: AnalyticsParams): Promise<AnalyticsEnvelope> {
   const { data } = await apiClient.get<AnalyticsEnvelope>('/analytics/', { params });
+  return data;
+}
+
+/** The manager's report page, every section of it. */
+export async function getOverview(params: OverviewParams): Promise<OverviewEnvelope> {
+  const { data } = await apiClient.get<OverviewEnvelope>('/analytics/overview/', { params });
   return data;
 }
 

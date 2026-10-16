@@ -8,17 +8,18 @@ which campus they run.
 """
 
 from django.http import HttpResponse
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.common.roles import resolve_role
+from apps.org.models import Campus
 from apps.tickets.models import Ticket
 from apps.tickets.scope import reporting_ticket_qs
 
-from . import export
+from . import export, overview
 from .metrics import bottlenecks, group, resolve_window, totals, trend
 from .role_config import resolve_group_by
 
@@ -110,3 +111,35 @@ class AnalyticsView(ReportingView):
                 "trend": trend(qs, window, window["bucket"]),
             }
         )
+
+
+class OverviewView(ReportingView):
+    """GET /analytics/overview/: the manager's report page, every section of it.
+
+    Same period rules as /analytics/. `?campus=<id>` narrows every section to
+    one campus; an id that is not a campus is a 400.
+    """
+
+    ROLES = ("manager",)
+
+    def get(self, request):
+        role, qs = scoped_for(request)
+        if role not in self.ROLES:
+            raise PermissionDenied("The overview is the manager's report.")
+        window = resolve_window(request.query_params)
+
+        campus = None
+        raw = request.query_params.get("campus")
+        if raw is not None:
+            campus = (
+                Campus.objects.filter(pk=int(raw)).first()
+                if raw.isascii() and raw.isdigit() else None
+            )
+            if campus is None:
+                raise ValidationError({"campus": "Not a campus."})
+            qs = qs.filter(requester_campus=campus)
+
+        data = overview.build(qs, window)
+        data["range"] = {"from": window["from"].isoformat(), "to": window["to"].isoformat()}
+        data["campus"] = {"id": campus.pk, "name": campus.name} if campus else None
+        return Response(data)

@@ -73,3 +73,72 @@ export interface AnalyticsEnvelope {
   bottlenecks: Bottleneck[];
   trend: TrendPoint[];
 }
+
+// The shape of GET /api/v1/analytics/overview/ — the manager's report page.
+
+export interface OverviewParams {
+  days?: number;
+  bucket?: Bucket;
+  /** A campus id: every section narrows to it. */
+  campus?: number;
+}
+
+export interface OverviewInsight {
+  kind: 'campus' | 'trade' | 'staffing' | 'facility' | 'escalated';
+  text: string;
+}
+
+export interface OverviewFacility {
+  key: number;
+  label: string;
+  campus: string;
+  type: string;
+  total: number;
+  trades: { label: string; code: string | null; total: number }[];
+  /** The same fault this many times or more in the period. */
+  repeats: { label: string; total: number }[];
+  open_now: number;
+  resolution_seconds_avg: number | null;
+  /** `act`: a repeated fault; `watch`: many faults or slow to fix. */
+  flag: 'act' | 'watch';
+  suggestion: string;
+}
+
+export interface OverviewCampus {
+  key: number;
+  label: string;
+  total: number;
+  open_now: number;
+  overdue: number;
+  at_hod: number;
+  resolution_sla_pct: number | null;
+  resolution_seconds_avg: number | null;
+  rating_avg: number | null;
+  technicians: number;
+  /** Live assigned jobs per technician; null with nobody on staff. */
+  jobs_each: number | null;
+}
+
+export interface OverviewEnvelope {
+  range: { from: string; to: string };
+  campus: { id: number; name: string } | null;
+  target_pct: number;
+  current: Totals;
+  previous: Pick<Totals, 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'total'>;
+  /** Each headline figure minus the period before's; null when either is missing. */
+  change: { resolution_sla_pts: number | null; resolution_hours: number | null; rating: number | null };
+  unassigned_now: number;
+  at_hod_now: number;
+  insights: OverviewInsight[];
+  facilities: OverviewFacility[];
+  campuses: OverviewCampus[];
+  trades: { key: number; label: string; total: number; resolution_sla_pct: number | null; rating_avg: number | null }[];
+  trade_by_campus: {
+    trades: string[];
+    rows: { campus: string; counts: Record<string, number>; total: number }[];
+    totals: Record<string, number>;
+    total: number;
+  };
+  trend: TrendPoint[];
+  bottlenecks: Bottleneck[];
+}

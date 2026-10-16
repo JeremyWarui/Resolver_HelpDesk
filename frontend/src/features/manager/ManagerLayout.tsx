@@ -3,7 +3,7 @@ import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
 import RoleDashboardView from '@/features/shared/RoleDashboardView';
 
 const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
-const RoleReportsPage = lazy(() => import('@/features/shared/RoleReportsPage'));
+const ManagerReportsPage = lazy(() => import('@/features/manager/ManagerReportsPage'));
 const TechniciansPage = lazy(() => import('@/features/shared/Technicians/TechniciansPage'));
 const FacilitiesPage = lazy(() => import('@/features/shared/Facilities/FacilitiesPage'));
 const CampusesPage = lazy(() => import('@/features/admin/CampusesPage'));
@@ -19,7 +19,7 @@ const ManagerLayout = () => (
     sections={({ onTicketSelect }) => ({
       dashboard:   <RoleDashboardView role="manager" />,
       tickets:     <RoleTicketsPage role="manager" />,
-      reports:     <RoleReportsPage role="manager" />,
+      reports:     <ManagerReportsPage />,
       technicians: <TechniciansPage manage={false} />,
       facilities:  <FacilitiesPage manage={false} />,
       campuses:    <CampusesPage manage={false} />,

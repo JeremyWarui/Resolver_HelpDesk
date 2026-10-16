@@ -75,7 +75,7 @@ const MetricCard = ({
           <p className="text-sm text-gray-500 truncate">{title}</p>
           <div className="flex items-baseline">
             <h3
-              className="text-2xl font-bold mr-2 tabular-nums"
+              className="text-2xl font-bold mr-2 tabular-nums whitespace-nowrap"
               style={tone === 'alert' ? { color: 'var(--status-escalated-text)' } : undefined}
             >
               {value}

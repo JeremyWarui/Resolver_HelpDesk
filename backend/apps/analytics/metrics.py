@@ -64,6 +64,10 @@ REPORT_TZ = ZoneInfo("Africa/Nairobi")
 DEFAULT_DAYS = 30
 MAX_DAYS = 3650
 
+# The share of settled work that should finish on time. One number, until the
+# admin can set it.
+SLA_TARGET_PCT = 75
+
 # The name as `accounts.identity.display_name_parts` builds it, so one person is
 # not called two things. Trim collapses blanks to "", NullIf falls back to username.
 _TECHNICIAN_NAME = Coalesce(
@@ -86,6 +90,7 @@ DIMENSIONS = {
     "trade": (F("trade__id"), F("trade__name"), None),
     "facility": (F("facility__id"), F("facility__name"), None),
     "campus": (F("requester_campus__id"), F("requester_campus__name"), None),
+    "service_item": (F("service_item__id"), F("service_item__name"), None),
     "technician": (F("assigned_to__id"), _TECHNICIAN_NAME, "assigned_to"),
     "status": (F("status"), F("status"), None),
 }
@@ -128,6 +133,20 @@ def resolve_window(params) -> dict:
     bucket = params.get("bucket")
     window["bucket"] = bucket if bucket in BUCKETS else "day"
     return window
+
+
+def previous_window(window: dict) -> dict:
+    """The window of the same length that ends just before this one starts.
+
+    A microsecond short, because both ends of a window are inclusive: a ticket
+    raised on the seam belongs to this window, not to both.
+    """
+    span = window["to"] - window["from"]
+    return {
+        "from": window["from"] - span,
+        "to": window["from"] - timedelta(microseconds=1),
+        "bucket": window["bucket"],
+    }
 
 
 def raised_in(qs, window):
@@ -341,6 +360,57 @@ def bottlenecks(qs) -> list:
         }
         for row in rows
     ]
+
+
+def snapshot(qs, dimensions) -> list:
+    """Live work right now, cut by one or two dimensions, keyed like `group`.
+
+    Never windowed, like `open_backlog`: what is open, overdue, with the HOD or
+    still unassigned describes now. `live_assigned` is what technicians hold.
+    """
+    keys = {}
+    for index, name in enumerate(dimensions):
+        key_expr, label_expr, _ = DIMENSIONS[name]
+        suffix = "" if index == 0 else f"_{index + 1}"
+        keys[f"key{suffix}"] = key_expr
+        keys[f"label{suffix}"] = label_expr
+    return list(
+        qs.filter(status__in=ACTIVE_STATUSES)
+        .values(**keys)
+        .annotate(
+            open_now=Count("id"),
+            overdue=Count("id", filter=q_overdue()),
+            at_hod=Count("id", filter=Q(current_level="hod")),
+            unassigned=Count("id", filter=Q(assigned_to__isnull=True)),
+            live_assigned=Count("id", filter=Q(assigned_to__isnull=False)),
+        )
+        # Clears the scope queryset's ordering; see `group`.
+        .order_by()
+    )
+
+
+def technicians_by_campus(campus_ids) -> dict:
+    """How many technicians work at each campus: {campus_id: count}."""
+    from apps.accounts.models import TechnicianTrade
+
+    rows = (
+        TechnicianTrade.objects.filter(campus_id__in=campus_ids)
+        .values("campus_id")
+        .annotate(n=Count("user_id", distinct=True))
+        .order_by()
+    )
+    return {row["campus_id"]: row["n"] for row in rows}
+
+
+def staffed_pairs(campus_ids) -> set:
+    """Every (campus_id, trade_id) pair at least one technician covers."""
+    from apps.accounts.models import TechnicianTrade
+
+    return set(
+        TechnicianTrade.objects.filter(campus_id__in=campus_ids)
+        .values_list("campus_id", "trade_id")
+        .distinct()
+    )
 
 
 def trend(qs, window: dict, bucket: str) -> list:
