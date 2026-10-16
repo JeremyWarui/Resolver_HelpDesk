@@ -57,7 +57,10 @@ def post_holder(role, **scope):
     """
     if any(value is None for value in scope.values()):
         return None
+    # A deactivated holder holds nothing: their post reads as vacant.
     assignment = (
-        RoleAssignment.objects.filter(role=role, **scope).select_related("user").first()
+        RoleAssignment.objects.filter(role=role, user__is_active=True, **scope)
+        .select_related("user")
+        .first()
     )
     return assignment.user if assignment else None

@@ -25,6 +25,10 @@ interface RailEntry {
   count: number;
   /** Amber icon and label, for a bucket whose emptiness is the problem. */
   warn?: boolean;
+  /** Replaces the count line, for an entry that is a view rather than a bucket. */
+  sub?: string;
+  /** A red tint, for a view that is reporting a problem. */
+  alert?: boolean;
 }
 
 export interface RailGroup {
@@ -125,22 +129,24 @@ function RailItem({
    *  the latter would misreport the register to anyone typing. */
   searching: boolean;
 }) {
-  const { icon, label, code, count, warn = false } = entry;
+  const { icon, label, code, count, warn = false, sub, alert = false } = entry;
   const emptyAndIdle = count === 0 && !searching;
+  const tint = alert
+    ? 'bg-red-50 border border-red-200 hover:bg-red-100/70'
+    : active ? 'bg-primary/10' : 'hover:bg-gray-50';
+  const tone = alert ? 'text-red-800' : active ? 'text-primary' : 'text-gray-700';
 
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-center gap-2 group/item ${
-        active ? 'bg-primary/10' : 'hover:bg-gray-50'
-      }`}
+      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-center gap-2 group/item ${tint}`}
     >
-      <span className={active ? 'text-primary' : warn ? 'text-amber-500' : 'text-gray-400'}>
+      <span className={alert ? 'text-red-700' : active ? 'text-primary' : warn ? 'text-amber-500' : 'text-gray-400'}>
         {icon}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className={`text-sm font-medium truncate ${active ? 'text-primary' : 'text-gray-700'}`}>
+          <span className={`text-sm font-medium truncate ${tone}`}>
             {label}
           </span>
           {code && (
@@ -152,10 +158,10 @@ function RailItem({
             </Badge>
           )}
         </div>
-        <p className={`text-xs mt-0.5 ${warnWhenEmpty && emptyAndIdle ? 'text-amber-600' : 'text-gray-400'}`}>
-          {count === 0
+        <p className={`text-xs mt-0.5 ${alert ? 'text-red-700' : warnWhenEmpty && emptyAndIdle ? 'text-amber-600' : 'text-gray-400'}`}>
+          {sub ?? (count === 0
             ? (searching ? 'no match' : emptyLabel)
-            : `${count} ${count === 1 ? noun.one : noun.many}`}
+            : `${count} ${count === 1 ? noun.one : noun.many}`)}
         </p>
       </div>
       <ChevronRight

@@ -1,24 +1,24 @@
 import { useMemo, useState } from 'react';
-import { Wrench, Users, Plus, MapPin, AlertTriangle } from 'lucide-react';
+import { Wrench, Users, Plus, MapPin, Grid3x3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RailLayout, RailEmptyState, type RailGroup } from '@/components/shared/data/RailLayout';
 import { useTechnicians } from '@/hooks/useTechnicians';
-import { useTrades } from '@/hooks/useCatalogue';
-import { useAnalytics } from '@/hooks/useAnalytics';
+import { useAnalytics, useCover } from '@/hooks/useAnalytics';
 import { UserFormDialog } from '@/features/shared/users/UserFormDialog';
 import { UnifiedDetailsSheet } from '@/components/shared/ticket/UnifiedDetailsSheet';
+import CoverByTrade from './CoverByTrade';
 import type { Technician } from '@/types';
 
 /**
- * The technician roster, by trade and then by campus — the two halves of a
- * technician's scope pair.
+ * The technician roster by campus, and Cover by trade: who can work each trade
+ * at each campus, the two halves of a technician's scope pair.
  *
- * A trade with nobody in it still appears: tickets route to it regardless, and
- * that gap is the most useful thing this page shows. Every source is scoped
- * server-side, so an HOD or HOS sees the same page with fewer rows; `manage`
- * gates the create and edit controls.
+ * A trade with nobody at a campus still has a cell: tickets route to it
+ * regardless, and that gap is the most useful thing this page shows. Every
+ * source is scoped server-side, so an HOD or HOS sees the same page with one
+ * campus; `manage` gates the create and edit controls.
  */
 
 interface TechniciansPageProps {
@@ -26,17 +26,19 @@ interface TechniciansPageProps {
   manage?: boolean;
 }
 
-const UNASSIGNED = -1;
-const ALL = 0;
+const ALL = 'all';
+const COVER = 'cover';
+const campusKey = (id: number) => `campus:${id}`;
 
 export default function TechniciansPage({ manage = true }: TechniciansPageProps = {}) {
   const { technicians, loading, refetch } = useTechnicians();
-  const { trades, loading: tradesLoading } = useTrades();
+  const { cover, loading: coverLoading, refetch: refetchCover } = useCover();
   // Open load per technician, as context beside the roster. A failure leaves
   // the badges off rather than blanking the page.
   const { data: load } = useAnalytics({ days: 30, group_by: 'technician' });
 
-  const [selectedTradeId, setSelectedTradeId] = useState<number>(ALL);
+  const [selected, setSelected] = useState<string>(ALL);
+  const [gap, setGap] = useState<{ campusId: number; tradeId: number } | null>(null);
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Technician | null>(null);
@@ -68,73 +70,64 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
     );
   }, [technicians, search]);
 
-  const tradesWithCounts = useMemo(() => {
-    const rows = trades.map((s) => ({
-      id: s.id,
-      name: s.name,
-      code: s.code,
-      count: matching.filter((t) => t.trade_ids.includes(s.id)).length,
-    }));
-    const untraded = matching.filter((t) => t.trade_ids.length === 0).length;
-    return { rows, untraded };
-  }, [trades, matching]);
-
   const visible = useMemo(() => {
-    if (selectedTradeId === ALL) return matching;
-    if (selectedTradeId === UNASSIGNED) {
-      return matching.filter((t) => t.trade_ids.length === 0);
+    if (selected.startsWith('campus:')) {
+      const id = Number(selected.slice('campus:'.length));
+      return matching.filter((t) => t.campus_ids.includes(id));
     }
-    return matching.filter((t) => t.trade_ids.includes(selectedTradeId));
-  }, [matching, selectedTradeId]);
+    return matching;
+  }, [matching, selected]);
 
-  // Campus is the other half of the scope pair, so it is the grouping inside a
-  // trade rather than just another column.
+  // Campus is the other half of the scope pair, so the roster is grouped by it.
+  // A picked campus is one group: someone based elsewhere who works a trade there belongs to it.
+  const pickedCampus = cover?.campuses.find((c) => campusKey(c.id) === selected)?.name;
   const byCampus = useMemo(() => {
     const groups = new Map<string, Technician[]>();
     for (const t of visible) {
-      const key = t.primary_campus_name ?? 'No campus set';
+      const key = pickedCampus ?? t.primary_campus_name ?? 'No campus set';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(t);
     }
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([campus, list]) => [campus, list.sort((a, b) => displayName(a).localeCompare(displayName(b)))] as const);
-  }, [visible]);
+  }, [visible, pickedCampus]);
 
+  const gaps = cover?.gaps ?? 0;
   const railGroups: RailGroup[] = [
-    { entries: [{
-      key: String(ALL),
-      icon: <Users className="h-3.5 w-3.5 shrink-0" />,
-      label: 'All technicians',
-      count: matching.length,
-    }] },
-    { heading: 'Trades', entries: tradesWithCounts.rows.map((trade) => ({
-      key: String(trade.id),
-      icon: <Wrench className="h-3.5 w-3.5 shrink-0" />,
-      label: trade.name,
-      code: trade.code,
-      count: trade.count,
+    { entries: [
+      {
+        key: ALL,
+        icon: <Users className="h-3.5 w-3.5 shrink-0" />,
+        label: 'All technicians',
+        count: matching.length,
+      },
+      {
+        key: COVER,
+        icon: <Grid3x3 className="h-3.5 w-3.5 shrink-0" />,
+        label: 'Cover by trade',
+        count: gaps,
+        sub: cover == null ? '' : gaps
+          ? `${gaps} gap${gaps === 1 ? '' : 's'} across ${cover.gap_campuses} campus${cover.gap_campuses === 1 ? '' : 'es'}`
+          : 'Every trade covered',
+        alert: gaps > 0,
+      },
+    ] },
+    { heading: 'Campuses', entries: (cover?.campuses ?? []).map((c) => ({
+      key: campusKey(c.id),
+      icon: <MapPin className="h-3.5 w-3.5 shrink-0" />,
+      label: c.name,
+      count: matching.filter((t) => t.campus_ids.includes(c.id)).length,
     })) },
-    ...(tradesWithCounts.untraded > 0
-      ? [{ heading: 'Needs attention', entries: [{
-          key: String(UNASSIGNED),
-          icon: <AlertTriangle className="h-3.5 w-3.5 shrink-0" />,
-          label: 'No trade assigned',
-          count: tradesWithCounts.untraded,
-          warn: true,
-        }] }]
-      : []),
   ];
 
-  const selectedTrade = trades.find((s) => s.id === selectedTradeId);
   const heading =
-    selectedTradeId === ALL
-      ? 'All technicians'
-      : selectedTradeId === UNASSIGNED
-        ? 'No trade assigned'
-        : (selectedTrade?.name ?? 'Trade');
+    selected === COVER ? 'Cover by trade' : pickedCampus ?? 'All technicians';
+  const subheading = selected === COVER
+    ? `${cover?.trades.length ?? 0} trades × ${cover?.campuses.length ?? 0} campus${cover?.campuses.length === 1 ? '' : 'es'}`
+    : `${visible.length} technician${visible.length === 1 ? '' : 's'}${search ? ' matching your search' : ''}`;
 
-  const isLoading = loading || tradesLoading;
+  const isLoading = loading || coverLoading;
 
   return (
     <RailLayout
@@ -143,35 +136,24 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
       searchPlaceholder="Search technicians…"
       loading={isLoading}
       groups={railGroups}
-      activeKey={String(selectedTradeId)}
-      onSelect={(key) => setSelectedTradeId(Number(key))}
+      activeKey={selected}
+      onSelect={setSelected}
       noun={{ one: 'technician', many: 'technicians' }}
       emptyLabel="nobody assigned"
       warnWhenEmpty
     >
-      {/* Technicians in the selected trade, grouped by campus. */}
+      {/* The roster for the selected campus, grouped by campus; or the cover grid. */}
       <div className="flex items-start justify-between gap-3 px-6 py-4 border-b bg-white">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-            {heading}
-            {selectedTrade && (
-              <Badge variant="outline" className="text-xs font-mono">{selectedTrade.code}</Badge>
-            )}
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {visible.length} technician{visible.length === 1 ? '' : 's'}
-            {selectedTradeId !== ALL && selectedTradeId !== UNASSIGNED
-              ? ` across ${byCampus.length} campus${byCampus.length === 1 ? '' : 'es'}`
-              : ''}
-            {search && ' matching your search'}
-          </p>
+          <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{subheading}</p>
         </div>
         {manage && (
           <Button
             size="sm"
             variant="brand"
             className="gap-1.5 shrink-0"
-            onClick={() => { setEditing(null); setFormOpen(true); }}
+            onClick={() => { setEditing(null); setGap(null); setFormOpen(true); }}
           >
             <Plus className="h-4 w-4" />
             Add Technician
@@ -180,17 +162,22 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
       </div>
 
       <div className="p-6 space-y-6">
-        {isLoading ? (
+        {selected === COVER ? (
+          <CoverByTrade
+            cover={cover}
+            onFillGap={manage ? (campusId, tradeId) => { setEditing(null); setGap({ campusId, tradeId }); setFormOpen(true); } : undefined}
+          />
+        ) : isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
           </div>
         ) : visible.length === 0 ? (
           <RailEmptyState
             icon={<Wrench className="h-10 w-10" />}
-            title={search ? 'No technicians match your search' : `No technicians in ${heading}`}
+            title={search ? 'No technicians match your search' : `No technicians at ${heading}`}
             hint={search
               ? 'Try a name, username or campus.'
-              : 'Tickets for this trade will route here but have nobody to be assigned to.'}
+              : 'Tickets raised here route to a trade with nobody to be assigned to.'}
           />
         ) : (
           byCampus.map(([campus, list]) => (
@@ -223,8 +210,9 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
         <UserFormDialog
           editing={editing}
           lockRole="technician"
-          onClose={() => { setFormOpen(false); setEditing(null); }}
-          onSuccess={() => { setFormOpen(false); setEditing(null); refetch(); }}
+          preset={gap ?? undefined}
+          onClose={() => { setFormOpen(false); setEditing(null); setGap(null); }}
+          onSuccess={() => { setFormOpen(false); setEditing(null); setGap(null); refetch(); refetchCover(); }}
         />
       )}
 
@@ -234,7 +222,7 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
         entity={viewing}
         entityType="technician"
         canEdit={manage}
-        onUpdated={manage ? refetch : undefined}
+        onUpdated={manage ? () => { refetch(); refetchCover(); } : undefined}
       />
     </RailLayout>
   );
@@ -277,15 +265,9 @@ function TechnicianRow({
       {/* Every trade they work, whichever one the rail is filtered to: a
           carpenter who also paints is still a painter on the carpentry tab. */}
       <div className="hidden md:flex items-center gap-1 shrink-0 ml-auto">
-          {trades.length === 0 ? (
-            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 bg-amber-50">
-              no trade
-            </Badge>
-          ) : (
-            trades.slice(0, 3).map((t) => (
-              <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
-            ))
-          )}
+        {trades.slice(0, 3).map((t) => (
+          <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+        ))}
         {trades.length > 3 && (
           <span className="text-[10px] text-gray-400">+{trades.length - 3}</span>
         )}

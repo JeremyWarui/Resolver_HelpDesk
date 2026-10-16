@@ -21,7 +21,7 @@ from apps.tickets.models import Ticket
 from apps.tickets.scope import reporting_ticket_qs
 from apps.tickets.serializers import TicketReadSerializer
 
-from . import dashboard, export, overview
+from . import cover, dashboard, desk, export, overview
 from .metrics import bottlenecks, group, resolve_window, totals, trend
 from .role_config import resolve_group_by
 
@@ -206,3 +206,28 @@ class DashboardView(ReportingView):
                 ],
             }
         return Response(data)
+
+
+class CoverView(ReportingView):
+    """GET /analytics/cover/: technicians per (campus, trade) and the open work in each.
+
+    The admin and the manager read every campus; an HOS or HOD their own.
+    """
+
+    ROLES = ("admin", "manager", "hod", "hos")
+
+    def get(self, request):
+        role, qs = scoped_for(request)
+        if role not in self.ROLES:
+            raise PermissionDenied("Cover by trade is not available to your role.")
+        campus_ids = list(visible_campuses(request.user, role).values_list("id", flat=True))
+        return Response(cover.build(qs, campus_ids))
+
+
+class DeskView(ReportingView):
+    """GET /analytics/desk/: the admin's dashboard, what needs setting up and whether work moves."""
+
+    def get(self, request):
+        if resolve_role(request) != "admin":
+            raise PermissionDenied("The set-up desk is the admin's.")
+        return Response(desk.build())

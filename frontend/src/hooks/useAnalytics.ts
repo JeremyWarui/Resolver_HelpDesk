@@ -5,9 +5,9 @@
 
 import { useMemo } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { getAnalytics, getDashboard, getOverview } from '@/lib/api/analytics';
+import { getAnalytics, getCover, getDashboard, getDesk, getOverview } from '@/lib/api/analytics';
 import { useFacilities } from '@/hooks/useOrganizations';
-import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, DashboardParams, Facility, OverviewEnvelope, OverviewParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, CoverEnvelope, DashboardEnvelope, DeskEnvelope, DashboardParams, Facility, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** The reporting envelope for the signed-in user. `group_by` is checked server-side. */
 export function useAnalytics(params?: AnalyticsParams, options?: { enabled?: boolean }) {
@@ -42,6 +42,26 @@ export function useDashboard(params: DashboardParams) {
     placeholderData: keepPreviousData,
   });
   return { data: data ?? null, loading: isLoading, error };
+}
+
+/** The admin's dashboard, refreshed every minute while it is open. */
+export function useDesk() {
+  const { data, isLoading, error } = useQuery<DeskEnvelope>({
+    queryKey: ['analytics', 'desk'],
+    queryFn: getDesk,
+    refetchInterval: 60 * 1000,
+  });
+  return { desk: data ?? null, loading: isLoading, error };
+}
+
+/** Who can work each trade at each campus the caller reads. */
+export function useCover() {
+  const { data, isLoading, error, refetch } = useQuery<CoverEnvelope>({
+    queryKey: ['analytics', 'cover'],
+    queryFn: getCover,
+    staleTime: 60 * 1000,
+  });
+  return { cover: data ?? null, loading: isLoading, error, refetch };
 }
 
 interface FacilityTradeSlice {

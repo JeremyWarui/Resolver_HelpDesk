@@ -202,3 +202,52 @@ export interface DashboardParams {
   trend_days: DashboardPeriod;
   open_days: DashboardPeriod | null;
 }
+
+// The shape of GET /api/v1/analytics/cover/ — technicians per (campus, trade).
+
+export interface CoverEnvelope {
+  /** The campuses the caller reads, each with its technicians counted once. */
+  campuses: { id: number; name: string; technicians: number }[];
+  /** Every active trade. */
+  trades: { id: number; name: string; code: string }[];
+  /** One per campus and trade: the technicians whose pair matches, and the live work there. */
+  cells: { campus: number; trade: number; technicians: number; open: number }[];
+  /** Cells with nobody to send, the campuses they fall in, and the live work in them. */
+  gaps: number;
+  gap_campuses: number;
+  stuck: number;
+}
+
+// The shape of GET /api/v1/analytics/desk/ — the admin's dashboard.
+
+export interface DeskEnvelope {
+  escalation: {
+    state: 'never' | 'failing' | 'stale' | 'running';
+    last_finished_at: string | null;
+    due_hos: number;
+    due_hod: number;
+  };
+  cover: { gaps: number; gap_campuses: number; stuck: number };
+  accounts_to_fix: { count: number; by_problem: Record<'no_home_campus' | 'technician_without_trade', number> };
+  email_configured: boolean;
+  /** Open, with nobody sent, for a day or more by the clock. */
+  waiting_too_long: number;
+  /** Working technicians, how many touched a ticket in the last week, and who did not. */
+  technicians: { total: number; active: number; quiet: { id: number; name: string; where: string }[] };
+  feedback: {
+    unread: number;
+    by_category: Record<'problem' | 'idea' | 'praise' | 'other', number>;
+    latest: { id: number; category: 'problem' | 'idea' | 'praise' | 'other'; message: string; author_role: string; created_at: string }[];
+  };
+  /** Each campus: who holds its two posts, its people and buildings, the trades with nobody, the work stuck there. */
+  campuses: {
+    id: number;
+    name: string;
+    hod: string | null;
+    hos: string | null;
+    technicians: number;
+    facilities: number;
+    gaps: string[];
+    stuck: number;
+  }[];
+}

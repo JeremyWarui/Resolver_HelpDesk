@@ -9,7 +9,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
@@ -163,7 +163,7 @@ def jwt_refresh(request):
         refresh = RefreshToken(raw_refresh)
         refresh.verify()
         refresh.blacklist()
-        user = User.objects.get(pk=refresh[api_settings.USER_ID_CLAIM])
+        user = User.objects.get(pk=refresh[api_settings.USER_ID_CLAIM], is_active=True)
     except Exception as exc:
         _logger.debug("jwt_refresh rejected a token: %s", exc)
         return Response(
@@ -232,15 +232,20 @@ class CampusRosterView(generics.ListAPIView):
                 # `accounts.posts` displaces the incumbent when the post is filled.
                 Prefetch(
                     "role_assignments",
-                    queryset=RoleAssignment.objects.filter(role="hos").select_related(
-                        "user"
-                    ),
+                    # A deactivated head holds nothing: the post reads as vacant.
+                    queryset=RoleAssignment.objects.filter(
+                        role="hos", user__is_active=True
+                    ).select_related("user"),
                     to_attr="hos_posts",
                 )
             )
             # People, not links: a technician working two trades here has two rows.
             .annotate(
-                technician_count=Count("technician_trades__user", distinct=True)
+                technician_count=Count(
+                    "technician_trades__user",
+                    filter=Q(technician_trades__user__is_active=True),
+                    distinct=True,
+                )
             ).order_by("name")
         )
 
@@ -290,9 +295,11 @@ class UserListCreateView(generics.ListCreateAPIView):
     """GET and POST /users/ — the admin user list, and account creation."""
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
-    queryset = User.objects.select_related(
-        "campus", "role_assignment__campus"
-    ).order_by("-date_joined")
+    queryset = (
+        User.objects.select_related("campus", "role_assignment__campus")
+        .prefetch_related("technician_trades")
+        .order_by("-date_joined")
+    )
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -310,7 +317,7 @@ class UserListCreateView(generics.ListCreateAPIView):
 
 
 class UserDetailView(APIView):
-    """PATCH and DELETE /users/{pk}/."""
+    """PATCH /users/{pk}/. An account is never deleted: see UserActiveView."""
 
     permission_classes = [IsAuthenticated, IsAdminGroup]
 
@@ -321,16 +328,28 @@ class UserDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         return Response(UserAdminSerializer(serializer.save()).data)
 
-    def delete(self, request, pk):
-        """Delete the account, unless it is the caller's own."""
+
+class UserActiveView(APIView):
+    """POST /users/{pk}/deactivate/ and /users/{pk}/reactivate/.
+
+    A deactivated person cannot sign in, holds no post and drops off every
+    picker; their tickets, comments and history stay as they were, which a
+    delete could not promise. The admin cannot deactivate themselves.
+    """
+
+    permission_classes = [IsAuthenticated, IsAdminGroup]
+    active = True
+
+    def post(self, request, pk):
         user = _get_user(pk)
-        if user == request.user:
+        if not self.active and user == request.user:
             return Response(
-                {"detail": "You cannot delete your own account."},
+                {"detail": "You cannot deactivate your own account."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        user.is_active = self.active
+        user.save(update_fields=["is_active"])
+        return Response(UserAdminSerializer(user).data)
 
 
 class ScopedTechnicianRosterView(APIView):
@@ -347,7 +366,7 @@ class ScopedTechnicianRosterView(APIView):
     def get(self, request):
         role = resolve_role(request)
         links = TechnicianTrade.objects.filter(
-            campus__in=visible_campuses(request.user, role)
+            campus__in=visible_campuses(request.user, role), user__is_active=True
         )
         if campus_id := request.query_params.get("campus"):
             links = links.filter(campus_id=campus_id)
@@ -356,18 +375,24 @@ class ScopedTechnicianRosterView(APIView):
         links = links.select_related("trade").order_by("trade__name")
 
         trades = {}
+        campuses = {}
         for link in links:
             ids, names = trades.setdefault(link.user_id, ([], []))
             if link.trade_id not in ids:
                 ids.append(link.trade_id)
                 names.append(link.trade.name)
+            campuses.setdefault(link.user_id, set()).add(link.campus_id)
 
         # One query for the roster; serializing `link.user` would re-walk it per link.
-        users = User.objects.filter(pk__in=list(trades)).select_related(
-            "campus", "role_assignment__campus"
+        users = (
+            User.objects.filter(pk__in=list(trades))
+            .select_related("campus", "role_assignment__campus")
+            .prefetch_related("technician_trades")
         )
         rows = UserAdminSerializer(users, many=True).data
         for row in rows:
             row["trade_ids"], row["trade_names"] = trades[row["id"]]
+            # Every campus they hold a pair at, which can be more than their role's one.
+            row["campus_ids"] = sorted(campuses[row["id"]])
 
         return Response(sorted(rows, key=lambda row: row["full_name"].lower()))

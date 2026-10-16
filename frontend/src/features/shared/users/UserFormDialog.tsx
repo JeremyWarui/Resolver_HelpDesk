@@ -35,12 +35,15 @@ interface UserFormData {
 export function UserFormDialog({
   editing,
   lockRole,
+  preset,
   onSuccess,
   onClose,
 }: {
   editing: User | null;
   /** Fix the role, for a page that only ever manages one — the Technicians page. */
   lockRole?: UserRole;
+  /** A new account's campus and trade, filled in from the gap it is meant to close. */
+  preset?: { campusId: number; tradeId: number };
   onSuccess: () => void;
   onClose: () => void;
 }) {
@@ -48,9 +51,9 @@ export function UserFormDialog({
     email: editing?.email ?? '',
     password: '',
     role: lockRole ?? editing?.role ?? 'user',
-    campus_id: editing?.primary_campus_id != null ? String(editing.primary_campus_id) : '',
-    trade_ids: [],
-    home_campus_id: editing?.home_campus_id != null ? String(editing.home_campus_id) : '',
+    campus_id: editing?.primary_campus_id != null ? String(editing.primary_campus_id) : preset ? String(preset.campusId) : '',
+    trade_ids: preset && !editing ? [preset.tradeId] : [],
+    home_campus_id: editing?.home_campus_id != null ? String(editing.home_campus_id) : preset ? String(preset.campusId) : '',
   }));
   const [saving, setSaving] = useState(false);
   const { campuses } = useCampuses();

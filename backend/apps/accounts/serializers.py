@@ -3,9 +3,10 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from apps.accounts import health
 from apps.accounts.identity import display_name, identity_from_email
 from apps.accounts.models import ROLE_CHOICES, RoleAssignment, TechnicianTrade
-from apps.accounts.posts import assign_role, ensure_requester, scope_kwargs_from_ids
+from apps.accounts.posts import PostRefused, assign_role, ensure_requester, scope_kwargs_from_ids
 from apps.org.models import Campus, Trade
 from apps.org.serializers import CampusSerializer
 
@@ -149,13 +150,16 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
 
     def save(self, target, actor=None):
         """Returns `(role_assignment, displaced_user)`."""
-        return assign_role(
-            target,
-            self.validated_data["role"],
-            trades=self.validated_data["trades"],
-            actor=actor,
-            **self.validated_data["scope"],
-        )
+        try:
+            return assign_role(
+                target,
+                self.validated_data["role"],
+                trades=self.validated_data["trades"],
+                actor=actor,
+                **self.validated_data["scope"],
+            )
+        except PostRefused as exc:
+            raise serializers.ValidationError({"role": str(exc)}) from exc
 
 
 class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
@@ -171,6 +175,7 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
     primary_campus_name = serializers.SerializerMethodField()
     home_campus_id = serializers.IntegerField(source="campus_id", read_only=True)
     home_campus_name = serializers.CharField(source="campus.name", read_only=True)
+    problems = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -182,16 +187,23 @@ class UserAdminSerializer(UserMinSerializer, serializers.ModelSerializer):
             "full_name",
             "email",
             "date_joined",
+            "is_active",
             "role",
             "primary_campus_id",
             "primary_campus_name",
             "home_campus_id",
             "home_campus_name",
+            "problems",
         ]
         read_only_fields = fields
 
     def get_role(self, obj):
         return obj.role or "user"
+
+    def get_problems(self, obj):
+        """What keeps this account from working, from `accounts.health`; empty when nothing does."""
+        codes = health.problems(obj, obj.role, len(obj.technician_trades.all()))
+        return [{"code": c, "label": health.PROBLEMS[c][0], "effect": health.PROBLEMS[c][1]} for c in codes]
 
     def get_primary_campus_id(self, obj):
         return obj.role_campus.pk if obj.role_campus else None

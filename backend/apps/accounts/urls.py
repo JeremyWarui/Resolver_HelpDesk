@@ -10,6 +10,7 @@ from apps.accounts.views import (
     CampusRosterView,
     MeView,
     ScopedTechnicianRosterView,
+    UserActiveView,
     UserDetailView,
     UserListCreateView,
     UserRoleAssignmentView,
@@ -31,6 +32,8 @@ urlpatterns = [
     path("campus-roster/", CampusRosterView.as_view(), name="campus-roster"),
     path("users/", UserListCreateView.as_view(), name="user-list"),
     path("users/<int:pk>/", UserDetailView.as_view(), name="user-detail"),
+    path("users/<int:pk>/deactivate/", UserActiveView.as_view(active=False), name="user-deactivate"),
+    path("users/<int:pk>/reactivate/", UserActiveView.as_view(active=True), name="user-reactivate"),
     path(
         "users/<int:pk>/role-assignments/",
         UserRoleAssignmentView.as_view(),

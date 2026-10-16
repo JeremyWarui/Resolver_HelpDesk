@@ -15,6 +15,8 @@ urlpatterns = [
     path("analytics/", views.AnalyticsView.as_view(), name="analytics"),
     path("analytics/overview/", views.OverviewView.as_view(), name="overview"),
     path("analytics/dashboard/", views.DashboardView.as_view(), name="dashboard"),
+    path("analytics/cover/", views.CoverView.as_view(), name="cover"),
+    path("analytics/desk/", views.DeskView.as_view(), name="desk"),
     path("analytics/export/xlsx/", views.ExcelExportView.as_view(), name="export-xlsx"),
     path("analytics/export/pdf/", views.PdfExportView.as_view(), name="export-pdf"),
 ]

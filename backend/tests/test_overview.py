@@ -309,6 +309,15 @@ def test_a_supervisor_reads_technicians_instead_of_the_campus_sections(
     assert data["current"]["total"] == 1
 
 
+def test_a_deactivated_technician_with_no_work_leaves_the_technician_table(api, nrb_hos, nrb, electrical, nrb_electrician):
+    other = factories.make_technician("other", nrb, [electrical])
+    type(other).objects.filter(pk=other.pk).update(is_active=False)
+
+    keys = {r["key"] for r in _get(api, nrb_hos, days=30)["technicians"]}
+
+    assert keys == {nrb_electrician.pk}
+
+
 @pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
 def test_a_supervisor_cannot_narrow_to_a_campus(api, request, msa, role):
     api.force_authenticate(request.getfixturevalue(role))

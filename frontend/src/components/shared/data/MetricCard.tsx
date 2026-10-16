@@ -29,6 +29,8 @@ interface MetricCardProps {
   /** `alert` paints the figure in the escalation colour — for a count that is
    *  bad news when it is not zero. */
   tone?: 'default' | 'alert';
+  /** Let a long description wrap rather than cut it short. */
+  wrapDescription?: boolean;
 }
 
 /**
@@ -49,6 +51,7 @@ const MetricCard = ({
   className = '',
   isLoading = false,
   tone = 'default',
+  wrapDescription = false,
 }: MetricCardProps) => {
   if (isLoading) {
     return (
@@ -89,7 +92,7 @@ const MetricCard = ({
               </span>
             )}
           </div>
-          {description && <p className="text-xs text-gray-500 truncate">{description}</p>}
+          {description && <p className={`text-xs text-gray-500 ${wrapDescription ? '' : 'truncate'}`}>{description}</p>}
         </div>
       </CardContent>
     </Card>

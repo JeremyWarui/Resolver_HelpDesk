@@ -33,8 +33,14 @@ def assign_role(target, role, *, campus=None, trades=(), actor=None):
     stops mentioning someone.
 
     `campus` is a model, not an id. Resolving an id is validation, and belongs
-    to the serializer that took it from a client.
+    to the serializer that took it from a client. Raises `PostRefused` when a
+    deactivated account would take a post from someone else.
     """
+    if not target.is_active and _holder(target, role, campus) is not None:
+        raise PostRefused(
+            "This account is deactivated, so the post would be left with nobody "
+            "in it. Restore the account first."
+        )
     displaced = _displace_incumbent(target, role, campus, actor)
 
     # Replaced, not updated, so assigned_by/assigned_at record *this* change.
@@ -63,21 +69,28 @@ def add_trade(user, campus, trade):
     return link
 
 
-def _displace_incumbent(target, role, campus, actor):
-    """Demote whoever already holds this supervisor post, and return them."""
+class PostRefused(ValueError):
+    """A role write that would empty a post rather than fill it."""
+
+
+def _holder(target, role, campus):
+    """Whoever other than `target` holds this single-holder post, as their RoleAssignment."""
     if role not in SINGLE_HOLDER_ROLES:
         return None
-
-    scope = {"campus": campus} if SCOPE_FIELD_BY_ROLE[role] == "campus" else {}
     if SCOPE_FIELD_BY_ROLE[role] == "campus" and campus is None:
         return None
-
-    incumbent = (
+    scope = {"campus": campus} if SCOPE_FIELD_BY_ROLE[role] == "campus" else {}
+    return (
         RoleAssignment.objects.select_related("user")
         .filter(role=role, **scope)
         .exclude(user=target)
         .first()
     )
+
+
+def _displace_incumbent(target, role, campus, actor):
+    """Demote whoever already holds this supervisor post, and return them."""
+    incumbent = _holder(target, role, campus)
     if incumbent is None:
         return None
 

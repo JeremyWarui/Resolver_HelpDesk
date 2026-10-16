@@ -5,7 +5,7 @@ import { loginAsAdmin, uniqueSuffix, USERS } from './helpers';
 //
 // The email is the whole identity — nothing here types a name or a username —
 // and the edit step proves that changing the address renames the account.
-test('users CRUD: create, search, edit, delete', async ({ page }) => {
+test('users: create, search, edit, deactivate', async ({ page }) => {
   const suffix = uniqueSuffix();
   const email = `e2e.${suffix}@example.test`;
   const username = `e2e.${suffix}`;
@@ -45,14 +45,42 @@ test('users CRUD: create, search, edit, delete', async ({ page }) => {
   const rowAfterEdit = page.getByRole('listitem').filter({ hasText: emailEdited });
   await expect(rowAfterEdit).toBeVisible();
 
-  // ── Delete (cleanup) ───────────────────────────────────────────────────────
-  await rowAfterEdit.getByRole('button', { name: /^Delete / }).click();
+  // ── Deactivate, never delete: the account leaves the list for Deactivated ──
+  await rowAfterEdit.getByRole('button', { name: /^Deactivate / }).click();
   const confirm = page.getByRole('alertdialog');
-  await expect(confirm.getByText('Delete User?')).toBeVisible();
-  await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(confirm.getByText('Deactivate this account?')).toBeVisible();
+  await confirm.getByRole('button', { name: 'Deactivate', exact: true }).click();
   await expect(page.getByRole('listitem').filter({ hasText: emailEdited })).toHaveCount(0, {
     timeout: 20_000,
   });
+
+  await page.getByRole('button', { name: /^Deactivated/ }).click();
+  const archived = page.getByRole('listitem').filter({ hasText: emailEdited });
+  await expect(archived).toBeVisible();
+  await expect(archived.getByRole('button', { name: /^Restore / })).toBeVisible();
+});
+
+test('Needs fixing lists the accounts the server flags, each with its fix', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/dashboard/users');
+  const users = await page.evaluate(async () => {
+    const r = await fetch('http://localhost:8000/api/v1/users/?page_size=100', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+    });
+    return (await r.json()).results as { email: string; is_active: boolean; problems: { label: string }[] }[];
+  });
+  const flagged = users.filter((u) => u.is_active && u.problems.length);
+
+  await page.getByRole('button', { name: /^Needs fixing/ }).click();
+  const list = page.getByRole('list', { name: 'Accounts that need fixing' });
+  if (flagged.length) {
+    await expect(list.getByRole('listitem')).toHaveCount(flagged.length);
+    for (const u of flagged) {
+      await expect(list.getByRole('listitem').filter({ hasText: u.email })).toContainText(u.problems[0].label);
+    }
+  } else {
+    await expect(page.getByText('Every account works')).toBeVisible();
+  }
 });
 
 // A person has one campus: the one they chose when they registered. A role

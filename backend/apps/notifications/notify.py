@@ -47,7 +47,7 @@ def _role_holder_ids(role, **scope) -> list[int]:
         from apps.accounts.models import RoleAssignment
 
         return list(
-            RoleAssignment.objects.filter(role=role, **scope).values_list(
+            RoleAssignment.objects.filter(role=role, user__is_active=True, **scope).values_list(
                 "user_id", flat=True
             )
         )

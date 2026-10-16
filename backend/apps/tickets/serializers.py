@@ -319,6 +319,7 @@ class TicketAssignSerializer(serializers.Serializer):
             campus=ticket.requester_campus,
             trade=ticket.trade,
             user=attrs["assigned_to"],
+            user__is_active=True,
         ).exists():
             raise serializers.ValidationError(
                 {

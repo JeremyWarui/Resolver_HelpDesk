@@ -24,6 +24,17 @@ export interface User {
   primary_campus_name: string | null;
   home_campus_id: number | null;
   home_campus_name: string | null;
+  /** Admin user list and technician roster only. A deactivated account cannot sign in. */
+  is_active?: boolean;
+  /** Admin user list and technician roster only: what keeps the account from working. */
+  problems?: AccountProblem[];
+}
+
+/** Something wrong with an account that can still sign in, from `accounts/health.py`. */
+export interface AccountProblem {
+  code: 'no_home_campus' | 'technician_without_trade';
+  label: string;
+  effect: string;
 }
 
 /** Username and name are derived from the email server-side
@@ -89,4 +100,6 @@ export interface Technician extends User {
   role: 'technician';
   trade_ids: number[];
   trade_names: string[];
+  /** Every campus they hold a (campus, trade) pair at; can be more than `primary_campus_id`. */
+  campus_ids: number[];
 }

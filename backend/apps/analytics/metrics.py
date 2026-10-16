@@ -392,12 +392,17 @@ def snapshot(qs, dimensions) -> list:
     )
 
 
-def technicians_by_campus(campus_ids) -> dict:
-    """How many technicians work at each campus: {campus_id: count}."""
+def _working_links(campus_ids):
+    """Every (campus, trade) link held by a technician who can still sign in."""
     from apps.accounts.models import TechnicianTrade
 
+    return TechnicianTrade.objects.filter(campus_id__in=campus_ids, user__is_active=True)
+
+
+def technicians_by_campus(campus_ids) -> dict:
+    """How many working technicians each campus has, each counted once: {campus_id: count}."""
     rows = (
-        TechnicianTrade.objects.filter(campus_id__in=campus_ids)
+        _working_links(campus_ids)
         .values("campus_id")
         .annotate(n=Count("user_id", distinct=True))
         .order_by()
@@ -405,15 +410,20 @@ def technicians_by_campus(campus_ids) -> dict:
     return {row["campus_id"]: row["n"] for row in rows}
 
 
-def staffed_pairs(campus_ids) -> set:
-    """Every (campus_id, trade_id) pair at least one technician covers."""
-    from apps.accounts.models import TechnicianTrade
-
-    return set(
-        TechnicianTrade.objects.filter(campus_id__in=campus_ids)
-        .values_list("campus_id", "trade_id")
-        .distinct()
+def technicians_by_pair(campus_ids) -> dict:
+    """How many working technicians cover each (campus_id, trade_id) pair."""
+    rows = (
+        _working_links(campus_ids)
+        .values("campus_id", "trade_id")
+        .annotate(n=Count("user_id", distinct=True))
+        .order_by()
     )
+    return {(row["campus_id"], row["trade_id"]): row["n"] for row in rows}
+
+
+def staffed_pairs(campus_ids) -> set:
+    """Every (campus_id, trade_id) pair at least one working technician covers."""
+    return set(technicians_by_pair(campus_ids))
 
 
 def resolved_by_day(qs, window: dict) -> list:

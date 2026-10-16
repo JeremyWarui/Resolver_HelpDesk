@@ -22,8 +22,15 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
   return data;
 }
 
-export async function deleteUser(id: number): Promise<void> {
-  await apiClient.delete(`/users/${id}/`);
+/** Stop an account signing in, holding a post or being picked. Its history stays. */
+export async function deactivateUser(id: number): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${id}/deactivate/`);
+  return data;
+}
+
+export async function reactivateUser(id: number): Promise<User> {
+  const { data } = await apiClient.post<User>(`/users/${id}/reactivate/`);
+  return data;
 }
 
 export async function getRoleAssignments(userId: number): Promise<RoleAssignment[]> {

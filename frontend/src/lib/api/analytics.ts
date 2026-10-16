@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { AnalyticsEnvelope, AnalyticsParams, DashboardEnvelope, DashboardParams, ReportParams, OverviewEnvelope, OverviewParams } from '@/types';
+import type { AnalyticsEnvelope, AnalyticsParams, CoverEnvelope, DashboardEnvelope, DeskEnvelope, DashboardParams, ReportParams, OverviewEnvelope, OverviewParams } from '@/types';
 
 /** Every figure the system reports, in one call. Scope comes from the JWT. */
 export async function getAnalytics(params?: AnalyticsParams): Promise<AnalyticsEnvelope> {
@@ -18,6 +18,18 @@ export async function getDashboard(params: DashboardParams): Promise<DashboardEn
   const { data } = await apiClient.get<DashboardEnvelope>('/analytics/dashboard/', {
     params: { trend_days: params.trend_days, open_days: params.open_days ?? undefined },
   });
+  return data;
+}
+
+/** Technicians per (campus, trade) over the caller's campuses, and the gaps. */
+export async function getCover(): Promise<CoverEnvelope> {
+  const { data } = await apiClient.get<CoverEnvelope>('/analytics/cover/');
+  return data;
+}
+
+/** The admin's dashboard: what needs setting up, and whether the work is moving. */
+export async function getDesk(): Promise<DeskEnvelope> {
+  const { data } = await apiClient.get<DeskEnvelope>('/analytics/desk/');
   return data;
 }
 

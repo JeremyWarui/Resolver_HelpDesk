@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Trash2, UserRound, Users } from 'lucide-react';
+import { AlertTriangle, Archive, ArchiveRestore, Pencil, Plus, UserRound, UserX, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { RailEmptyState, RailLayout, type RailGroup } from '@/components/shared/data/RailLayout';
-import { deleteUser, getUsers } from '@/lib/api/users';
+import { deactivateUser, getUsers, reactivateUser } from '@/lib/api/users';
 import { useCampuses } from '@/hooks/useOrganizations';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { User, UserRole } from '@/types';
@@ -17,8 +17,14 @@ import { cn } from '@/lib/utils';
 
 const USERS_KEY = ['admin', 'users'] as const;
 const ALL = 'all';
+const FIX = 'fix';
+const INACTIVE = 'inactive';
+
+/** What the fix button on a Needs fixing row says; it opens the edit form either way. */
+const FIX_LABEL = { no_home_campus: 'Set home campus', technician_without_trade: 'Set trades' } as const;
 
 const fullName = (u: User) => `${u.first_name} ${u.last_name}`.trim() || u.username;
+const isActive = (u: User) => u.is_active !== false;
 
 function formatJoined(iso?: string): string {
   if (!iso) return '—';
@@ -30,6 +36,11 @@ function formatJoined(iso?: string): string {
  * people newest first, so a fresh self-registration waiting for a role is on
  * top of the User group.
  *
+ * Needs fixing lists accounts that can sign in but will not work: what is
+ * wrong comes from the server (`problems`), which the admin's dashboard counts
+ * too. An account is deactivated, never deleted, so its history stays; the
+ * deactivated are listed apart and can be restored.
+ *
  * Campus is the one the person chose at registration (`home_campus`), not the
  * one their role covers: a plain requester's role carries no campus at all.
  */
@@ -37,7 +48,10 @@ const UsersPage = () => {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: USERS_KEY, queryFn: getUsers });
   const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: USERS_KEY });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: USERS_KEY });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
+  };
 
   useEffect(() => {
     if (usersQuery.error) toast.error('Failed to load users');
@@ -45,11 +59,11 @@ const UsersPage = () => {
 
   const { campuses } = useCampuses();
   const [search, setSearch] = useState('');
-  const [selectedRole, setSelectedRole] = useState<string>(ALL);
+  const [selected, setSelected] = useState<string>(ALL);
   const [campusFilter, setCampusFilter] = useState(ALL);
   const [formState, setFormState] = useState<{ editing: User | null } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [target, setTarget] = useState<User | null>(null);
+  const [working, setWorking] = useState(false);
 
   // Search and campus narrow everything; the rail counts follow them.
   const matching = useMemo(() => {
@@ -60,46 +74,74 @@ const UsersPage = () => {
     );
   }, [users, search, campusFilter]);
 
+  const active = useMemo(() => matching.filter(isActive), [matching]);
+  const inactive = useMemo(() => matching.filter(u => !isActive(u)), [matching]);
+  const toFix = useMemo(() => active.filter(u => (u.problems ?? []).length > 0), [active]);
+
   const byRole = useMemo(() => ROLE_ORDER.map(role => ({
     role,
-    people: matching
+    people: (selected === INACTIVE ? inactive : active)
       .filter(u => u.role === role)
       .sort((a, b) => (b.date_joined ?? '').localeCompare(a.date_joined ?? '')),
-  })), [matching]);
+  })), [active, inactive, selected]);
 
-  const visibleGroups = byRole.filter(g =>
-    g.people.length > 0 && (selectedRole === ALL || g.role === selectedRole));
-  const visibleCount = visibleGroups.reduce((n, g) => n + g.people.length, 0);
+  const visibleGroups = selected === FIX ? [] : byRole.filter(g =>
+    g.people.length > 0 && (selected === ALL || selected === INACTIVE || g.role === selected));
+  const visibleCount = selected === FIX ? toFix.length : visibleGroups.reduce((n, g) => n + g.people.length, 0);
 
   const railGroups: RailGroup[] = [
-    { entries: [{
-      key: ALL,
-      icon: <Users className="h-3.5 w-3.5 shrink-0" />,
-      label: 'All users',
-      count: matching.length,
-    }] },
-    { heading: 'Roles', entries: byRole.map(({ role, people }) => ({
+    { entries: [
+      {
+        key: ALL,
+        icon: <Users className="h-3.5 w-3.5 shrink-0" />,
+        label: 'All users',
+        count: active.length,
+      },
+      {
+        key: FIX,
+        icon: <AlertTriangle className="h-3.5 w-3.5 shrink-0" />,
+        label: 'Needs fixing',
+        count: toFix.length,
+        sub: toFix.length ? `${toFix.length} account${toFix.length === 1 ? '' : 's'}` : 'Nothing to fix',
+        alert: toFix.length > 0,
+      },
+      {
+        key: INACTIVE,
+        icon: <UserX className="h-3.5 w-3.5 shrink-0" />,
+        label: 'Deactivated',
+        count: inactive.length,
+        sub: inactive.length ? undefined : 'None',
+      },
+    ] },
+    { heading: 'Roles', entries: ROLE_ORDER.map(role => ({
       key: role,
       icon: <UserRound className="h-3.5 w-3.5 shrink-0" />,
       label: ROLE_LABELS[role],
-      count: people.length,
+      count: active.filter(u => u.role === role).length,
     })) },
   ];
 
-  const heading = selectedRole === ALL ? 'All users' : ROLE_LABELS[selectedRole as UserRole];
+  const heading = selected === ALL ? 'All users'
+    : selected === FIX ? 'Needs fixing'
+      : selected === INACTIVE ? 'Deactivated'
+        : ROLE_LABELS[selected as UserRole];
+  const subheading = selected === FIX
+    ? "Accounts that can sign in but whose tickets won't route, or who won't see the right work"
+    : `${visibleCount} user${visibleCount === 1 ? '' : 's'}${search ? ' matching your search' : ''}${selected === ALL ? ', newest first in each role' : ''}`;
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  const toggleActive = async () => {
+    if (!target) return;
+    const deactivating = isActive(target);
+    setWorking(true);
     try {
-      await deleteUser(deleteTarget.id);
-      toast.success('User deleted');
-      setDeleteTarget(null);
+      await (deactivating ? deactivateUser(target.id) : reactivateUser(target.id));
+      toast.success(deactivating ? `${fullName(target)} deactivated` : `${fullName(target)} restored`);
+      setTarget(null);
       refresh();
     } catch (error) {
-      handleDRFError(error, { fallbackMessage: 'Failed to delete user' });
+      handleDRFError(error, { fallbackMessage: deactivating ? 'Failed to deactivate' : 'Failed to restore' });
     } finally {
-      setDeleting(false);
+      setWorking(false);
     }
   };
 
@@ -110,19 +152,15 @@ const UsersPage = () => {
       searchPlaceholder="Search users…"
       loading={usersQuery.isLoading}
       groups={railGroups}
-      activeKey={selectedRole}
-      onSelect={setSelectedRole}
+      activeKey={selected}
+      onSelect={setSelected}
       noun={{ one: 'user', many: 'users' }}
       emptyLabel="nobody"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-white">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {visibleCount} user{visibleCount === 1 ? '' : 's'}
-            {search && ' matching your search'}
-            {selectedRole === ALL && ', newest first in each role'}
-          </p>
+          <p className="text-xs text-gray-500 mt-0.5">{subheading}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Select value={campusFilter} onValueChange={setCampusFilter}>
@@ -151,9 +189,21 @@ const UsersPage = () => {
         ) : visibleCount === 0 ? (
           <RailEmptyState
             icon={<Users className="h-10 w-10" />}
-            title={search ? 'No users match your search' : `No users in ${heading}`}
-            hint={search ? 'Try a name, email or username.' : 'Add one, or pick another role or campus.'}
+            title={search ? 'No users match your search'
+              : selected === FIX ? 'Every account works'
+                : selected === INACTIVE ? 'Nobody is deactivated'
+                  : `No users in ${heading}`}
+            hint={search ? 'Try a name, email or username.'
+              : selected === FIX ? 'Nobody is missing a home campus, and every technician holds a trade.'
+                : selected === INACTIVE ? 'Deactivating someone lists them here, with their history kept.'
+                  : 'Add one, or pick another role or campus.'}
           />
+        ) : selected === FIX ? (
+          <ul className="space-y-2" aria-label="Accounts that need fixing">
+            {toFix.map(user => (
+              <FixRow key={user.id} user={user} onFix={() => setFormState({ editing: user })} />
+            ))}
+          </ul>
         ) : (
           visibleGroups.map(({ role, people }) => (
             <section key={role} aria-label={ROLE_LABELS[role]}>
@@ -169,12 +219,19 @@ const UsersPage = () => {
                     key={user.id}
                     user={user}
                     onEdit={() => setFormState({ editing: user })}
-                    onDelete={() => setDeleteTarget(user)}
+                    onToggleActive={() => setTarget(user)}
                   />
                 ))}
               </ul>
             </section>
           ))
+        )}
+
+        {selected !== INACTIVE && (
+          <p className="text-xs text-gray-500">
+            Deactivate, never delete: the person can no longer sign in and drops off every picker,
+            but their tickets, comments and history stay. Deactivated accounts can be restored.
+          </p>
         )}
       </div>
 
@@ -187,42 +244,86 @@ const UsersPage = () => {
       )}
 
       <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
-        title="Delete User?"
+        open={!!target}
+        onOpenChange={(o) => { if (!o) setTarget(null); }}
+        title={target && isActive(target) ? 'Deactivate this account?' : 'Restore this account?'}
         description={
-          <>
-            <strong>"{deleteTarget && fullName(deleteTarget)}"</strong>{' '}
-            ({deleteTarget?.email}) will be permanently deleted. This action cannot be undone.
-          </>
+          target && isActive(target) ? (
+            <>
+              <strong>{fullName(target)}</strong> ({target.email}) will no longer be able to sign in,
+              and leaves any post they hold vacant. Their tickets, comments and history stay, and the
+              account can be restored.
+            </>
+          ) : (
+            <>
+              <strong>{target && fullName(target)}</strong> will be able to sign in again, with the role
+              they had.
+            </>
+          )
         }
-        confirmLabel="Delete"
-        variant="destructive"
-        loading={deleting}
-        onConfirm={handleDeleteConfirm}
+        confirmLabel={target && isActive(target) ? 'Deactivate' : 'Restore'}
+        variant={target && isActive(target) ? 'destructive' : 'default'}
+        loading={working}
+        onConfirm={toggleActive}
       />
     </RailLayout>
   );
 };
 
+/** An account that signs in but will not work, with what is wrong and the way to fix it. */
+function FixRow({ user, onFix }: { user: User; onFix: () => void }) {
+  const name = fullName(user);
+  const problems = user.problems ?? [];
+  return (
+    <li
+      aria-label={name}
+      className="grid grid-cols-[2rem_minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-4 rounded-lg border border-red-200 bg-white p-3"
+    >
+      <Initials name={name} />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-gray-900">{name}</p>
+        <p className="truncate text-xs text-gray-500">{ROLE_LABELS[user.role]} · {user.email}</p>
+      </div>
+      <div className="min-w-0 space-y-1">
+        {problems.map(p => (
+          <div key={p.code}>
+            <p className="text-sm font-semibold text-red-800">{p.label}</p>
+            <p className="text-xs text-gray-600">{p.effect}</p>
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={onFix}>
+        {FIX_LABEL[problems[0].code]}
+      </Button>
+    </li>
+  );
+}
+
+function Initials({ name }: { name: string }) {
+  const initials = name.split(' ').map(p => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  return (
+    <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+      {initials || '?'}
+    </div>
+  );
+}
+
 /** One account. Fixed widths so the columns line up down the list; narrow
  *  screens drop the rightmost ones rather than wrap. */
-function UserRow({ user, onEdit, onDelete }: {
+function UserRow({ user, onEdit, onToggleActive }: {
   user: User;
   onEdit: () => void;
-  onDelete: () => void;
+  onToggleActive: () => void;
 }) {
   const name = fullName(user);
-  const initials = name.split(' ').map(p => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+  const active = isActive(user);
 
   return (
     <li
       aria-label={name}
-      className="flex items-center gap-3 p-3 bg-white border rounded-lg hover:border-gray-300 transition-colors"
+      className={cn('flex items-center gap-3 p-3 bg-white border rounded-lg hover:border-gray-300 transition-colors', !active && 'opacity-75')}
     >
-      <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
-        {initials || '?'}
-      </div>
+      <Initials name={name} />
       <div className="w-56 shrink-0 min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
         <p className="text-xs text-gray-400 truncate md:hidden">{user.email}</p>
@@ -235,23 +336,26 @@ function UserRow({ user, onEdit, onDelete }: {
         {formatJoined(user.date_joined)}
       </span>
       <div className="flex gap-0.5 shrink-0 ml-auto">
+        {active && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Edit ${name}`}
+            onClick={onEdit}
+            className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
-          aria-label={`Edit ${name}`}
-          onClick={onEdit}
-          className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+          aria-label={active ? `Deactivate ${name}` : `Restore ${name}`}
+          title={active ? 'Deactivate' : 'Restore'}
+          onClick={onToggleActive}
+          className={cn('h-7 w-7 p-0 text-gray-400', active ? 'hover:bg-amber-50 hover:text-amber-700' : 'hover:bg-emerald-50 hover:text-emerald-700')}
         >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Delete ${name}`}
-          onClick={onDelete}
-          className="h-7 w-7 p-0 hover:bg-red-50 text-gray-400 hover:text-red-600"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
+          {active ? <Archive className="h-3.5 w-3.5" /> : <ArchiveRestore className="h-3.5 w-3.5" />}
         </Button>
       </div>
     </li>
