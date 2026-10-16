@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { getPriorities, updatePriority } from '@/lib/api/sla';
 import { formatMinutes } from '@/utils/date';
 import type { Priority } from '@/types';
+import EscalationCheck from './EscalationCheck';
 
 /** The four editable durations, in the order they fire.
  *
@@ -131,8 +132,8 @@ function DurationRow({ label, measures, value, editLabel, onSave }: {
 const CLOCK_RULES = [
   {
     icon: Timer,
-    title: 'Starts when raised',
-    text: 'Every duration counts from when the ticket was raised, so time spent unassigned counts.',
+    title: 'Starts when raised, or reopened',
+    text: 'Every duration counts from when the clock last started: when the ticket was raised, or when it was reopened. Time spent unassigned counts.',
   },
   {
     icon: Pause,
@@ -147,11 +148,12 @@ const CLOCK_RULES = [
   {
     icon: TrendingUp,
     title: 'Escalation climbs',
-    text: 'Technician, then HOS, then HOD. A vacant post is skipped and the ticket keeps climbing.',
+    text: 'Technician, then HOS, then HOD, on each run of the escalation check. A vacant post is skipped and the ticket keeps climbing.',
   },
 ];
 
-/** Admin page: the SLA targets and escalation thresholds each priority carries. */
+/** Admin page: whether the escalation check is running, and the SLA targets and
+ *  escalation thresholds each priority carries. */
 export default function SLARulesPage() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,6 +180,8 @@ export default function SLARulesPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
+      <EscalationCheck />
+
       <Card className="overflow-hidden">
         <div className="px-6 pt-5 pb-3">
           <p className="text-sm font-semibold text-gray-700">Priorities</p>

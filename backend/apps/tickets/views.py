@@ -14,12 +14,17 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import get_object_or_404
 
 import os
+from collections import Counter
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.utils import timezone
 
+from apps.tickets import escalation
 from apps.tickets.models import (
+    EscalationRun,
     Ticket,
     TicketAttachment,
     TicketLog,
@@ -65,9 +70,9 @@ from apps.tickets.scope import (
 from apps.tickets.sla import q_overdue
 from apps.analytics import metrics
 from apps.common.pagination import AppendOnlyFeedPagination
-from apps.common.roles import TICKET_SUPERVISOR_ROLES, resolve_role
+from apps.common.roles import IsAdminGroup, TICKET_SUPERVISOR_ROLES, resolve_role
 from apps.notifications.notify import emit_ticket_created, emit_comment_added
-from apps.accounts.identity import display_name_parts
+from apps.accounts.identity import display_name, display_name_parts
 
 
 def get_ticket_for_request_or_403(
@@ -688,3 +693,82 @@ class TicketFeedbackSummaryView(APIView):
 
     def get(self, request):
         return Response(metrics.ratings(rated_in_period(request)))
+
+
+# ─── The escalation check ───────────────────────────────────────────────────
+
+RECENT_RUNS = 10
+
+
+def _outcome(run):
+    """failed (an error, finished or not), finished, running, or did_not_finish: stopped with
+    no error, as a killed task does."""
+    if run.error:
+        return "failed"
+    if run.finished_at:
+        return "finished"
+    return "running" if escalation.in_progress(run, timezone.now()) else "did_not_finish"
+
+
+def _run_row(run):
+    """One escalation run as the SLA Rules page lists it."""
+    took = (run.finished_at - run.started_at).total_seconds() if run.finished_at else None
+    return {
+        "outcome": _outcome(run),
+        "id": run.pk,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "started_by": display_name(run.started_by) if run.started_by else None,
+        "scheduled": run.scheduled,
+        "to_hos": run.to_hos,
+        "to_hod": run.to_hod,
+        "seconds": round(took, 1) if took is not None else None,
+        "error": run.error,
+    }
+
+
+def _move_row(ticket, before, after):
+    return {
+        "id": ticket.pk,
+        "ticket_no": ticket.ticket_no,
+        "campus": ticket.requester_campus.name,
+        "from_level": before,
+        "to_level": after,
+    }
+
+
+class EscalationStatusView(APIView):
+    """GET /escalations/: whether the scheduled check is alive, what it would move now, recent runs."""
+
+    permission_classes = [IsAdminGroup]
+
+    def get(self, request):
+        state, last = escalation.schedule_state()
+        due = Counter(after for _, _, after in escalation.preview())
+        return Response({
+            "state": state,
+            "interval_minutes": settings.ESCALATION_INTERVAL_MINUTES,
+            "stale_after_minutes": int(escalation.overdue_after().total_seconds() // 60),
+            "last_run": _run_row(last) if last else None,
+            "due": {"hos": due["hos"], "hod": due["hod"]},
+            "runs": [_run_row(r) for r in EscalationRun.objects.select_related("started_by")[:RECENT_RUNS]],
+        })
+
+
+class EscalationPreviewView(APIView):
+    """GET /escalations/preview/: every ticket the check would move now. Writes nothing."""
+
+    permission_classes = [IsAdminGroup]
+
+    def get(self, request):
+        moves = escalation.preview()
+        return Response({"count": len(moves), "tickets": [_move_row(*m) for m in moves]})
+
+
+class EscalationRunView(APIView):
+    """POST /escalations/run/: run the check now, as the schedule would, and record it."""
+
+    permission_classes = [IsAdminGroup]
+
+    def post(self, request):
+        return Response(_run_row(escalation.record_run(started_by=request.user)), status=status.HTTP_201_CREATED)

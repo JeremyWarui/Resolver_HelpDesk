@@ -159,6 +159,15 @@ LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = "UTC"
 
+# How often the escalation check is scheduled to run, in minutes. The task on
+# the server runs `manage.py process_auto_escalations` this often; the SLA Rules
+# page reads it to say when a run is overdue.
+ESCALATION_INTERVAL_MINUTES = int(os.environ.get("ESCALATION_INTERVAL_MINUTES", "15"))
+
+# Where mail goes once email is wired up; empty means it is not set up, which
+# the admin's dashboard says.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+
 USE_I18N = True
 
 USE_TZ = True

@@ -591,7 +591,7 @@ class Command(BaseCommand):
         engine rather than stamping levels by hand means the demo shows what
         production would actually have done.
 
-        Each pass moves a ticket one level, as the hourly job does, so it runs
+        Each pass moves a ticket one level, as the scheduled check does, so it runs
         until nothing moves: the backlog it inherits has been waiting for weeks.
         """
         from apps.tickets.escalation import run_escalations

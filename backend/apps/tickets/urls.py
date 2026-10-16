@@ -8,6 +8,9 @@ Every `/tickets/<pk>/` route re-checks scope through
 from django.urls import path
 
 from apps.tickets.views import (
+    EscalationPreviewView,
+    EscalationRunView,
+    EscalationStatusView,
     TicketAssignView,
     TicketAttachmentDetailView,
     TicketAttachmentView,
@@ -24,6 +27,9 @@ from apps.tickets.views import (
 )
 
 urlpatterns = [
+    path("escalations/", EscalationStatusView.as_view(), name="escalation-status"),
+    path("escalations/preview/", EscalationPreviewView.as_view(), name="escalation-preview"),
+    path("escalations/run/", EscalationRunView.as_view(), name="escalation-run"),
     path("tickets/", TicketListCreateView.as_view(), name="ticket-list"),
     path(
         "tickets/filter-options/",

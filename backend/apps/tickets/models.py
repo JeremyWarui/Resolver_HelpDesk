@@ -243,6 +243,34 @@ class TicketLog(models.Model):
         return f"{self.event_type} on {self.ticket_id} at {self.created_at}"
 
 
+class EscalationRun(models.Model):
+    """One pass of the escalation check: when it ran, who started it, what moved.
+
+    `scheduled` marks a run the server's task started, the only kind that says
+    the schedule is alive; `started_by` names the admin behind a Run now, and
+    neither is set for a run typed at the command line. A run that raised
+    keeps its error and no `finished_at`.
+    """
+
+    started_at = models.DateTimeField(default=timezone.now)
+    scheduled = models.BooleanField(default=False)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    to_hos = models.PositiveIntegerField(default=0)
+    to_hod = models.PositiveIntegerField(default=0)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        app_label = "tickets"
+        ordering = ["-started_at", "-id"]
+
+
 class TicketComment(models.Model):
     """A comment on a ticket: the staff working log, not a conversation.
 

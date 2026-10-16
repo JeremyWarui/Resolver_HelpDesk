@@ -201,3 +201,42 @@ export interface TicketTimelineEvent {
   data?: Record<string, unknown>;
   created_at: string;
 }
+
+// ─── The escalation check (GET /escalations/, admin only) ───────────────────
+
+/** One pass of the escalation check: the server's task (`scheduled`), an admin's
+ *  Run now (`started_by`), or neither, a run typed at the command line. */
+export interface EscalationRun {
+  id: number;
+  scheduled: boolean;
+  /** `did_not_finish`: stopped with no error, as a task killed at its time limit does. */
+  outcome: 'finished' | 'failed' | 'running' | 'did_not_finish';
+  started_at: string;
+  finished_at: string | null;
+  started_by: string | null;
+  to_hos: number;
+  to_hod: number;
+  seconds: number | null;
+  error: string;
+}
+
+export interface EscalationStatus {
+  /** Scheduled runs only. `never`: none has run. `stale`: none has started within
+   *  `stale_after_minutes`. `failing`: runs start but error or do not finish. */
+  state: 'never' | 'failing' | 'stale' | 'running';
+  interval_minutes: number;
+  stale_after_minutes: number;
+  last_run: EscalationRun | null;
+  /** What a run now would move. */
+  due: { hos: number; hod: number };
+  runs: EscalationRun[];
+}
+
+/** A ticket the check would move, as the preview names it. */
+export interface EscalationMove {
+  id: number;
+  ticket_no: string;
+  campus: string;
+  from_level: 'technician' | 'hos';
+  to_level: 'hos' | 'hod';
+}

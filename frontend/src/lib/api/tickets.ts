@@ -1,6 +1,9 @@
 import apiClient, { fetchAll, type Page } from './client';
 import type {
   AssignedUser,
+  EscalationMove,
+  EscalationRun,
+  EscalationStatus,
   Ticket,
   TicketsResponse,
   CreateTicketPayload,
@@ -307,3 +310,20 @@ export async function getFeedbackSummary(window: FeedbackWindow): Promise<Feedba
   return data;
 }
 
+/** Whether the scheduled escalation check is alive, what it would move now, and recent runs. Admin only. */
+export async function getEscalationStatus(): Promise<EscalationStatus> {
+  const { data } = await apiClient.get<EscalationStatus>('/escalations/');
+  return data;
+}
+
+/** Every ticket the escalation check would move now. Writes nothing. Admin only. */
+export async function previewEscalations(): Promise<{ count: number; tickets: EscalationMove[] }> {
+  const { data } = await apiClient.get('/escalations/preview/');
+  return data;
+}
+
+/** Run the escalation check now, as the schedule would. Admin only. */
+export async function runEscalations(): Promise<EscalationRun> {
+  const { data } = await apiClient.post<EscalationRun>('/escalations/run/');
+  return data;
+}
