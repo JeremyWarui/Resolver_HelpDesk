@@ -55,8 +55,6 @@ def build(qs, window: dict) -> dict:
         "previous": {
             "resolution_sla_pct": previous["resolution_sla_pct"],
             "resolution_seconds_avg": previous["resolution_seconds_avg"],
-            "rating_avg": previous["rating_avg"],
-            "total": previous["total"],
         },
         "unassigned_now": sum(row["unassigned"] for row in live_by_campus.values()),
         "at_hod_now": sum(row["at_hod"] for row in live_by_campus.values()),

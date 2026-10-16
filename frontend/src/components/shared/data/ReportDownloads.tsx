@@ -4,15 +4,15 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { downloadReport, type ReportFormat } from '@/lib/api/analytics';
 import { REPORT_DOWNLOADS } from '@/constants/analytics';
-import type { AnalyticsParams, UserRole } from '@/types';
+import type { ReportParams, UserRole } from '@/types';
 
 const LABELS: Record<ReportFormat, { text: string; Icon: typeof FileText }> = {
   xlsx: { text: 'Excel', Icon: FileSpreadsheet },
   pdf: { text: 'PDF', Icon: FileText },
 };
 
-/** The report's download buttons, for the period the page is showing. */
-export default function ReportDownloads({ role, params }: { role: UserRole; params: AnalyticsParams }) {
+/** The report's download buttons, for the period and campus the page is showing. */
+export default function ReportDownloads({ role, params }: { role: UserRole; params: ReportParams }) {
   const [busy, setBusy] = useState<ReportFormat | null>(null);
   const formats = REPORT_DOWNLOADS[role] ?? [];
   if (formats.length === 0) return null;

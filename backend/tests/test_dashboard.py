@@ -77,7 +77,7 @@ def test_a_day_counts_what_was_resolved_in_it_whenever_it_was_raised(
 
     trend = _get(api, manager)["trend"]
 
-    assert (trend["days"], trend["bucket"], len(trend["rows"])) == (dashboard.DAYS, "day", dashboard.DAYS)
+    assert (trend["bucket"], len(trend["rows"])) == ("day", dashboard.DAYS)
     today = timezone.now().astimezone(metrics.REPORT_TZ).date().isoformat()
     assert trend["rows"][-1] == {"start": today, "raised": 0, "resolved": 1}
     assert sum(r["raised"] for r in trend["rows"]) == 0
@@ -91,15 +91,34 @@ def test_a_quarter_trend_is_cut_into_weeks_that_count_every_day(
 
     trend = _get(api, manager, trend_days=90)["trend"]
 
-    assert (trend["days"], trend["bucket"], len(trend["rows"])) == (90, "week", 13)
+    assert (trend["bucket"], len(trend["rows"])) == ("week", 13)
     assert sum(r["raised"] for r in trend["rows"]) == 4
 
 
 @pytest.mark.parametrize("bad", ["14", "abc", "-7", ""])
-def test_a_period_that_is_not_offered_falls_back_to_the_week(api, manager, bad):
+def test_a_period_that_is_not_offered_falls_back_to_the_week_and_all_open_work(
+    api, manager, requester, nrb, electrical, priorities, bad
+):
+    _raised(factories.make_ticket(requester, nrb, electrical), days_ago=20)
+
     data = _get(api, manager, trend_days=bad, open_days=bad)
 
-    assert (data["trend"]["days"], data["open_days"]) == (dashboard.DAYS, None)
+    assert (data["trend"]["bucket"], len(data["trend"]["rows"])) == ("day", dashboard.DAYS)
+    assert next(c for c in data["campuses"] if c["label"] == "Nairobi")["open_now"] == 1
+
+
+def test_the_cards_and_campus_table_stay_on_the_week_whatever_the_charts_read(
+    api, manager, requester, nrb, electrical, priorities
+):
+    factories.make_ticket(requester, nrb, electrical)
+    _raised(factories.make_ticket(requester, nrb, electrical), days_ago=40)
+
+    week = _get(api, manager)
+    quarter = _get(api, manager, trend_days=90, open_days=90)
+
+    for key in ("this_week", "last_week", "campus_table", "facilities"):
+        assert quarter[key] == week[key], key
+    assert quarter["this_week"]["total"] == 1
 
 
 def test_open_work_narrows_to_what_was_raised_in_its_period_and_the_cards_do_not(
@@ -113,7 +132,7 @@ def test_open_work_narrows_to_what_was_raised_in_its_period_and_the_cards_do_not
     nairobi = lambda data: next(c for c in data["campuses"] if c["label"] == "Nairobi")
 
     assert (nairobi(every)["open_now"], nairobi(recent)["open_now"]) == (2, 1)
-    assert (recent["open_days"], recent["live"]["open_now"]) == (7, 2)
+    assert recent["live"]["open_now"] == 2
 
 
 def test_the_facility_rows_are_the_reports_rows_over_the_week(
@@ -182,6 +201,24 @@ def test_the_dashboard_lists_the_buildings_most_faults_first(
     rows = _get(api, manager)["facilities"]
 
     assert [(f["label"], f["flag"]) for f in rows] == [("Library", "watch"), ("Hostel", "act")]
+
+
+def test_the_dashboard_keeps_the_reports_first_rows_before_it_sorts_them(
+    api, manager, requester, nrb, electrical, priorities
+):
+    socket = factories.make_service_item(electrical)
+    for name in ("Block A", "Block B", "Block C", "Block D", "Block E"):
+        place = factories.make_facility(nrb, name)
+        for _ in range(overview.REPEAT_AT):  # a repeated fault: act on it
+            factories.make_ticket(requester, nrb, electrical, service_item=socket, facility=place)
+    busy = factories.make_facility(nrb, "Busy Hall")
+    for n in range(8):  # many different faults: worth watching, and the busiest
+        item = factories.make_service_item(electrical, f"Fault {n}")
+        factories.make_ticket(requester, nrb, electrical, service_item=item, facility=busy)
+
+    labels = [f["label"] for f in _get(api, manager)["facilities"]]
+
+    assert labels == ["Block A", "Block B", "Block C", "Block D", "Block E"]
 
 
 def test_the_week_starts_at_kenyan_midnight_six_days_back():

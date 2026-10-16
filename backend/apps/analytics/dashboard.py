@@ -60,8 +60,7 @@ def build(qs, trend_days: int = DAYS, open_days: int | None = None, now=None) ->
         "live": {k: sum(row[k] for row in live) for k in _LIVE},
         "this_week": {k: current[k] for k in _WEEK},
         "last_week": {k: previous[k] for k in _WEEK},
-        "trend": {"days": trend_days, "bucket": PERIODS[trend_days], "rows": _trend(qs, week(now, trend_days), trend_days)},
-        "open_days": open_days,
+        "trend": {"bucket": PERIODS[trend_days], "rows": _trend(qs, week(now, trend_days), trend_days)},
         "campuses": [
             {"key": c.pk, "label": c.name, **{k: by_campus.get(c.pk, {}).get(k, 0) for k in _STAGES}}
             for c in Campus.objects.order_by("name")

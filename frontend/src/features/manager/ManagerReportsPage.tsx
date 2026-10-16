@@ -59,8 +59,7 @@ export default function ManagerReportsPage() {
             </SelectContent>
           </Select>
           <RangeSelector value={range} onChange={setRange} />
-          {/* The files cover every campus; they are offered only when the page does too. */}
-          {!campus && <ReportDownloads role="manager" params={{ days, bucket }} />}
+          <ReportDownloads role="manager" params={{ days, bucket, campus: campus ?? undefined }} />
         </div>
       </div>
 
@@ -134,16 +133,21 @@ function Attention({ insights }: { insights: OverviewInsight[] | null }) {
         ) : insights.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">Nothing is below target this period.</p>
         ) : (
-          <ul className="divide-y">
-            {insights.map((item) => (
-              <li key={`${item.kind}:${item.text}`} className="flex items-baseline gap-3 py-2.5 text-sm">
-                <span className={cn('w-20 shrink-0 rounded-full px-2 py-0.5 text-center text-[11px] font-semibold', KIND_LABEL[item.kind].tone)}>
-                  {KIND_LABEL[item.kind].text}
-                </span>
-                <span>{item.text}</span>
-              </li>
-            ))}
-          </ul>
+          // Laid out as a job card's details: a bordered box, ruled inside, no header row.
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <tbody>
+                {insights.map((item) => (
+                  <tr key={`${item.kind}:${item.text}`} className="border-t border-gray-100 first:border-t-0">
+                    <th scope="row" className={cn('w-28 border-r border-gray-100 px-4 py-2.5 text-left align-top font-semibold', KIND_LABEL[item.kind].tone)}>
+                      {KIND_LABEL[item.kind].text}
+                    </th>
+                    <td className="px-4 py-2.5 text-gray-900">{item.text}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>

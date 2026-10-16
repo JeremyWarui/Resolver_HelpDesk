@@ -90,10 +90,11 @@ def test_the_downloads_need_a_login(api):
 # ─── What each workbook holds ───────────────────────────────────────────────
 
 
-def test_the_manager_workbook_covers_every_campus_with_every_sheet(api, manager, worked):
+def test_the_manager_workbook_is_their_reports_page_over_every_campus(api, manager, worked):
     wb = _workbook(api, manager)
     assert wb.sheetnames == [
-        "Summary", "By campus", "By trade", "By technician", "By facility", "Holds", "Tickets",
+        "Summary", "Facility Health", "Campuses", "Trades", "Trades by campus", "Tickets raised",
+        "Holds", "Tickets",
     ]
     assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi", "Mombasa"}
     assert _summary(wb)["Covers"] == "Every campus"
@@ -126,7 +127,7 @@ def _pct(value):
     return None if value is None else pytest.approx(value / 100)
 
 
-@pytest.mark.parametrize("role", ["manager", "nrb_hos", "nrb_electrician"])
+@pytest.mark.parametrize("role", ["nrb_hod", "nrb_hos", "nrb_electrician"])
 def test_the_workbook_says_what_the_reports_page_says(api, request, worked, role):
     """Same role, same period, same numbers, for each kind of scope."""
     user = request.getfixturevalue(role)
@@ -336,7 +337,167 @@ def test_a_technicians_headline_is_about_their_own_work(api, nrb_electrician, wo
         assert supervisors_only not in summary
 
 
-def _pdf_words(api, user, monkeypatch):
+def _sheet(wb, name):
+    rows = list(wb[name].iter_rows(values_only=True))
+    return [dict(zip(rows[0], row)) for row in rows[1:]]
+
+
+def test_the_manager_workbook_says_what_their_reports_page_says(api, manager, worked):
+    api.force_authenticate(manager)
+    page = api.get(reverse("analytics:overview"), {"days": 30}).json()
+    wb = _workbook(api, manager, days=30)
+
+    _assert_workbook_matches(wb, page)
+
+
+def _seconds(value):
+    return None if value is None else timedelta(seconds=value)
+
+
+def _assert_workbook_matches(wb, page):
+    """Every figure on every sheet, against the page's own envelope."""
+    current, before = page["current"], page["previous"]
+    headline = {r["Figure"]: r for r in _sheet_from(wb, "Summary", "Figure") if r["Figure"]}
+    assert headline["Resolved on time"]["Value"] == _pct(current["resolution_sla_pct"])
+    assert headline["Resolved on time"]["Period before"] == _pct(before["resolution_sla_pct"])
+    assert headline["Average time to fix"]["Value"] == _seconds(current["resolution_seconds_avg"])
+    assert headline["Average time to fix"]["Period before"] == _seconds(before["resolution_seconds_avg"])
+    assert headline["Overdue now"]["Value"] == current["overdue"]
+    assert headline["Open right now"]["Value"] == current["open_backlog"]
+    assert headline["Rating"]["Value"] == current["rating_avg"]
+
+    campuses = {r["Campus"]: r for r in _sheet(wb, "Campuses")}
+    assert set(campuses) == {c["label"] for c in page["campuses"]}
+    for c in page["campuses"]:
+        assert campuses[c["label"]] == {
+            "Campus": c["label"], "Raised": c["total"], "Open now": c["open_now"], "Overdue": c["overdue"],
+            "With HOD": c["at_hod"], "On time": _pct(c["resolution_sla_pct"]),
+            "Avg fix": _seconds(c["resolution_seconds_avg"]), "Rating": c["rating_avg"],
+            "Technicians": c["technicians"], "Jobs each": c["jobs_each"],
+        }
+
+    assert _sheet(wb, "Trades") == [
+        {"Trade": t["label"], "Raised": t["total"], "On time": _pct(t["resolution_sla_pct"]), "Rating": t["rating_avg"]}
+        for t in page["trades"]
+    ]
+
+    grid = page["trade_by_campus"]
+    rows = {r["Campus"]: r for r in _sheet(wb, "Trades by campus")}
+    for row in grid["rows"]:
+        assert rows[row["campus"]] == {
+            "Campus": row["campus"], **{t: row["counts"].get(t, 0) for t in grid["trades"]}, "All": row["total"]}
+    assert rows["All"] == {"Campus": "All", **{t: grid["totals"].get(t, 0) for t in grid["trades"]}, "All": grid["total"]}
+
+    assert [(r["Raised"], r["Settled"]) for r in _sheet(wb, "Tickets raised")] == [
+        (p["total"], p["settled"]) for p in page["trend"]]
+    assert [(r["Building"], r["Faults"], r["Open now"]) for r in _sheet(wb, "Facility Health")] == [
+        (f["label"], f["total"], f["open_now"]) for f in page["facilities"]]
+
+
+def _sheet_from(wb, name, heading):
+    """A sheet's rows under the header row that starts with `heading`."""
+    rows = list(wb[name].iter_rows(values_only=True))
+    start = next(i for i, r in enumerate(rows) if r and r[0] == heading)
+    out = []
+    for r in rows[start + 1:]:
+        if not r or r[0] is None:
+            break
+        out.append(dict(zip(rows[start], r)))
+    return out
+
+
+def test_a_campus_narrowed_workbook_says_what_the_narrowed_page_says(api, manager, worked, nrb):
+    api.force_authenticate(manager)
+    page = api.get(reverse("analytics:overview"), {"days": 30, "campus": nrb.pk}).json()
+    _assert_workbook_matches(_workbook(api, manager, days=30, campus=nrb.pk), page)
+
+
+def test_the_managers_pdf_prints_the_pages_campus_figures(api, monkeypatch, manager, worked):
+    api.force_authenticate(manager)
+    page = api.get(reverse("analytics:overview"), {"days": 30}).json()
+    words = _pdf_words(api, manager, monkeypatch, days=30)
+
+    # The name column is a paragraph; the table's own strings follow its last heading, row by row.
+    start = words.index("Jobs each") + 1
+    for n, c in enumerate(page["campuses"]):
+        row = words[start + 9 * n:start + 9 * (n + 1)]
+        assert row[:4] == [str(c["total"]), str(c["open_now"]), str(c["overdue"]), str(c["at_hod"])]
+        assert row[7] == str(c["technicians"]) and row[4] == _cell_text(c["resolution_sla_pct"])
+
+
+def _cell_text(pct):
+    return "—" if pct is None else f"{pct:g}%"
+
+
+def test_the_pdf_rounds_hours_and_percentages_as_the_page_does():
+    from apps.analytics.export import _cell
+
+    # The page writes (8100 / 3600).toFixed(1) as 2.3, and 100.0 as 100.
+    assert (_cell(8100, "hours"), _cell(4500, "hours"), _cell(900, "hours")) == ("2.3h", "1.3h", "0.3h")
+    assert (_cell(100.0, "page_pct"), _cell(72.3, "page_pct")) == ("100%", "72.3%")
+
+
+def test_the_manager_workbook_lists_facility_health_and_attention(
+    api, manager, requester, nrb, electrical, priorities
+):
+    block = factories.make_facility(nrb, "Wamalwa")
+    socket = factories.make_service_item(electrical)
+    for _ in range(3):
+        factories.make_ticket(requester, nrb, electrical, service_item=socket, facility=block)
+
+    wb = _workbook(api, manager, days=30)
+
+    (row,) = _sheet(wb, "Facility Health")
+    assert (row["Building"], row["Campus"], row["Faults"], row["By trade"]) == ("Wamalwa", "Nairobi", 3, "Electrical 3")
+    assert row["Keeps coming back"] == "Faulty socket 3×"
+    assert row["Suggests"] == "Electrical survey"
+    attention = [r for r in wb["Summary"].iter_rows(values_only=True) if r and r[0] == "Facility"]
+    assert attention and "Wamalwa" in attention[0][1]
+
+
+def test_a_campus_narrows_the_managers_downloads(api, manager, worked, nrb):
+    wb = _workbook(api, manager, campus=nrb.pk)
+
+    assert _summary(wb)["Covers"] == "Nairobi campus"
+    assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi"}
+    assert [r["Campus"] for r in _sheet(wb, "Campuses")] == ["Nairobi"]
+    api.force_authenticate(manager)
+    response = api.get(reverse(PDF), {"campus": nrb.pk})
+    assert response.status_code == 200
+    assert "nairobi-campus" in response["Content-Disposition"]
+
+
+@pytest.mark.parametrize("bad", ["999999", "abc", "-1", ""])
+def test_a_campus_that_is_not_one_is_refused_for_the_downloads(api, manager, worked, bad):
+    api.force_authenticate(manager)
+    assert api.get(reverse(XLSX), {"campus": bad}).status_code == 400
+
+
+@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod", "nrb_electrician"])
+def test_only_an_every_campus_report_takes_a_campus(api, request, worked, msa, role):
+    api.force_authenticate(request.getfixturevalue(role))
+    assert api.get(reverse(XLSX), {"campus": msa.pk}).status_code == 400
+
+
+def test_the_admin_workbook_keeps_its_breakdowns_and_narrows_to_a_campus(api, admin_user, worked, msa):
+    wb = _workbook(api, admin_user, campus=msa.pk)
+
+    assert "By campus" in wb.sheetnames and "Facility Health" not in wb.sheetnames
+    assert {t["Campus"] for t in _tickets(wb)} == {"Mombasa"}
+
+
+def test_the_managers_pdf_follows_their_reports_page(api, monkeypatch, manager, worked):
+    words = _pdf_words(api, manager, monkeypatch)
+
+    order = ["Headline figures", "Needs your attention", "Facility Health", "Campuses", "Trades",
+             "Trades by campus", "Tickets raised", "On hold now, by reason"]
+    positions = [words.index(title) for title in order]
+    assert positions == sorted(positions)
+    assert {"Resolved on time", "Open right now", "With HOD", "Jobs each"} <= set(words)
+    assert "Trade performance" not in words
+
+
+def _pdf_words(api, user, monkeypatch, **params):
     """Every heading, cell and legend label the PDF is built from."""
     from reportlab.graphics.charts import legends
     from reportlab import platypus
@@ -363,7 +524,7 @@ def _pdf_words(api, user, monkeypatch):
     monkeypatch.setattr(platypus, "Table", Table)
     monkeypatch.setattr(legends, "Legend", Legend)
     api.force_authenticate(user)
-    response = api.get(reverse(PDF))
+    response = api.get(reverse(PDF), params)
     assert response.status_code == 200 and response.content.startswith(b"%PDF")
     return words
 

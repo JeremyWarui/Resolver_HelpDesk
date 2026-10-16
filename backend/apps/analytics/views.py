@@ -35,13 +35,28 @@ def scoped_for(request):
     return role, Ticket.objects.filter(raised_by=request.user)
 
 
+def campus_param(request):
+    """The campus `?campus=<id>` names, or None without one. Not a campus is a 400."""
+    raw = request.query_params.get("campus")
+    if raw is None:
+        return None
+    campus = Campus.objects.filter(pk=int(raw)).first() if raw.isascii() and raw.isdigit() else None
+    if campus is None:
+        raise ValidationError({"campus": "Not a campus."})
+    return campus
+
+
 class ReportingView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
 
 class _ExportView(ReportingView):
-    """A downloadable report over the caller's reporting scope and window."""
+    """A downloadable report over the caller's reporting scope and window.
+
+    `?campus=<id>` narrows a report that covers every campus (admin, manager)
+    to one; anyone else already reads one campus, and asking is a 400.
+    """
 
     roles = ()
     extension = ""
@@ -54,7 +69,10 @@ class _ExportView(ReportingView):
         role = resolve_role(request)
         if role not in self.roles:
             raise PermissionDenied("This report is not available to your role.")
-        data = export.report_data(request.user, role, resolve_window(request.query_params))
+        campus = campus_param(request)
+        if campus and role not in export.EVERY_CAMPUS_ROLES:
+            raise ValidationError({"campus": "Only a report over every campus narrows to one."})
+        data = export.report_data(request.user, role, resolve_window(request.query_params), campus)
         response = HttpResponse(self.build(data), content_type=self.content_type)
         response["Content-Disposition"] = (
             f'attachment; filename="{export.filename(data, self.extension)}"'
@@ -74,7 +92,7 @@ class ExcelExportView(_ExportView):
 
 
 class PdfExportView(_ExportView):
-    """GET /analytics/export/pdf/ — the summary PDF. Manager, HOD and HOS."""
+    """GET /analytics/export/pdf/ — the summary PDF. Manager, HOD, HOS and technician."""
 
     roles = export.PDF_ROLES
     extension = "pdf"
@@ -128,15 +146,8 @@ class OverviewView(ReportingView):
             raise PermissionDenied("The overview is the manager's report.")
         window = resolve_window(request.query_params)
 
-        campus = None
-        raw = request.query_params.get("campus")
-        if raw is not None:
-            campus = (
-                Campus.objects.filter(pk=int(raw)).first()
-                if raw.isascii() and raw.isdigit() else None
-            )
-            if campus is None:
-                raise ValidationError({"campus": "Not a campus."})
+        campus = campus_param(request)
+        if campus:
             qs = qs.filter(requester_campus=campus)
 
         data = overview.build(qs, window)

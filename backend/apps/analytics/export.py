@@ -3,12 +3,14 @@ The downloadable reports: an Excel workbook and a PDF summary.
 
 Both are drawn from `report_data`, which reads every figure from `metrics` over
 `reporting_ticket_qs`, so a download says exactly what the reports page says
-for the same role and period. Times are shown in Kenyan time.
+for the same role and period. The manager's are laid out as their Reports page
+and read `overview.build`, as it does. Times are shown in Kenyan time.
 """
 
 import io
 import re
 from datetime import timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from xml.sax.saxutils import escape
 
 from django.utils import timezone
@@ -20,6 +22,7 @@ from apps.tickets.constants import LEVELS, PENDING_REASON_LABELS, STATUSES
 from apps.tickets.scope import reporting_ticket_qs
 from apps.tickets.sla import sla_outcome
 
+from . import overview
 from .metrics import REPORT_TZ, bottlenecks, group, measured, raised_in, totals, trend
 
 # KSG brand colours for the reports. White on KSG Brown is 5.70:1.
@@ -30,6 +33,8 @@ KSG_GREEN_DARK = "6F7A00"
 # Who may download which format.
 XLSX_ROLES = ("admin", "manager", "hod", "hos", "technician")
 PDF_ROLES = ("manager", "hod", "hos", "technician")
+# Whose report covers every campus, and so may be narrowed to one.
+EVERY_CAMPUS_ROLES = ("admin", "manager")
 
 # "On hold", as the app says it, rather than the model's "Pending".
 STATUS_LABELS = {**dict(STATUSES), "pending": "On hold"}
@@ -52,9 +57,11 @@ BREAKDOWN_COLUMNS = [
 ]
 
 
-def scope_label(user, role):
+def scope_label(user, role, campus=None):
     """Who and what a report covers, said in words."""
-    if role in ("admin", "manager"):
+    if campus:
+        return f"{campus.name} campus"
+    if role in EVERY_CAMPUS_ROLES:
         return "Every campus"
     if role == "technician":
         return f"Jobs assigned to {display_name(user)}"
@@ -158,20 +165,27 @@ def _ticket_rows(qs, window):
     return rows
 
 
-def report_data(user, role, window):
-    """Everything both formats print, for this caller and period."""
+def report_data(user, role, window, campus=None):
+    """Everything both formats print, for this caller, period and campus."""
     qs = reporting_ticket_qs(user, role)
-    by_status = {row["key"]: row["total"] for row in group(qs, window, ["status"])}
-    return {
+    if campus:
+        qs = qs.filter(requester_campus=campus)
+    heading = {
         "title": "Maintenance Helpdesk Report",
-        "scope": scope_label(user, role),
+        "scope": scope_label(user, role, campus),
         "role": role,
         "from": local(window["from"]),
         "to": local(window["to"]),
         "generated": local(timezone.now()),
+    }
+    if role == "manager":
+        return {**heading, "overview": overview.build(qs, window), "tickets": _ticket_rows(qs, window)}
+    by_status = {row["key"]: row["total"] for row in group(qs, window, ["status"])}
+    return {
+        **heading,
         "totals": totals(qs, window),
         "by_status": {code: by_status.get(code, 0) for code, _ in STATUSES},
-        "by_campus": group(qs, window, ["campus"]) if role in ("admin", "manager") else None,
+        "by_campus": group(qs, window, ["campus"]) if role in EVERY_CAMPUS_ROLES else None,
         "by_trade": group(qs, window, ["trade"]),
         "by_technician": None if role == "technician" else group(qs, window, ["technician"]),
         "by_facility": _facility_rows(qs, window),
@@ -232,6 +246,55 @@ def summary_rows(data):
     ]
 
 
+def manager_headline(ov):
+    """The Reports page's stat cards as (label, value, before, kind, note).
+
+    `before` is the period before where the card shows it, else None.
+    """
+    now, before = ov["current"], ov["previous"]
+    return [
+        ("Resolved on time", now["resolution_sla_pct"], before["resolution_sla_pct"], "pct",
+         "Settled work, by its deadline"),
+        ("Average time to fix", now["resolution_seconds_avg"], before["resolution_seconds_avg"], "duration",
+         "Holds left out"),
+        ("Overdue now", now["overdue"], None, "count", f"{ov['at_hod_now']} live jobs sit with the HOD"),
+        ("Open right now", now["open_backlog"], None, "count", f"{ov['unassigned_now']} waiting for a technician"),
+        ("Rating", now["rating_avg"], None, "number", f"{now['rating_count']} ratings"),
+    ]
+
+
+INSIGHT_KINDS = {
+    "campus": "Campus", "trade": "Trade", "staffing": "Staffing", "facility": "Facility", "escalated": "Escalated",
+}
+# Each kind's (text, cell) colours, as the Reports page tints its first column.
+INSIGHT_TONES = {
+    "campus": ("#991B1B", "#FEF2F2"), "escalated": ("#991B1B", "#FEF2F2"),
+    "trade": ("#92400E", "#FFFBEB"), "staffing": ("#92400E", "#FFFBEB"),
+    "facility": ("#1E40AF", "#EFF6FF"),
+}
+PLAIN_TONE = ("#374151", "#F9FAFB")
+
+
+def facility_trades(row):
+    """A Facility Health row's trades in words: Plumbing 5 · Carpentry 1."""
+    return " · ".join(f"{t['label']} {t['total']}" for t in row["trades"])
+
+
+def hours_minutes(seconds):
+    """28h 16m, as the Reports page writes a time to fix."""
+    if seconds is None:
+        return "—"
+    hours, rest = divmod(int(seconds), 3600)
+    return f"{hours}h {rest // 60}m" if hours else f"{rest // 60}m"
+
+
+def facility_pattern(row):
+    """What keeps coming back at a building, or its average fix when nothing repeats."""
+    if row["repeats"]:
+        return ", ".join(f"{r['label']} {r['total']}×" for r in row["repeats"])
+    return f"Avg fix {hours_minutes(row['resolution_seconds_avg'])}" if row["resolution_seconds_avg"] else "—"
+
+
 def filename(data, extension):
     """e.g. helpdesk-report-nairobi-campus-2026-09-15-to-2026-10-15.xlsx
 
@@ -249,86 +312,139 @@ def filename(data, extension):
 
 # ─── Excel ──────────────────────────────────────────────────────────────────
 
+PCT_FORMAT = "0.0%"
+DURATION_FORMAT = "[h]:mm"
+DATE_FORMAT = "yyyy-mm-dd hh:mm"
+KINDS = {
+    "completion_pct": "pct", "resolution_sla_pct": "pct", "response_sla_pct": "pct",
+    "response_seconds_avg": "duration", "resolution_seconds_avg": "duration",
+}
+TICKET_COLUMNS = [
+    ("ticket_no", "Ticket"), ("campus", "Campus"), ("trade", "Trade"),
+    ("service", "Service"), ("facility", "Facility"), ("where", "Where"),
+    ("raised_by", "Raised by"), ("assigned_to", "Assigned to"),
+    ("priority", "Priority"), ("status", "Status"), ("level", "Escalation level"),
+    ("hold_reason", "Hold reason"), ("raised", "Raised"), ("assigned", "First assigned"),
+    ("resolved", "Resolved"), ("due", "Resolution due"), ("sla", "SLA"),
+    ("rating", "Rating"), ("rating_comment", "Rating comment"),
+]
+
+
+def _append(ws, values):
+    """Add a row, every text value made safe for a cell."""
+    ws.append([cell_text(v) for v in values])
+
+
+def _header(ws, headings):
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    _append(ws, headings)
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=KSG_BROWN)
+        cell.alignment = Alignment(vertical="center")
+    # An address, not `ws.cell(...)`: reading a cell creates the row.
+    ws.freeze_panes = f"A{ws.max_row + 1}"
+
+
+def _widths(ws, minimum=10, maximum=48):
+    from openpyxl.utils import get_column_letter
+
+    for column in ws.columns:
+        longest = max((len(str(c.value)) for c in column if c.value is not None), default=0)
+        ws.column_dimensions[get_column_letter(column[0].column)].width = max(
+            minimum, min(maximum, longest + 2)
+        )
+
+
+def _put(cell, value, kind):
+    if kind == "duration":
+        cell.value = None if value is None else timedelta(seconds=value)
+        cell.number_format = DURATION_FORMAT
+    elif kind == "pct":
+        # A fraction, so Excel's own percent arithmetic and formatting work.
+        cell.value = None if value is None else value / 100
+        cell.number_format = PCT_FORMAT
+    else:
+        cell.value = value
+
+
+def _row(ws, values):
+    """Add a row of (value, kind) pairs, each cell formatted for its kind."""
+    r = ws.max_row + 1
+    for i, (value, kind) in enumerate(values, start=1):
+        _put(ws.cell(row=r, column=i), cell_text(value), kind)
+
+
+def _cover(ws, data):
+    from openpyxl.styles import Font
+
+    _append(ws, [data["title"]])
+    ws["A1"].font = Font(bold=True, size=14, color=KSG_BROWN_DEEP)
+    _append(ws, ["Covers", data["scope"]])
+    _append(ws, ["Period", f"{data['from']:%d %b %Y} to {data['to']:%d %b %Y}"])
+    _append(ws, ["Generated", data["generated"]])
+    ws["B4"].number_format = DATE_FORMAT
+    _append(ws, ["Times are in Kenyan time (EAT)."])
+    _append(ws, [])
+
+
+def _holds_sheet(wb, holds):
+    ws = wb.create_sheet("Holds")
+    _header(ws, ["Reason", "On hold now", "Oldest hold since"])
+    for row in holds:
+        _append(ws, [row["label"], row["total"], local(row["since"])])
+        ws.cell(row=ws.max_row, column=3).number_format = DATE_FORMAT
+    _widths(ws)
+
+
+def _tickets_sheet(wb, tickets):
+    ws = wb.create_sheet("Tickets")
+    _header(ws, [h for _, h in TICKET_COLUMNS])
+    dated = {"raised", "assigned", "resolved", "due"}
+    for row in tickets:
+        _append(ws, [row[key] for key, _ in TICKET_COLUMNS])
+        for i, (key, _) in enumerate(TICKET_COLUMNS, start=1):
+            if key in dated:
+                ws.cell(row=ws.max_row, column=i).number_format = DATE_FORMAT
+    ws.auto_filter.ref = ws.dimensions
+    _widths(ws, minimum=12)
+
+
+def _saved(wb) -> bytes:
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
 
 def build_workbook(data) -> bytes:
     """The workbook: a summary sheet, one sheet per breakdown, and every ticket."""
+    if "overview" in data:
+        return _manager_workbook(data)
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
-
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill("solid", fgColor=KSG_BROWN)
-    pct_format = "0.0%"
-    duration_format = "[h]:mm"
-    date_format = "yyyy-mm-dd hh:mm"
 
     wb = Workbook()
-
-    def append(ws, values):
-        """Add a row, every text value made safe for a cell."""
-        ws.append([cell_text(v) for v in values])
-
-    def header(ws, headings):
-        append(ws, headings)
-        for cell in ws[ws.max_row]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(vertical="center")
-        # An address, not `ws.cell(...)`: reading a cell creates the row.
-        ws.freeze_panes = f"A{ws.max_row + 1}"
-
-    def widths(ws, minimum=10, maximum=48):
-        for column in ws.columns:
-            longest = max((len(str(c.value)) for c in column if c.value is not None), default=0)
-            ws.column_dimensions[get_column_letter(column[0].column)].width = max(
-                minimum, min(maximum, longest + 2)
-            )
-
-    def put(cell, value, kind):
-        if kind == "duration":
-            cell.value = None if value is None else timedelta(seconds=value)
-            cell.number_format = duration_format
-        elif kind == "pct":
-            # A fraction, so Excel's own percent arithmetic and formatting work.
-            cell.value = None if value is None else value / 100
-            cell.number_format = pct_format
-        else:
-            cell.value = value
-
-    kinds = {
-        "completion_pct": "pct", "resolution_sla_pct": "pct", "response_sla_pct": "pct",
-        "response_seconds_avg": "duration", "resolution_seconds_avg": "duration",
-    }
-
-    # Summary
     ws = wb.active
     ws.title = "Summary"
-    append(ws, [data["title"]])
-    ws["A1"].font = Font(bold=True, size=14, color=KSG_BROWN_DEEP)
-    append(ws, ["Covers", data["scope"]])
-    append(ws, ["Period", f"{data['from']:%d %b %Y} to {data['to']:%d %b %Y}"])
-    append(ws, ["Generated", data["generated"]])
-    ws["B4"].number_format = date_format
-    append(ws, ["Times are in Kenyan time (EAT)."])
-    append(ws, [])
-    header(ws, ["Figure", "Value"])
+    _cover(ws, data)
+    _header(ws, ["Figure", "Value"])
     for label, value, kind in summary_rows(data):
-        append(ws, [label])
-        put(ws.cell(row=ws.max_row, column=2), value, kind)
-    append(ws, [])
-    append(ws, ["Durations read hours:minutes. Response is raised to first assigned; "
-               "resolution is raised to resolved, with time on hold left out."])
-    widths(ws)
+        _append(ws, [label])
+        _put(ws.cell(row=ws.max_row, column=2), value, kind)
+    _append(ws, [])
+    _append(ws, ["Durations read hours:minutes. Response is raised to first assigned; "
+                 "resolution is raised to resolved, with time on hold left out."])
+    _widths(ws)
 
     def breakdown_sheet(title, rows, first_heading):
         sheet = wb.create_sheet(title)
-        header(sheet, [first_heading] + [h for _, h in BREAKDOWN_COLUMNS])
+        _header(sheet, [first_heading] + [h for _, h in BREAKDOWN_COLUMNS])
         for row in rows:
-            append(sheet, [row["label"]])
+            _append(sheet, [row["label"]])
             r = sheet.max_row
             for i, (key, _) in enumerate(BREAKDOWN_COLUMNS, start=2):
-                put(sheet.cell(row=r, column=i), row.get(key), kinds.get(key, "number"))
-        widths(sheet)
+                _put(sheet.cell(row=r, column=i), row.get(key), KINDS.get(key, "number"))
+        _widths(sheet)
 
     if data["by_campus"] is not None:
         breakdown_sheet("By campus", data["by_campus"], "Campus")
@@ -337,44 +453,86 @@ def build_workbook(data) -> bytes:
         breakdown_sheet("By technician", data["by_technician"], "Technician")
 
     ws = wb.create_sheet("By facility")
-    header(ws, ["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"])
+    _header(ws, ["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"])
     for row in data["by_facility"]:
-        append(ws, [
+        _append(ws, [
             row["label"], row["campus"], row["total"], row["open"], row["escalated"],
             row["top_trade"],
         ])
-    widths(ws)
+    _widths(ws)
 
-    ws = wb.create_sheet("Holds")
-    header(ws, ["Reason", "On hold now", "Oldest hold since"])
-    for row in data["holds"]:
-        append(ws, [row["label"], row["total"], local(row["since"])])
-        ws.cell(row=ws.max_row, column=3).number_format = date_format
-    widths(ws)
+    _holds_sheet(wb, data["holds"])
+    _tickets_sheet(wb, data["tickets"])
+    return _saved(wb)
 
-    ws = wb.create_sheet("Tickets")
-    columns = [
-        ("ticket_no", "Ticket"), ("campus", "Campus"), ("trade", "Trade"),
-        ("service", "Service"), ("facility", "Facility"), ("where", "Where"),
-        ("raised_by", "Raised by"), ("assigned_to", "Assigned to"),
-        ("priority", "Priority"), ("status", "Status"), ("level", "Escalation level"),
-        ("hold_reason", "Hold reason"), ("raised", "Raised"), ("assigned", "First assigned"),
-        ("resolved", "Resolved"), ("due", "Resolution due"), ("sla", "SLA"),
-        ("rating", "Rating"), ("rating_comment", "Rating comment"),
-    ]
-    header(ws, [h for _, h in columns])
-    dated = {"raised", "assigned", "resolved", "due"}
-    for row in data["tickets"]:
-        append(ws, [row[key] for key, _ in columns])
-        for i, (key, _) in enumerate(columns, start=1):
-            if key in dated:
-                ws.cell(row=ws.max_row, column=i).number_format = date_format
-    ws.auto_filter.ref = ws.dimensions
-    widths(ws, minimum=12)
 
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    return buffer.getvalue()
+def _manager_workbook(data) -> bytes:
+    """The manager's workbook: their Reports page, a sheet per section, then every ticket."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    ov = data["overview"]
+    wb = Workbook()
+
+    ws = wb.active
+    ws.title = "Summary"
+    _cover(ws, data)
+    _header(ws, ["Figure", "Value", "Period before", "Note"])
+    for label, value, before, kind, note in manager_headline(ov):
+        _row(ws, [(label, "text"), (value, kind), (before, kind), (note, "text")])
+    _append(ws, [])
+    _append(ws, ["Needs your attention"])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color=KSG_BROWN_DEEP)
+    for item in ov["insights"]:
+        _append(ws, [INSIGHT_KINDS.get(item["kind"], item["kind"]), item["text"]])
+    if not ov["insights"]:
+        _append(ws, ["Nothing is below target this period."])
+    _widths(ws, maximum=90)
+
+    ws = wb.create_sheet("Facility Health")
+    _header(ws, ["Building", "Campus", "Type", "Faults", "By trade", "Keeps coming back", "Suggests", "Open now"])
+    for row in ov["facilities"]:
+        _append(ws, [row["label"], row["campus"], row["type"], row["total"], facility_trades(row),
+                     facility_pattern(row), row["suggestion"], row["open_now"]])
+    _widths(ws)
+
+    ws = wb.create_sheet("Campuses")
+    _header(ws, ["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+                 "Technicians", "Jobs each"])
+    for row in ov["campuses"]:
+        _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
+                  (row["overdue"], "count"), (row["at_hod"], "count"), (row["resolution_sla_pct"], "pct"),
+                  (row["resolution_seconds_avg"], "duration"), (row["rating_avg"], "number"),
+                  (row["technicians"], "count"), (row["jobs_each"], "number")])
+    _widths(ws)
+
+    ws = wb.create_sheet("Trades")
+    _header(ws, ["Trade", "Raised", "On time", "Rating"])
+    for row in ov["trades"]:
+        _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["resolution_sla_pct"], "pct"),
+                  (row["rating_avg"], "number")])
+    _widths(ws)
+
+    grid = ov["trade_by_campus"]
+    ws = wb.create_sheet("Trades by campus")
+    _header(ws, ["Campus", *grid["trades"], "All"])
+    for row in grid["rows"]:
+        _append(ws, [row["campus"], *(row["counts"].get(t, 0) for t in grid["trades"]), row["total"]])
+    _append(ws, ["All", *(grid["totals"].get(t, 0) for t in grid["trades"]), grid["total"]])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+    _widths(ws)
+
+    ws = wb.create_sheet("Tickets raised")
+    _header(ws, ["From", "Raised", "Settled"])
+    for point in ov["trend"]:
+        _append(ws, [local(point["bucket"]), point["total"], point["settled"]])
+        ws.cell(row=ws.max_row, column=1).number_format = "yyyy-mm-dd"
+    _widths(ws, minimum=12)
+
+    _holds_sheet(wb, ov["bottlenecks"])
+    _tickets_sheet(wb, data["tickets"])
+    return _saved(wb)
 
 
 # ─── PDF ────────────────────────────────────────────────────────────────────
@@ -387,6 +545,13 @@ def _cell(value, kind):
         return f"{value:.1f}%"
     if kind == "duration":
         return duration_text(value)
+    if kind == "hm":
+        return hours_minutes(value)
+    if kind == "hours":
+        # Rounded as the page's `toFixed(1)` rounds: half away from zero, on the exact value.
+        return f"{Decimal(value / 3600).quantize(Decimal('0.1'), ROUND_HALF_UP)}h"
+    if kind == "page_pct":
+        return f"{value:g}%"
     if kind == "number":
         return f"{value:.2f}".rstrip("0").rstrip(".")
     return str(value)
@@ -521,91 +686,200 @@ def build_pdf(data) -> bytes:
             Spacer(1, 4 * mm),
         ])
 
-    story = [
-        Paragraph(data["title"], h1),
-        Paragraph(f"<b>Covers:</b> {escape(data['scope'])}", body),
-        Paragraph(
-            f"<b>Period:</b> {data['from']:%d %b %Y} to {data['to']:%d %b %Y}"
-            f" &nbsp;&nbsp; <b>Generated:</b> {data['generated']:%d %b %Y %H:%M} EAT",
-            body,
-        ),
-        Spacer(1, 5 * mm),
-        Paragraph("Headline figures", h2),
-    ]
+    def manager_story():
+        """The manager's Reports page, section by section."""
+        ov = data["overview"]
+        story = cover() + [Paragraph("Headline figures", h2)]
+        cards = []
+        for label, value, before, kind, note in manager_headline(ov):
+            kind = "hm" if kind == "duration" else kind
+            kind = "page_pct" if kind == "pct" else kind
+            shown = f"{_cell(value, kind)} / 5" if label == "Rating" and value is not None else _cell(value, kind)
+            beside = f"{_cell(before, kind)} the period before" if before is not None else note
+            cards.append([label, shown, beside])
+        story += [
+            table(["Figure", "Value", "Note"], cards, [page_width * w for w in (0.3, 0.2, 0.5)], text_columns=(0, 2)),
+            Spacer(1, 4 * mm),
+            Paragraph("Needs your attention", h2),
+        ]
+        if ov["insights"]:
+            # A bordered box ruled inside, with no header row, as the page sets it out.
+            attention = Table(
+                [[Paragraph(f"<font color='{INSIGHT_TONES.get(i['kind'], PLAIN_TONE)[0]}'><b>"
+                            f"{INSIGHT_KINDS.get(i['kind'], i['kind'])}</b></font>", cell_style),
+                  Paragraph(escape(i["text"]), cell_style)] for i in ov["insights"]],
+                colWidths=[page_width * 0.16, page_width * 0.84],
+            )
+            attention.setStyle(TableStyle([
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D9D3C3")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E8E3D6")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                *(("BACKGROUND", (0, n), (0, n), colors.HexColor(INSIGHT_TONES.get(i["kind"], PLAIN_TONE)[1]))
+                  for n, i in enumerate(ov["insights"])),
+            ]))
+            story.append(attention)
+        else:
+            story.append(Paragraph("Nothing is below target this period.", body))
 
-    figures = summary_rows(data)
-    half = (len(figures) + 1) // 2
-    pairs = []
-    for left, right in zip(figures[:half], figures[half:] + [None]):
-        pairs.append(
-            [left[0], _cell(left[1], left[2])]
-            + ([right[0], _cell(right[1], right[2])] if right else ["", ""])
-        )
-    headline = table(["Figure", "Value", "Figure", "Value"], pairs,
-                     [page_width * 0.32, page_width * 0.18] * 2, text_columns=(0, 2))
-    story += [headline, Spacer(1, 2 * mm), Paragraph(
-        (
-            "Counts are of your jobs raised in the period, except active and overdue, which "
-            "are as of now. Time to fix leaves out time on hold. On time is the share of "
-            "finished jobs done by their deadline."
-            if mine else
-            "Counts are of tickets raised in the period, except backlog and overdue, which are "
-            "as of now. Resolution time leaves out time on hold. SLA is the share of settled "
-            "tickets finished by their deadline."
-        ), small), Spacer(1, 4 * mm)]
-    # A trade with no jobs in the period is no slice, so this counts trades worked, not held.
-    several_trades = not mine or len(data["by_trade"]) > 1
+        health = [
+            [f"{row['label']} ({row['campus']} · {row['type']})", str(row["total"]), facility_trades(row),
+             facility_pattern(row), row["suggestion"], str(row["open_now"])]
+            for row in ov["facilities"]
+        ]
+        story += [Spacer(1, 4 * mm), KeepTogether([
+            Paragraph("Facility Health", h2),
+            Paragraph("Buildings where faults keep coming back this period, and in which trade.", small),
+            table(["Building", "Faults", "By trade", "Keeps coming back", "Suggests", "Open"],
+                  health or [["No building shows a pattern this period.", "", "", "", "", ""]],
+                  [page_width * w for w in (0.24, 0.08, 0.22, 0.18, 0.2, 0.08)], text_columns=(0, 2, 3, 4)),
+        ])]
 
-    # Where the work is, straight after how much of it there is.
-    hotspots = [
-        [row["label"], row["campus"], str(row["total"]), str(row["open"]),
-         str(row["escalated"]), row["top_trade"]]
-        for row in data["by_facility"][:10]
-    ]
-    story.append(KeepTogether([
-        Paragraph("Where your jobs were (top 10)" if mine else "Facility hotspots (top 10)", h2),
-        table(["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"],
-              hotspots or [["No tickets", "", "", "", "", ""]],
-              [page_width * w for w in (0.28, 0.16, 0.1, 0.1, 0.12, 0.24)],
-              text_columns=(0, 1, 5)),
-    ]))
+        target = ov["target_pct"]
+        campuses = [
+            [row["label"], str(row["total"]), str(row["open_now"]), str(row["overdue"]), str(row["at_hod"]),
+             _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
+             _cell(row["rating_avg"], "number"), str(row["technicians"]), _cell(row["jobs_each"], "number")]
+            for row in ov["campuses"]
+        ]
+        story += [Spacer(1, 4 * mm), KeepTogether([
+            Paragraph("Campuses", h2),
+            Paragraph(f"Target: {target}% on time.", small),
+            table(["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+                   "Technicians", "Jobs each"],
+                  campuses or [["No tickets"] + [""] * 9],
+                  [page_width * 0.13] + [page_width * 0.09] * 7 + [page_width * 0.12] * 2),
+        ])]
 
-    story += [
-        Spacer(1, 4 * mm),
-        KeepTogether([
-            Paragraph("Jobs raised and finished" if mine else "Tickets raised and settled", h2),
-            bars(data["trend"]),
-        ]),
-        Spacer(1, 4 * mm),
-    ]
-    status_items = [(STATUS_LABELS[code], n) for code, n in data["by_status"].items()]
-    trade_items = [(row["label"], row["total"]) for row in data["by_trade"]]
-    if several_trades:
-        pies = Table([[Paragraph("Where my jobs stand" if mine else "Status", body),
-                       Paragraph("Trade", body)],
-                      [pie(status_items), pie(trade_items)]],
-                     colWidths=[page_width / 2] * 2)
-    else:
-        pies = Table([[Paragraph("Where my jobs stand", body)], [pie(status_items)]],
-                     colWidths=[page_width])
-    story += [KeepTogether([pies]), Spacer(1, 4 * mm)]
+        trades = [
+            [row["label"], str(row["total"]), _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["rating_avg"], "number")]
+            for row in ov["trades"]
+        ]
+        story += [Spacer(1, 4 * mm), KeepTogether([
+            Paragraph("Trades", h2),
+            table(["Trade", "Raised", "On time", "Rating"], trades or [["No tickets", "", "", ""]],
+                  [page_width * w for w in (0.4, 0.2, 0.2, 0.2)]),
+        ])]
 
-    if data["by_campus"] is not None:
-        story.append(breakdown("Campus comparison", data["by_campus"], "Campus"))
-    if several_trades:
-        story.append(breakdown("Trade performance", data["by_trade"], "Trade"))
-    if data["by_technician"] is not None:
-        story.append(breakdown("Technician performance", data["by_technician"], "Technician"))
+        grid = ov["trade_by_campus"]
+        cells = [[row["campus"], *(str(row["counts"].get(t, 0)) for t in grid["trades"]), str(row["total"])]
+                 for row in grid["rows"]]
+        cells.append(["All", *(str(grid["totals"].get(t, 0)) for t in grid["trades"]), str(grid["total"])])
+        share = 0.8 / (len(grid["trades"]) + 1)
+        story += [Spacer(1, 4 * mm), KeepTogether([
+            Paragraph("Trades by campus", h2),
+            Paragraph("Tickets raised in each trade at each campus.", small),
+            table(["Campus", *grid["trades"], "All"], cells,
+                  [page_width * 0.2] + [page_width * share] * (len(grid["trades"]) + 1)),
+        ])]
 
-    holds = [
-        [row["label"], str(row["total"]), f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
-        for row in data["holds"]
-    ]
-    story.append(KeepTogether([
-        Paragraph("On hold now, by reason", h2),
-        table(["Reason", "Tickets", "Oldest hold since"], holds or [["Nothing is on hold", "", ""]],
-              [page_width * 0.6, page_width * 0.15, page_width * 0.25]),
-    ]))
+        story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"])])]
+
+        holds = [
+            [row["label"], str(row["total"]), f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
+            for row in ov["bottlenecks"]
+        ]
+        story.append(KeepTogether([
+            Paragraph("On hold now, by reason", h2),
+            table(["Reason", "Tickets", "Oldest hold since"], holds or [["Nothing is on hold", "", ""]],
+                  [page_width * 0.6, page_width * 0.15, page_width * 0.25]),
+        ]))
+        return story
+
+    def cover():
+        return [
+            Paragraph(data["title"], h1),
+            Paragraph(f"<b>Covers:</b> {escape(data['scope'])}", body),
+            Paragraph(
+                f"<b>Period:</b> {data['from']:%d %b %Y} to {data['to']:%d %b %Y}"
+                f" &nbsp;&nbsp; <b>Generated:</b> {data['generated']:%d %b %Y %H:%M} EAT",
+                body,
+            ),
+            Spacer(1, 5 * mm),
+        ]
+
+    def section_story():
+        """Every other role's summary: headline, facilities, charts, then the tables."""
+        story = cover() + [Paragraph("Headline figures", h2)]
+
+        figures = summary_rows(data)
+        half = (len(figures) + 1) // 2
+        pairs = []
+        for left, right in zip(figures[:half], figures[half:] + [None]):
+            pairs.append(
+                [left[0], _cell(left[1], left[2])]
+                + ([right[0], _cell(right[1], right[2])] if right else ["", ""])
+            )
+        headline = table(["Figure", "Value", "Figure", "Value"], pairs,
+                         [page_width * 0.32, page_width * 0.18] * 2, text_columns=(0, 2))
+        story += [headline, Spacer(1, 2 * mm), Paragraph(
+            (
+                "Counts are of your jobs raised in the period, except active and overdue, which "
+                "are as of now. Time to fix leaves out time on hold. On time is the share of "
+                "finished jobs done by their deadline."
+                if mine else
+                "Counts are of tickets raised in the period, except backlog and overdue, which are "
+                "as of now. Resolution time leaves out time on hold. SLA is the share of settled "
+                "tickets finished by their deadline."
+            ), small), Spacer(1, 4 * mm)]
+        # A trade with no jobs in the period is no slice, so this counts trades worked, not held.
+        several_trades = not mine or len(data["by_trade"]) > 1
+
+        # Where the work is, straight after how much of it there is.
+        hotspots = [
+            [row["label"], row["campus"], str(row["total"]), str(row["open"]),
+             str(row["escalated"]), row["top_trade"]]
+            for row in data["by_facility"][:10]
+        ]
+        story.append(KeepTogether([
+            Paragraph("Where your jobs were (top 10)" if mine else "Facility hotspots (top 10)", h2),
+            table(["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"],
+                  hotspots or [["No tickets", "", "", "", "", ""]],
+                  [page_width * w for w in (0.28, 0.16, 0.1, 0.1, 0.12, 0.24)],
+                  text_columns=(0, 1, 5)),
+        ]))
+
+        story += [
+            Spacer(1, 4 * mm),
+            KeepTogether([
+                Paragraph("Jobs raised and finished" if mine else "Tickets raised and settled", h2),
+                bars(data["trend"]),
+            ]),
+            Spacer(1, 4 * mm),
+        ]
+        status_items = [(STATUS_LABELS[code], n) for code, n in data["by_status"].items()]
+        trade_items = [(row["label"], row["total"]) for row in data["by_trade"]]
+        if several_trades:
+            pies = Table([[Paragraph("Where my jobs stand" if mine else "Status", body),
+                           Paragraph("Trade", body)],
+                          [pie(status_items), pie(trade_items)]],
+                         colWidths=[page_width / 2] * 2)
+        else:
+            pies = Table([[Paragraph("Where my jobs stand", body)], [pie(status_items)]],
+                         colWidths=[page_width])
+        story += [KeepTogether([pies]), Spacer(1, 4 * mm)]
+
+        if data["by_campus"] is not None:
+            story.append(breakdown("Campus comparison", data["by_campus"], "Campus"))
+        if several_trades:
+            story.append(breakdown("Trade performance", data["by_trade"], "Trade"))
+        if data["by_technician"] is not None:
+            story.append(breakdown("Technician performance", data["by_technician"], "Technician"))
+
+        holds = [
+            [row["label"], str(row["total"]), f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
+            for row in data["holds"]
+        ]
+        story.append(KeepTogether([
+            Paragraph("On hold now, by reason", h2),
+            table(["Reason", "Tickets", "Oldest hold since"], holds or [["Nothing is on hold", "", ""]],
+                  [page_width * 0.6, page_width * 0.15, page_width * 0.25]),
+        ]))
+        return story
+
+    story = manager_story() if "overview" in data else section_story()
 
     def footer(canvas, doc):
         canvas.saveState()

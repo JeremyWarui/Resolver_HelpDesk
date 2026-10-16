@@ -39,7 +39,7 @@ test('the manager reads every section in order, matching the overview', async ({
   await expect(page.getByText('Resolved on time', { exact: true })).toBeVisible();
   const attention = page.getByLabel('Needs your attention', { exact: true });
   if (data.insights.length) {
-    await expect(attention.getByRole('listitem')).toHaveCount(data.insights.length);
+    await expect(attention.getByRole('row')).toHaveCount(data.insights.length);
     for (const item of data.insights) await expect(attention.getByText(item.text, { exact: true })).toBeVisible();
   } else {
     await expect(attention.getByText('Nothing is below target this period.')).toBeVisible();
@@ -83,8 +83,11 @@ test('picking a campus narrows every section to it', async ({ page }) => {
   await expect(grid.getByRole('row', { name: new RegExp(`^${other.label}`) })).toHaveCount(0);
   await expect(grid.getByRole('row', { name: /^All/ }).getByRole('cell').last())
     .toHaveText(String(narrowed.trade_by_campus.total));
-  // The files cover every campus, so they are not offered for one.
-  await expect(page.getByRole('button', { name: 'Download Excel report' })).toHaveCount(0);
+  // The files follow the campus too.
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download Excel report' }).click();
+  const slug = picked.label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  expect((await pending).suggestedFilename()).toContain(`helpdesk-report-${slug}-campus-`);
 
   await page.getByRole('combobox', { name: 'Campus' }).click();
   await page.getByRole('option', { name: 'All campuses' }).click();

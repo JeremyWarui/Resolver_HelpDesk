@@ -11,6 +11,11 @@ export interface AnalyticsParams {
 
 export type Bucket = 'day' | 'week' | 'month';
 
+/** A download's period, and for a report over every campus, one campus to narrow it to. */
+export interface ReportParams extends AnalyticsParams {
+  campus?: number;
+}
+
 /** The dimensions a breakdown may be cut on. The role decides which it may ask for. */
 export type Dimension = 'trade' | 'facility' | 'campus' | 'technician' | 'status';
 
@@ -124,8 +129,7 @@ export interface OverviewEnvelope {
   campus: { id: number; name: string } | null;
   target_pct: number;
   current: Totals;
-  previous: Pick<Totals, 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'total'>;
-  /** Each headline figure minus the period before's; null when either is missing. */
+  previous: Pick<Totals, 'resolution_sla_pct' | 'resolution_seconds_avg'>;
   unassigned_now: number;
   at_hod_now: number;
   insights: OverviewInsight[];
@@ -154,9 +158,7 @@ export interface DashboardEnvelope {
   this_week: WeekFigures;
   last_week: WeekFigures;
   /** Raised and resolved over the chart's period: a row per day, or per seven days from the first. */
-  trend: { days: DashboardPeriod; bucket: Bucket; rows: { start: string; raised: number; resolved: number }[] };
-  /** Open work by campus covers work raised in this many days; null is all of it. */
-  open_days: DashboardPeriod | null;
+  trend: { bucket: Bucket; rows: { start: string; raised: number; resolved: number }[] };
   target_pct: number;
   /** The Reports page's Campuses table, over the week. */
   campus_table: OverviewCampus[];

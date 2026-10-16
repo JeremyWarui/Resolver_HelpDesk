@@ -58,7 +58,7 @@ def test_the_headline_compares_with_the_period_before(
 
     assert data["current"]["resolution_sla_pct"] == pytest.approx(66.7)
     assert data["previous"]["resolution_sla_pct"] == 0.0
-    assert data["previous"]["total"] == 1
+    assert data["previous"]["resolution_seconds_avg"] is not None
 
 
 def test_a_campus_row_carries_live_work_and_staffing(
@@ -288,5 +288,5 @@ def test_the_headline_reads_the_period_against_the_one_before(api, manager, requ
     data = _get(api, manager, days=30)
 
     assert (data["current"]["resolution_sla_pct"], data["previous"]["resolution_sla_pct"]) == (100.0, 0.0)
-    assert data["previous"]["rating_avg"] is None
+    assert set(data["previous"]) == {"resolution_sla_pct", "resolution_seconds_avg"}
     assert "change" not in data
