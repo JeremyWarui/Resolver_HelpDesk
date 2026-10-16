@@ -27,9 +27,14 @@ import type { Ticket, UserRole } from '@/types';
 
 type EscalatedRole = 'technician' | 'hos' | 'hod';
 
+/** Stable reference: a fresh array each render would re-memo the column map. */
+const HIDE_FOR_TECHNICIAN = ['assigned_to'];
+
 interface Props {
   role: EscalatedRole;
   onTicketSelect?: (id: number) => void;
+  /** Inside another page's tab: no page title or background of its own. */
+  embedded?: boolean;
 }
 
 const SUBTITLE: Record<EscalatedRole, string> = {
@@ -39,12 +44,9 @@ const SUBTITLE: Record<EscalatedRole, string> = {
   // framed as a heads-up rather than a worklist, because escalating does not
   // reassign anything; the job stays exactly where it was.
   //
-  // Scoped to what they hold, not their whole trade. It listed the trade
-  // originally, on the reasoning that escalation is the section's problem —
-  // but a page of colleagues' late jobs is a list nobody owns, and a
-  // technician cannot act on any of it (`TicketStatusUpdateView` gives section
-  // scope view-only). Their own late work is the part they can do something
-  // about, and Section Tickets already shows the trade.
+  // Scoped to what they hold, not their whole trade: a technician cannot act
+  // on a colleague's job (`TicketStatusView` gives section scope view-only),
+  // and Section Tickets already shows the trade.
   technician:
     'Jobs assigned to you that ran past their threshold and were raised to your section head. Escalating does not move the work — these are still yours to finish.',
   hos:
@@ -62,7 +64,7 @@ const EMPTY_DESCRIPTION: Record<EscalatedRole, string> = {
   hod: SUPERVISOR_EMPTY,
 };
 
-export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
+export default function EscalatedWorkView({ role, onTicketSelect, embedded = false }: Props) {
   const userId = useAuthStore((st) => st.user?.id);
   const isTechnician = role === 'technician';
 
@@ -71,7 +73,7 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
   const { tickets, loading } = useTickets(
     {
       escalated: '1',
-      page_size: 200,
+      page_size: 100,
       ...(isTechnician && userId ? { assigned_to: userId } : {}),
     },
     isTechnician && !userId,
@@ -92,11 +94,15 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
   const total = tickets.length;
 
   return (
-    <main className="flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Escalated</h1>
+    <div className={embedded ? 'p-4 sm:p-5 space-y-4' : 'flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4'}>
+      {embedded ? (
         <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
-      </div>
+      ) : (
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Escalated</h1>
+          <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
+        </div>
+      )}
 
       {loading ? (
         <Skeleton className="h-40 w-full" />
@@ -146,9 +152,11 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
                 ? 'border-l-2 border-status-escalated bg-status-escalated/5'
                 : ''
             }
+            // Every row is the technician's own, so who has it says nothing.
+            hideColumns={role === 'technician' ? HIDE_FOR_TECHNICIAN : undefined}
           />
 
-          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+          {!embedded && <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <TrendingUp className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               Escalation is automatic and structural — nobody chose to send these
@@ -156,9 +164,9 @@ export default function EscalatedWorkView({ role, onTicketSelect }: Props) {
               time its priority allows, so a rising count here is a capacity or
               triage signal, not a discipline one.
             </span>
-          </p>
+          </p>}
         </>
       )}
-    </main>
+    </div>
   );
 }

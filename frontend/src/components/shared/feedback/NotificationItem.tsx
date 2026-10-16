@@ -2,7 +2,7 @@
 
 import {
   Ticket, UserCheck, RefreshCw, MessageSquare, CheckCircle2,
-  ArrowUpCircle, ShieldAlert,
+  ArrowUpCircle,
 } from 'lucide-react';
 import { timeAgo } from '@/utils/date';
 import { cn } from '@/lib/utils';
@@ -16,40 +16,64 @@ const EVENT_ICON: Record<NotificationEventType, React.ReactNode> = {
   comment_added:         <MessageSquare className="h-4 w-4" />,
   ticket_resolved:       <CheckCircle2 className="h-4 w-4" />,
   ticket_escalated:      <ArrowUpCircle className="h-4 w-4" />,
-  sla_breach:            <ShieldAlert className="h-4 w-4" />,
 };
 
 interface NotificationItemProps {
   notification: AppNotification;
   onMarkRead?: (id: number) => void;
+  /** Opens the notification's ticket. Without it a click only marks it read. */
+  onOpen?: (notification: AppNotification) => void;
   className?: string;
 }
 
-export function NotificationItem({ notification, onMarkRead, className }: NotificationItemProps) {
-  const iconColorClass = NOTIFICATION_EVENTS[notification.event_type]?.tint ?? UNKNOWN_NOTIFICATION_TINT;
+/** Icon, what happened, the sender's own words when they wrote any, then time
+ *  and the unread dot on the right. The icon is a fixed circle aligned to the
+ *  first line, whatever the text's length. */
+export function NotificationItem({ notification, onMarkRead, onOpen, className }: NotificationItemProps) {
+  const tint = NOTIFICATION_EVENTS[notification.event_type]?.tint ?? UNKNOWN_NOTIFICATION_TINT;
+  const opensTicket = !!onOpen && notification.ticket_id !== null;
+  const unread = !notification.read;
+  // A read row with no ticket to open does nothing, so it is not a control.
+  const actionable = opensTicket || (unread && !!onMarkRead);
+  const Row = actionable ? 'button' : 'div';
 
   return (
-    <div
+    <Row
+      {...(actionable && { type: 'button' as const })}
       className={cn(
-        'flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50 cursor-default',
-        !notification.read && 'bg-primary/5',
+        'w-full text-left flex items-start gap-4 px-4 py-4 transition-colors',
+        actionable && 'hover:bg-gray-50',
         className,
       )}
-      onClick={() => !notification.read && onMarkRead?.(notification.id)}
+      onClick={actionable ? () => {
+        if (unread) onMarkRead?.(notification.id);
+        if (opensTicket) onOpen?.(notification);
+      } : undefined}
     >
-      <div className={cn('mt-0.5 p-1.5 rounded-full shrink-0', iconColorClass)}>
+      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', tint)}>
         {EVENT_ICON[notification.event_type]}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={cn('text-sm leading-snug', !notification.read && 'font-semibold')}>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn('block text-sm leading-snug', unread ? 'font-semibold text-gray-900' : 'text-gray-700')}>
           {notification.title}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{notification.body}</p>
-        <p className="text-[10px] text-muted-foreground mt-1">{timeAgo(notification.created_at)}</p>
-      </div>
-      {!notification.read && (
-        <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" aria-label="Unread" />
-      )}
-    </div>
+        </span>
+        <span className="block text-xs text-gray-500 mt-1 line-clamp-2">{notification.body}</span>
+        {/* What the sender wrote, as their message. */}
+        {notification.note && (
+          <span className="mt-2 block rounded-md border-l-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-800 whitespace-pre-wrap line-clamp-4">
+            {notification.note}
+          </span>
+        )}
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+        <span className="text-[11px] text-gray-400 whitespace-nowrap">{timeAgo(notification.created_at)}</span>
+        {unread && (
+          <>
+            <span className="h-2 w-2 rounded-full bg-blue-600" aria-hidden />
+            <span className="sr-only">Unread</span>
+          </>
+        )}
+      </span>
+    </Row>
   );
 }

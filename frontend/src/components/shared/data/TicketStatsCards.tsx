@@ -56,7 +56,8 @@ export default function TicketStatsCards({ params }: { params?: AnalyticsParams 
       id: 'pending',
       title: 'On Hold',
       value: count(byStatus, 'pending'),
-      description: 'Clock frozen',
+      // Pending Work counts every hold; this card, only this period's tickets.
+      description: "This period's tickets on hold",
       iconBgColor: 'bg-status-pending/10',
       icon: <PauseCircle className="h-6 w-6 text-status-pending" />,
     },

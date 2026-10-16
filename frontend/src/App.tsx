@@ -1,7 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Suspense, lazy } from "react";
 import { Toaster } from "./components/ui/sonner";
-import { ProtectedRoute } from "./app/auth/ProtectedRoute";
+import { HomeRedirect, ProtectedRoute } from "./app/auth/ProtectedRoute";
 import { LoginForm } from "./app/auth/LoginForm";
 import { RegisterForm } from "./app/auth/RegisterForm";
 import { DashboardShell } from "./app/dashboard/DashboardShell";
@@ -9,7 +9,6 @@ import { NotFoundPage } from "./app/NotFoundPage";
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 // Lazy load main layout components for better code splitting
-const MobileShell = lazy(() => import("./features/technician/mobile/MobileShell").then(m => ({ default: m.MobileShell })));
 const AdminLayout = lazy(() => import("./features/admin/AdminLayout"));
 const UserLayout = lazy(() => import("./features/user/UserLayout"));
 const TechnicianLayout = lazy(() => import("./features/technician/TechnicianLayout"));
@@ -96,17 +95,7 @@ const App = () => {
             />
           </Route>
 
-          {/* PWA mobile shell for technicians — standalone, no desktop sidebar */}
-          <Route
-            path="/tech/mobile"
-            element={
-              <ProtectedRoute requiredRoles={['technician']}>
-                <MobileShell />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>

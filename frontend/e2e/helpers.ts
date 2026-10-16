@@ -19,6 +19,8 @@ export const USERS = {
   manager: 'wanjiku.kamau@ksg.ac.ke',
   /** Peter Kimani, HOS over Maintenance at Nairobi — assigns and sets priority. */
   hos: 'peter.kimani@ksg.ac.ke',
+  /** Aisha Wanjiru, HOD at Nairobi — the HOS's pages, one escalation level up. */
+  hod: 'aisha.wanjiru@ksg.ac.ke',
   /** Esther Wairimu, plumbing technician at Nairobi. Pairs with PLUMBING below. */
   technician: 'esther.wairimu@ksg.ac.ke',
   /** Caroline Wafula, at Nairobi (the seed deals requesters round-robin from NRB). */

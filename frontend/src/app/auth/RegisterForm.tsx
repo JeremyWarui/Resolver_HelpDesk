@@ -85,14 +85,13 @@ export const RegisterForm: React.FC = () => {
   return (
     <>
       <AuthShell
-        accent="green"
         heading="Join Resolver"
         blurb="Create your account and raise your first request in minutes. Resolver follows every request from submission to resolution."
       >
         <Card className="w-full shadow-xl border-0">
           <CardHeader className="space-y-4 pb-8">
             <div className="flex justify-center">
-              <div className="w-14 h-14 bg-gradient-to-br from-green-600 to-green-700 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-14 h-14 bg-ksg-brown rounded-xl flex items-center justify-center shadow-lg">
                 <UserPlus className="w-7 h-7 text-white" />
               </div>
             </div>
@@ -202,7 +201,7 @@ export const RegisterForm: React.FC = () => {
 
                 <Button
                   type="submit"
-                  className="w-full h-11 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 shadow-lg"
+                  className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
                   disabled={isLoading}
                 >
                   {isLoading ? 'Creating Account...' : 'Create Account'}
@@ -231,7 +230,7 @@ export const RegisterForm: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/login')}
-                  className="text-sm font-medium text-green-600 hover:text-green-500 transition-colors"
+                  className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
                 >
                   Sign in instead
                 </button>
@@ -258,7 +257,7 @@ export const RegisterForm: React.FC = () => {
         </div>
         <DialogFooter>
           <Button
-            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+            className="w-full bg-ksg-brown hover:bg-ksg-brown-deep text-white"
             onClick={() => {
               setRegisteredEmail(null);
               navigate('/login');

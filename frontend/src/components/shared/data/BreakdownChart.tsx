@@ -41,7 +41,7 @@ export default function BreakdownChart({
       ) : points.length === 0 ? (
         <ChartPlaceholder message="No data for this period" />
       ) : kind === 'pie' ? (
-        <AppPieChart data={points} height={height} innerRadius={60} outerRadius={100} />
+        <AppPieChart data={points} height={height} />
       ) : (
         <AppBarChart data={points} height={height} />
       )}

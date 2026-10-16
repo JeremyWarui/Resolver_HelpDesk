@@ -7,13 +7,14 @@ import ServiceHealthCards from '@/components/shared/data/ServiceHealthCards';
 import FacilityHealthTable from '@/components/shared/data/FacilityHealthTable';
 import HoldsPanel from '@/components/shared/data/HoldsPanel';
 import RangeSelector from '@/components/shared/data/RangeSelector';
+import ReportDownloads from '@/components/shared/data/ReportDownloads';
 import LazyMount from '@/components/shared/LazyMount';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { RANGES, canGroupBy, type RangeKey } from '@/constants/analytics';
 import { SCOPE_SUBTITLE } from '@/constants/roles';
 import type { UserRole } from '@/types';
 
-type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos' | 'technician';
+type ReportsRole = 'admin' | 'manager' | 'hod' | 'hos';
 
 /**
  * The reporting page, one per role. Every figure comes from `/analytics/`,
@@ -31,10 +32,13 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
     canGroupBy(role as UserRole, dimension);
 
   return (
-    <div className="flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto bg-muted/30 p-3 sm:p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{SCOPE_SUBTITLE[role]}</p>
-        <RangeSelector value={range} onChange={setRange} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ReportDownloads role={role} params={params} />
+          <RangeSelector value={range} onChange={setRange} />
+        </div>
       </div>
 
       <TicketStatsCards params={params} />
@@ -67,6 +71,18 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
         />
       </div>
 
+      {can('campus') && (
+        <LazyMount minHeight={320}>
+          <BreakdownTable
+            dimension="campus"
+            title="Campus Performance"
+            description="Ticket load, speed and SLA per campus"
+            params={params}
+            columns={['total', 'open', 'settled', 'escalated', 'response_seconds_avg', 'resolution_seconds_avg', 'resolution_sla_pct', 'rating_avg']}
+          />
+        </LazyMount>
+      )}
+
       {can('technician') && (
         <LazyMount minHeight={360}>
           <BreakdownTable
@@ -74,7 +90,7 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
             title="Technician Performance"
             description="Who is carrying the work"
             params={params}
-            columns={['total', 'open', 'settled', 'missed', 'resolution_seconds_avg', 'rating_avg']}
+            columns={['total', 'open', 'settled', 'missed', 'response_seconds_avg', 'resolution_seconds_avg', 'rating_avg']}
           />
         </LazyMount>
       )}
@@ -85,7 +101,7 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
           title="Trade Performance"
           description="Which craft is behind"
           params={params}
-          columns={['total', 'open', 'settled', 'escalated', 'resolution_sla_pct']}
+          columns={['total', 'open', 'settled', 'escalated', 'response_seconds_avg', 'resolution_seconds_avg', 'resolution_sla_pct', 'rating_avg']}
         />
       </LazyMount>
 
@@ -94,18 +110,6 @@ export default function RoleReportsPage({ role }: { role: ReportsRole }) {
       {can('facility') && (
         <LazyMount minHeight={420}>
           <FacilityHealthTable params={params} />
-        </LazyMount>
-      )}
-
-      {can('campus') && (
-        <LazyMount minHeight={320}>
-          <BreakdownTable
-            dimension="campus"
-            title="Campus Performance"
-            description="Ticket load and SLA per campus"
-            params={params}
-            columns={['total', 'open', 'settled', 'escalated', 'resolution_sla_pct']}
-          />
         </LazyMount>
       )}
 

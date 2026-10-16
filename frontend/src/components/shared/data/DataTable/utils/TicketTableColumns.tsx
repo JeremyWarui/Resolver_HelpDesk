@@ -38,7 +38,7 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
     TableUtils.searchFieldColumn(),
   ];
 
-  // Actions column — varies by variant. `queue`, `sla` and `admin` get none:
+  // Actions column — varies by variant. `queue` and `admin` get none:
   // the whole row opens the ticket, so a View button would be a column of
   // buttons doing what clicking anywhere already does.
   if (variant === 'pending' && onResume && onChangeReason) {
@@ -68,21 +68,15 @@ export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string
     priority: false, updated_at: false, raised_by: false, description: false,
     pending_reason: false, pending_for: false,
   },
-  // `sla_countdown` is on here and nowhere else: it is the column this view
-  // exists for. It was hidden in all six variants, so the SLA Tracking page
-  // rendered an ordinary ticket list with no SLA on it.
-  sla: {
-    searchField: false, facility: false,
-    priority: false, updated_at: false, raised_by: false,
-    pending_reason: false, pending_for: false,
-  },
   admin: {
     searchField: false, facility: false, sla_countdown: false,
     priority: false, updated_at: false,
     pending_reason: false, pending_for: false,
   },
+  // The requester wrote the description, so it is hidden here too; where the
+  // job is takes its place.
   'my-tickets': {
-    searchField: false, facility: false, sla_countdown: false,
+    searchField: false, sla_countdown: false, description: false,
     priority: false, updated_at: false, raised_by: false,
     pending_reason: false, pending_for: false,
   },
@@ -92,5 +86,15 @@ export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string
   pending: {
     searchField: false, status: false, sla_countdown: false,
     updated_at: false, raised_by: false, description: false,
+  },
+  // Every row is the technician's, so who has it says nothing; how long is
+  // left is what sets the order of work.
+  'my-jobs': {
+    searchField: false, facility: false, assigned_to: false, description: false,
+    updated_at: false, pending_reason: false, pending_for: false,
+  },
+  'section': {
+    searchField: false, facility: false, description: false,
+    updated_at: false, pending_reason: false, pending_for: false,
   },
 };

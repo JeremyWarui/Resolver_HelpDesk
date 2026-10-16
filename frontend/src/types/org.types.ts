@@ -18,6 +18,14 @@ export interface Campus {
   location: string;
 }
 
+/** A campus and who staffs it. Mirrors CampusRosterSerializer. */
+export interface CampusRosterRow extends Campus {
+  /** The head of section's user id, or null when the post is vacant. */
+  hos: number | null;
+  hos_name: string | null;
+  technician_count: number;
+}
+
 /** A registered place. Mirrors FacilitySerializer.Meta.fields. */
 export interface Facility {
   id: number;

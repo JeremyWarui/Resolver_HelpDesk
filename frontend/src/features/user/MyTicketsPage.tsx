@@ -57,6 +57,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
         <div />
         <Button
           size="sm"
+          variant="brand"
           className="gap-1.5"
           onClick={() => onNavigate?.('submitTicket')}
         >
@@ -92,7 +93,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
               Submit a request and we'll route it to the right team.
             </p>
-            <Button onClick={() => onNavigate?.('submitTicket')} className="gap-1.5">
+            <Button variant="brand" onClick={() => onNavigate?.('submitTicket')} className="gap-1.5">
               <Plus className="h-4 w-4" />
               Raise your first ticket
             </Button>

@@ -20,6 +20,13 @@ export interface Figures {
   open: number;
   settled: number;
   escalated: number;
+  escalated_hos: number;
+  escalated_hod: number;
+  closed: number;
+  /** Settled of raised, as a percentage. */
+  completion_pct: number | null;
+  /** Rated of closed, as a percentage. */
+  rated_pct: number | null;
   /** Settled after target. Overdue is a different word for live work past target. */
   missed: number;
   resolution_seconds_avg: number | null;

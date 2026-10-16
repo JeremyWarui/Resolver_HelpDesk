@@ -62,8 +62,7 @@ test('a requester raises a carpentry ticket, which routes on the item, not on th
   await wizard.getByRole('button', { name: 'Office' }).click();
   await wizard.getByRole('combobox').last().click();
   await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByPlaceholder('e.g. Ground, 1st').fill('Ground');
-  await wizard.getByPlaceholder('e.g. Room 14').fill(`Room ${suffix.slice(-3)}`);
+  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
   await wizard.getByRole('button', { name: 'Next' }).click();
 
   const created = page.waitForResponse(
@@ -113,9 +112,10 @@ test('the plumber cannot see it, and is refused it by id', async ({ page }) => {
 
   // The list first: scope is applied at the queryset, so this is not a hidden
   // row but an absent one.
-  await page.goto('/tech');
+  await page.goto('/tech/section');
+  // Loaded first: rows of their own trade show before absence means anything.
+  await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 20_000 });
   await searchBox(page).fill(ticketNo);
-  await page.waitForTimeout(2000);
   await expect(page.getByText(ticketNo, { exact: false })).toHaveCount(0);
 
   // Then by id, because the pk is client-supplied and a list that omits a row
@@ -142,7 +142,7 @@ test('the carpenter starts work and puts it on hold with a reason from the list'
 
   const sheet = page.getByRole('dialog').first();
   await sheet.getByRole('button', { name: 'Start work' }).click();
-  await expect(sheet.getByText('In Progress', { exact: false }).first()).toBeVisible({
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/In Progress$/, {
     timeout: 20_000,
   });
 
@@ -171,13 +171,33 @@ test('the carpenter starts work and puts it on hold with a reason from the list'
   await expect(modal).toBeHidden();
 });
 
-test('the hold shows why, and reaches the Pending Work queue', async ({ page }) => {
+test('while it is held, the requester reads why and the technician’s note', async ({ page }) => {
+  await login(page, USERS.technicianOtherTrade);
+  await page.goto('/tech/assigned');
+  await openTicket(page);
+  const sheet = page.getByRole('dialog').first();
+  await sheet.getByPlaceholder('Add a comment…').fill(HOLD_NOTE);
+  await sheet.getByRole('button', { name: 'Send' }).click();
+  await expect(sheet.getByText(HOLD_NOTE)).toBeVisible();
+
+  await login(page, USERS.requester);
+  await page.getByRole('link', { name: 'My Tickets', exact: true }).click();
+  await openTicket(page);
+  const detail = page.getByRole('dialog').first();
+  await expect(detail.getByText(HOLD_REASON).first()).toBeVisible();
+  await expect(detail.getByText('Notes from the maintenance team')).toBeVisible();
+  await expect(detail.getByText(HOLD_NOTE)).toBeVisible();
+  await expect(detail.getByPlaceholder('Add a comment…')).toHaveCount(0);
+});
+
+test('the hold shows why, and reaches the On Hold tab', async ({ page }) => {
   // Nine columns overflow at the 1280 default, and the Resume button lives in
   // the last one. technician-queues.spec.ts measures the same page at 1600.
   await page.setViewportSize({ width: 1600, height: 1000 });
   await login(page, USERS.technicianOtherTrade);
 
-  await page.getByRole('link', { name: 'Pending Work' }).click();
+  await page.getByRole('link', { name: 'My Jobs' }).click();
+  await page.getByRole('tab', { name: /^On Hold/ }).click();
   await expect(page).toHaveURL(/\/tech\/pending$/);
 
   const row = page.locator('tbody tr').filter({ hasText: ticketNo }).first();

@@ -169,6 +169,7 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
         {manage && (
           <Button
             size="sm"
+            variant="brand"
             className="gap-1.5 shrink-0"
             onClick={() => { setEditing(null); setFormOpen(true); }}
           >

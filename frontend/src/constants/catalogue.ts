@@ -4,9 +4,9 @@
 // the ticket wizard walks them one after the other — so they sit together.
 //
 // Trades come from the seeded `Trade.code`; facility types from
-// `apps/facilities/validators.py` TYPE_SPECS, named by `seed.py`. Adding either
-// is a backend change first; an unknown code still renders here rather than
-// waiting for a frontend release.
+// `FACILITY_TYPES` in `apps/facilities/models.py`. Adding either is a backend
+// change first; an unknown trade code still renders here rather than waiting
+// for a frontend release.
 
 import {
   Hammer, BrickWall, PaintRoller, Droplets, Zap, Wrench,
@@ -28,24 +28,22 @@ export const TRADE_ICONS: Record<string, LucideIcon> = {
   ELEC: Zap,
 };
 
-/** The icon for a trade code, or the spanner for one this build has not met.
- *
- *  Index `TRADE_ICONS` directly when the result is rendered as a component:
- *  `react-hooks/static-components` reads a *called* function returning a
- *  component as one created during render. This form is for building data,
- *  like the wizard's tile list. */
-export function tradeIcon(code: string): LucideIcon {
-  return TRADE_ICONS[code] ?? Wrench;
-}
+/** Each trade's colour: an icon colour and the tint behind it. Keyed on the
+ *  seeded code; an unknown code still renders, in grey. */
+export const TRADE_THEMES: Record<string, { color: string; lightBg: string }> = {
+  CARP:  { color: '#854F0B', lightBg: 'bg-amber-100' },
+  MAS:   { color: '#5F5E5A', lightBg: 'bg-stone-200' },
+  PAINT: { color: '#534AB7', lightBg: 'bg-violet-100' },
+  PLUMB: { color: '#185FA5', lightBg: 'bg-blue-100' },
+  ELEC:  { color: '#A37A00', lightBg: 'bg-yellow-100' },
+};
+
+export const FALLBACK_TRADE_THEME = { color: '#6B7280', lightBg: 'bg-gray-100' };
 
 // ── Facility types ────────────────────────────────────────────────────────────
 
-// The codes, and nothing else. Display names arrive with GET /facility-types/
-// and are read through `useFacilityTypes()`, so the seeded name is the only
-// one — a second copy could only ever disagree with it.
-//
-// Adding a type is one edit on this side: the code here and its entry in
-// FACILITY_FORMS below, which is keyed by FacilityTypeValue so the compiler
+// The codes. Adding a type on this side is the code here and its tile in
+// FACILITY_TILES below, which is keyed by FacilityTypeValue so the compiler
 // points at the gap.
 export const FACILITY_TYPE_CODES = [
   'office_block',
@@ -58,43 +56,24 @@ export const FACILITY_TYPE_CODES = [
 
 export type FacilityTypeValue = (typeof FACILITY_TYPE_CODES)[number];
 
-/** The location form per facility type — mirrors validators.py TYPE_SPECS.
- *  `label` is short on purpose: the six tiles sit on one row. `required` and
- *  `optional` are the type's entry in TYPE_SPECS; anything else is refused. */
-interface FacilityForm {
+/** The wizard's tile per facility type. `label` is short: six tiles share a
+ *  row. `hint` is the placeholder for where-in-it. */
+interface FacilityTile {
   label: string;
   Icon: LucideIcon;
-  required: string[];
-  optional: string[];
+  hint: string;
 }
 
-export const FACILITY_FORMS: Record<FacilityTypeValue, FacilityForm> = {
-  office_block: { label: 'Office',     Icon: Building2, required: ['floor', 'room'], optional: ['area'] },
-  hostel:       { label: 'Hostel',     Icon: BedDouble, required: ['room_number'],   optional: ['area'] },
-  building:     { label: 'Building',   Icon: Warehouse, required: [],                optional: ['room', 'area'] },
-  residential:  { label: 'Staff Qtrs', Icon: Home,      required: ['tenant_name'],   optional: ['unit_number'] },
-  equipment:    { label: 'Equipment',  Icon: Wrench,    required: [],                optional: [] },
-  grounds:      { label: 'Grounds',    Icon: TreePine,  required: [],                optional: ['landmark'] },
+export const FACILITY_TILES: Record<FacilityTypeValue, FacilityTile> = {
+  office_block: { label: 'Office',     Icon: Building2, hint: 'e.g. Floor 2, Room 14' },
+  hostel:       { label: 'Hostel',     Icon: BedDouble, hint: 'e.g. Room B-214' },
+  building:     { label: 'Building',   Icon: Warehouse, hint: 'e.g. Main hall, rear entrance' },
+  residential:  { label: 'Staff Qtrs', Icon: Home,      hint: 'e.g. Unit Q-12, ask for J. Mwangi' },
+  equipment:    { label: 'Equipment',  Icon: Wrench,    hint: 'e.g. Plant room' },
+  grounds:      { label: 'Grounds',    Icon: TreePine,  hint: 'e.g. Near gate B' },
 };
 
-/** Order the tiles are drawn in, most-used first. Typed against the shared
- *  code list, so a type added there without a form here fails to compile. */
+/** Order the tiles are drawn in, most-used first. */
 export const FACILITY_ORDER: FacilityTypeValue[] = [
   'office_block', 'hostel', 'building', 'residential', 'equipment', 'grounds',
 ];
-
-// One entry per field in TYPE_SPECS' `known` sets. Anything not there is a
-// field the server refuses, so a label for it can never be shown.
-const FIELD_LABELS: Record<string, { label: string; placeholder: string }> = {
-  floor:       { label: 'Floor',       placeholder: 'e.g. Ground, 1st' },
-  room:        { label: 'Room',        placeholder: 'e.g. Room 14' },
-  area:        { label: 'Area',        placeholder: 'e.g. Boardroom' },
-  room_number: { label: 'Room number', placeholder: 'e.g. B-214' },
-  tenant_name: { label: 'Tenant name', placeholder: 'Who can let the technician in' },
-  unit_number: { label: 'Unit / house no.', placeholder: 'e.g. Q-12' },
-  landmark:    { label: 'Landmark',    placeholder: 'e.g. Near gate B' },
-};
-
-export function fieldMeta(name: string) {
-  return FIELD_LABELS[name] ?? { label: name.replace(/_/g, ' '), placeholder: '' };
-}

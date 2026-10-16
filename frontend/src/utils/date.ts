@@ -79,6 +79,13 @@ export function formatMinutes(m: number): string {
   return rh === 0 ? `${d}d` : `${d}d ${rh}h`;
 }
 
+/** How long until a deadline, as "3d 4h left", or "overdue by 2h" once past it. */
+export function timeLeft(dueIso: string, now: number = Date.now()): string {
+  const diffMs = new Date(dueIso).getTime() - now;
+  const minutes = Math.max(1, Math.round(Math.abs(diffMs) / 60_000));
+  return diffMs > 0 ? `${formatMinutes(minutes)} left` : `overdue by ${formatMinutes(minutes)}`;
+}
+
 /** An axis label for one trend bucket, read in the viewer's own timezone. */
 export function bucketLabel(iso: string, bucket: Bucket): string {
   const date = new Date(iso);

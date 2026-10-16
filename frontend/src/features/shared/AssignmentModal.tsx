@@ -277,6 +277,9 @@ export function AssignmentModal({
               rows={3}
               disabled={submitting}
             />
+            <p className="text-xs text-muted-foreground">
+              Sent as a message to the technician only.
+            </p>
           </div>
         </div>
 

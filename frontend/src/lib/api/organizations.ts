@@ -1,5 +1,5 @@
 import apiClient, { fetchAll, rows } from './client';
-import type { Campus } from '@/types';
+import type { Campus, CampusRosterRow } from '@/types';
 import type { Facility } from '@/types';
 
 export const campusesService = {
@@ -7,6 +7,9 @@ export const campusesService = {
     const { data } = await apiClient.get('/campuses/');
     return rows<Campus>(data);
   },
+
+  /** Every campus with its head of section and technician count. Admin and manager only. */
+  getRoster: (): Promise<CampusRosterRow[]> => fetchAll<CampusRosterRow>('/campus-roster/'),
 
   createCampus: async (payload: {
     name: string;

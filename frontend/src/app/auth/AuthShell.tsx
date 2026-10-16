@@ -3,12 +3,9 @@ import { BarChart2, MapPin, Paperclip, Settings, Shield, Zap } from 'lucide-reac
 
 /**
  * The two-column frame both auth pages sit in: what Resolver is on the left,
- * the form on the right.
- *
- * Login and register each carried their own copy of this, and it had already
- * drifted — different wording for the same six features, one of them listing
- * an attachment feature the other omitted. The accent colour is the one thing
- * that is genuinely meant to differ between the two.
+ * the form on the right. Both pages share it, so the six features are said
+ * once. The panel is the sidebar's KSG brown, darkest at the top, with a lime
+ * and white wave along its foot. White text holds at least 5.70:1 on it.
  */
 
 /** What the product does, said once.
@@ -34,8 +31,7 @@ const FEATURES = [
   },
   {
     // Not "multi-org": one department, one Maintenance section, five campuses.
-    // REVIEW.md §1 is explicit that this is campus-based and is not to be
-    // designed for other departments.
+    // It is campus-based and not designed for other departments.
     icon: MapPin,
     title: 'Campus Routing',
     desc: 'Requests route to the maintenance team at the campus they were raised from',
@@ -46,57 +42,39 @@ const FEATURES = [
     desc: 'Attach photos, PDFs or documents to any request — images compressed on upload',
   },
   {
-    // No "exportable": the Excel export was removed, and /analytics/ is the one
-    // reporting route. A login page must not advertise what was deleted.
     icon: BarChart2,
     title: 'Analytics & Reports',
-    desc: 'Role-scoped dashboards and metrics, from ticket volume to technician performance',
+    desc: 'Role-scoped dashboards and reports, downloadable as Excel and PDF',
   },
 ];
 
-const ACCENT = {
-  blue: {
-    panel: 'from-blue-600 via-blue-700 to-indigo-800',
-    wash: 'bg-blue-600',
-    body: 'text-blue-100',
-  },
-  green: {
-    panel: 'from-green-600 via-green-700 to-emerald-800',
-    wash: 'bg-green-600',
-    body: 'text-green-100',
-  },
-};
-
 interface AuthShellProps {
-  accent: keyof typeof ACCENT;
   heading: string;
   blurb: string;
   /** The form card. */
   children: ReactNode;
 }
 
-export function AuthShell({ accent, heading, blurb, children }: AuthShellProps) {
-  const tone = ACCENT[accent];
-
+export function AuthShell({ heading, blurb, children }: AuthShellProps) {
   return (
     <div className="min-h-screen flex">
       {/* What this is — hidden on narrow screens, where the form is the page. */}
-      <div className={`hidden lg:flex lg:flex-1 bg-gradient-to-br ${tone.panel} relative overflow-hidden`}>
-        <div className={`absolute inset-0 ${tone.wash} opacity-90`} />
+      <div className="hidden lg:flex lg:flex-1 bg-gradient-to-b from-ksg-brown-deep to-ksg-brown-night relative overflow-hidden">
         <div className="relative z-10 flex flex-col justify-center px-12 py-12">
           <div className="max-w-md">
-            <h2 className="text-3xl font-bold text-white mb-6">{heading}</h2>
-            <p className={`${tone.body} text-lg leading-relaxed mb-8`}>{blurb}</p>
+            <h2 className="text-3xl font-bold text-white">{heading}</h2>
+            <div className="w-10 h-[3px] rounded-full bg-ksg-green mt-3 mb-6" />
+            <p className="text-white/80 text-lg leading-relaxed mb-8">{blurb}</p>
 
             <div className="space-y-5">
               {FEATURES.map(({ icon: Icon, title, desc }) => (
                 <div key={title} className="flex items-center gap-4">
-                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-white" />
+                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
+                    <Icon className="w-4 h-4 text-ksg-green" />
                   </div>
                   <div>
                     <h3 className="text-white font-semibold text-sm leading-snug">{title}</h3>
-                    <p className={`${tone.body} text-xs leading-relaxed mt-0.5`}>{desc}</p>
+                    <p className="text-white/80 text-xs leading-relaxed mt-0.5">{desc}</p>
                   </div>
                 </div>
               ))}
@@ -104,8 +82,15 @@ export function AuthShell({ accent, heading, blurb, children }: AuthShellProps) 
           </div>
         </div>
 
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white to-transparent opacity-5 rounded-full transform translate-x-32 -translate-y-32" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-white to-transparent opacity-5 rounded-full transform -translate-x-24 translate-y-24" />
+        <svg
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-[22%] w-full"
+          viewBox="0 0 800 200"
+          preserveAspectRatio="none"
+        >
+          <path d="M0 135 C 240 60, 500 205, 800 105 L800 200 L0 200 Z" fill="var(--ksg-green)" />
+          <path d="M0 165 C 270 110, 530 215, 800 150 L800 200 L0 200 Z" fill="#FFFFFF" />
+        </svg>
       </div>
 
       <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

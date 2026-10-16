@@ -31,7 +31,7 @@ export default function RoleDashboardView({ role, onTicketSelect }: Props) {
   });
 
   return (
-    <main className="flex-1 overflow-y-auto p-4 bg-gray-50">
+    <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-gray-50">
       <p className="text-sm text-muted-foreground mb-2">{SCOPE_SUBTITLE[role]}</p>
 
       <TicketStatsCards params={trendParams} />
@@ -47,9 +47,10 @@ export default function RoleDashboardView({ role, onTicketSelect }: Props) {
         setStatusRange={setStatusRange}
       />
 
+      {/* The manager passes no `onTicketSelect`: their rows do not open. */}
       <LazyMount minHeight={400}>
         <RecentTicketsTable onTicketSelect={onTicketSelect} />
       </LazyMount>
-    </main>
+    </div>
   );
 }

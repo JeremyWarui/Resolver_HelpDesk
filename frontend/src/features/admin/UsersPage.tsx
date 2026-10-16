@@ -1,183 +1,92 @@
-import { useEffect, useState, useMemo } from 'react';
-import {
-  type ColumnDef, type SortingState, type VisibilityState,
-  flexRender, getCoreRowModel, getFilteredRowModel,
-  getSortedRowModel, useReactTable,
-} from '@tanstack/react-table';
-import { Users, Pencil, Trash2, Plus, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useEffect, useMemo, useState } from 'react';
+import { Pencil, Plus, Trash2, UserRound, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
+import { RailEmptyState, RailLayout, type RailGroup } from '@/components/shared/data/RailLayout';
 import { deleteUser, getUsers } from '@/lib/api/users';
 import { useCampuses } from '@/hooks/useOrganizations';
-import { sortableHeader } from '@/components/shared/data/DataTable/utils/sortableHeader';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { User, UserRole } from '@/types';
-import { ROLE_LABELS, ROLE_BADGE_STYLES, ROLE_ORDER } from '@/constants/roles';
+import { ROLE_BADGE_STYLES, ROLE_LABELS, ROLE_ORDER } from '@/constants/roles';
 import { UserFormDialog } from '@/features/shared/users/UserFormDialog';
+import { cn } from '@/lib/utils';
 
-function formatJoinedDate(iso?: string): string {
+const USERS_KEY = ['admin', 'users'] as const;
+const ALL = 'all';
+
+const fullName = (u: User) => `${u.first_name} ${u.last_name}`.trim() || u.username;
+
+function formatJoined(iso?: string): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-KE', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
+  return new Date(iso).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-type UserRow = User & { fullName: string; searchField: string };
-
-/** The account list. Inlined rather than a hook of its own: one page reads it,
- *  and it is a `useQuery` with a toast on failure. */
-const USERS_KEY = ['admin', 'users'] as const;
-
+/**
+ * The account register: a rail of roles with live counts, and each role's
+ * people newest first, so a fresh self-registration waiting for a role is on
+ * top of the User group.
+ *
+ * Campus is the one the person chose at registration (`home_campus`), not the
+ * one their role covers: a plain requester's role carries no campus at all.
+ */
 const UsersPage = () => {
-  'use no memo';
-
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: USERS_KEY, queryFn: getUsers });
-  // Memoized, not `data ?? []` inline: a fresh array each render would re-run
-  // every useMemo below it on every keystroke in the search box.
   const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
-  const loading = usersQuery.isLoading;
   const refresh = () => queryClient.invalidateQueries({ queryKey: USERS_KEY });
 
   useEffect(() => {
     if (usersQuery.error) toast.error('Failed to load users');
   }, [usersQuery.error]);
-  const [searchValue, setSearchValue] = useState('');
-  // Newest registrations float to the top of each role group by default —
-  // the "user" group is where every self-registered account lands, so this
-  // is how an admin spots who just signed up and still needs a role.
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'date_joined', desc: true }]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [campusFilter, setCampusFilter] = useState('all');
-  const [collapsedRoles, setCollapsedRoles] = useState<Set<UserRole>>(new Set());
+
+  const { campuses } = useCampuses();
+  const [search, setSearch] = useState('');
+  const [selectedRole, setSelectedRole] = useState<string>(ALL);
+  const [campusFilter, setCampusFilter] = useState(ALL);
   const [formState, setFormState] = useState<{ editing: User | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const nameHeader = sortableHeader('Name');
-  const emailHeader = sortableHeader('Email');
-  const joinedHeader = sortableHeader('Joined');
+  // Search and campus narrow everything; the rail counts follow them.
+  const matching = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter(u =>
+      (campusFilter === ALL || String(u.home_campus_id) === campusFilter)
+      && (!q || `${fullName(u)} ${u.email} ${u.username}`.toLowerCase().includes(q)),
+    );
+  }, [users, search, campusFilter]);
 
-  const { campuses } = useCampuses();
+  const byRole = useMemo(() => ROLE_ORDER.map(role => ({
+    role,
+    people: matching
+      .filter(u => u.role === role)
+      .sort((a, b) => (b.date_joined ?? '').localeCompare(a.date_joined ?? '')),
+  })), [matching]);
 
-  const toggleRoleGroup = (role: UserRole) => {
-    setCollapsedRoles(prev => {
-      const next = new Set(prev);
-      if (next.has(role)) next.delete(role); else next.add(role);
-      return next;
-    });
-  };
+  const visibleGroups = byRole.filter(g =>
+    g.people.length > 0 && (selectedRole === ALL || g.role === selectedRole));
+  const visibleCount = visibleGroups.reduce((n, g) => n + g.people.length, 0);
 
-  // Campus is the one the person chose at registration (UserProfile.campus),
-  // not the campus their role happens to be scoped to. Filtering on the role
-  // campus dropped every plain requester, whose role carries no campus at all.
-  const scopedUsers = useMemo(() => users.filter(u =>
-    campusFilter === 'all' || String(u.home_campus_id) === campusFilter
-  ), [users, campusFilter]);
-
-  const data: UserRow[] = useMemo(() => scopedUsers.map(u => ({
-    ...u,
-    fullName: `${u.first_name} ${u.last_name}`.trim() || u.username,
-    searchField: `${u.first_name} ${u.last_name} ${u.email} ${u.username} ${u.role}`.toLowerCase(),
-  })), [scopedUsers]);
-
-  const columns: ColumnDef<UserRow>[] = [
-    {
-      accessorKey: 'id',
-      header: 'ID',
-      cell: ({ row }) => <span className="text-xs font-mono text-gray-500">{row.getValue('id')}</span>,
-    },
-    {
-      accessorKey: 'fullName',
-      header: nameHeader,
-      cell: ({ row }) => <span className="font-medium text-sm">{row.getValue('fullName') as string}</span>,
-    },
-    {
-      accessorKey: 'username',
-      header: 'Username',
-      cell: ({ row }) => <span className="text-sm text-gray-500">@{row.getValue('username')}</span>,
-    },
-    {
-      accessorKey: 'email',
-      header: emailHeader,
-      cell: ({ row }) => <span className="text-sm">{row.getValue('email')}</span>,
-    },
-    {
-      accessorKey: 'date_joined',
-      header: joinedHeader,
-      cell: ({ row }) => <span className="text-sm text-gray-500">{formatJoinedDate(row.getValue('date_joined'))}</span>,
-    },
-    {
-      accessorKey: 'home_campus_name',
-      header: 'Campus',
-      cell: ({ row }) => <span className="text-sm text-gray-600">{(row.getValue('home_campus_name') as string | null) ?? '—'}</span>,
-    },
-    {
-      accessorKey: 'primary_campus_name',
-      header: 'Role Campus',
-      cell: ({ row }) => <span className="text-sm text-gray-600">{(row.getValue('primary_campus_name') as string | null) ?? '—'}</span>,
-    },
-    {
-      accessorKey: 'searchField',
-      header: () => null,
-      cell: () => null,
-      filterFn: 'includesString',
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      cell: ({ row }) => {
-        const user = row.original;
-        return (
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setFormState({ editing: user })} title="Edit user">
-              <Pencil className="h-3.5 w-3.5 text-gray-500" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
-              onClick={() => setDeleteTarget(user)}
-              title="Delete user"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        );
-      },
-    },
+  const railGroups: RailGroup[] = [
+    { entries: [{
+      key: ALL,
+      icon: <Users className="h-3.5 w-3.5 shrink-0" />,
+      label: 'All users',
+      count: matching.length,
+    }] },
+    { heading: 'Roles', entries: byRole.map(({ role, people }) => ({
+      key: role,
+      icon: <UserRound className="h-3.5 w-3.5 shrink-0" />,
+      label: ROLE_LABELS[role],
+      count: people.length,
+    })) },
   ];
 
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    data,
-    columns,
-    onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    state: {
-      sorting,
-      columnVisibility: { ...columnVisibility, searchField: false },
-    },
-  });
-
-  // Grouped by role rather than paginated — role is the natural first thing an
-  // admin scopes by here, and splitting a role's members across pages would make
-  // each group's count badge lie about how many people are actually in it.
-  const visibleColumnCount = table.getVisibleLeafColumns().length;
-  const sortedFilteredRows = table.getRowModel().rows;
-  const roleGroups = ROLE_ORDER
-    .map(role => ({ role, rows: sortedFilteredRows.filter(row => row.original.role === role) }))
-    .filter(group => group.rows.length > 0);
+  const heading = selectedRole === ALL ? 'All users' : ROLE_LABELS[selectedRole as UserRole];
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -195,156 +104,80 @@ const UsersPage = () => {
   };
 
   return (
-    <>
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-        <Card className="w-full">
-          <CardHeader className="flex flex-row items-center justify-between py-4">
-            <CardTitle className="flex items-center">
-              <Users className="h-6 w-6 mr-2" />
-              Users
-            </CardTitle>
-            <Button
-              size="sm"
-              className="bg-primary hover:bg-primary/90 flex items-center gap-1"
-              onClick={() => setFormState({ editing: null })}
-            >
-              <Plus className="h-4 w-4" />
-              Add User
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3 items-center py-2">
-              <Input
-                placeholder="Search..."
-                value={searchValue}
-                onChange={(e) => {
-                  setSearchValue(e.target.value);
-                  table.getColumn('searchField')?.setFilterValue(e.target.value.toLowerCase());
-                }}
-                className="max-w-sm"
-              />
-
-              <Select value={campusFilter} onValueChange={(v) => setCampusFilter(v)}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="All Campuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Campuses</SelectItem>
-                  {campuses.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {campusFilter !== 'all' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary hover:text-primary/80"
-                  onClick={() => setCampusFilter('all')}
-                >
-                  Clear filter
-                </Button>
-              )}
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="ml-auto">
-                    <SlidersHorizontal className="mr-2 h-4 w-4" />
-                    Columns
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {table.getAllColumns()
-                    .filter((c) => c.id !== 'actions' && c.id !== 'searchField')
-                    .map((col) => (
-                      <DropdownMenuCheckboxItem
-                        key={col.id}
-                        className="capitalize"
-                        checked={col.getIsVisible()}
-                        onCheckedChange={(v) => col.toggleVisibility(!!v)}
-                      >
-                        {col.id}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            <div className="text-sm text-muted-foreground pb-2">
-              {loading ? 'Loading…' : `Showing ${data.length} of ${users.length} users`}
-            </div>
-
-            <div className="rounded-sm border">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((hg) => (
-                    <TableRow key={hg.id}>
-                      {hg.headers.map((h) => (
-                        <TableHead key={h.id}>
-                          {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={visibleColumnCount} className="h-24 text-center">
-                        Loading...
-                      </TableCell>
-                    </TableRow>
-                  ) : roleGroups.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={visibleColumnCount} className="h-24 text-center">
-                        No users found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    roleGroups.flatMap(({ role, rows }) => {
-                      const collapsed = collapsedRoles.has(role);
-                      const groupHeader = (
-                        <TableRow key={`group-${role}`} className="bg-gray-50 hover:bg-gray-50">
-                          <TableCell colSpan={visibleColumnCount} className="py-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleRoleGroup(role)}
-                              className="flex items-center gap-2 text-left"
-                            >
-                              {collapsed ? (
-                                <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
-                              ) : (
-                                <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
-                              )}
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE_STYLES[role] ?? 'bg-gray-100 text-gray-600'}`}>
-                                {ROLE_LABELS[role] ?? role}
-                              </span>
-                              <span className="text-xs text-muted-foreground">{rows.length}</span>
-                            </button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                      const dataRows = collapsed ? [] : rows.map((row) => (
-                        <TableRow key={row.id}>
-                          {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id}>
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ));
-                      return [groupHeader, ...dataRows];
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+    <RailLayout
+      search={search}
+      onSearchChange={setSearch}
+      searchPlaceholder="Search users…"
+      loading={usersQuery.isLoading}
+      groups={railGroups}
+      activeKey={selectedRole}
+      onSelect={setSelectedRole}
+      noun={{ one: 'user', many: 'users' }}
+      emptyLabel="nobody"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b bg-white">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {visibleCount} user{visibleCount === 1 ? '' : 's'}
+            {search && ' matching your search'}
+            {selectedRole === ALL && ', newest first in each role'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Select value={campusFilter} onValueChange={setCampusFilter}>
+            <SelectTrigger className="h-8 w-40 text-sm" aria-label="Campus">
+              <SelectValue placeholder="All campuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All campuses</SelectItem>
+              {campuses.map(c => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="brand" className="gap-1.5" onClick={() => setFormState({ editing: null })}>
+            <Plus className="h-4 w-4" />
+            Add User
+          </Button>
+        </div>
       </div>
 
-      {/* Add/Edit Dialog — mounted only while open */}
+      <div className="p-6 space-y-6">
+        {usersQuery.isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}
+          </div>
+        ) : visibleCount === 0 ? (
+          <RailEmptyState
+            icon={<Users className="h-10 w-10" />}
+            title={search ? 'No users match your search' : `No users in ${heading}`}
+            hint={search ? 'Try a name, email or username.' : 'Add one, or pick another role or campus.'}
+          />
+        ) : (
+          visibleGroups.map(({ role, people }) => (
+            <section key={role} aria-label={ROLE_LABELS[role]}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', ROLE_BADGE_STYLES[role])}>
+                  {ROLE_LABELS[role]}
+                </span>
+                <span className="text-xs text-gray-400">{people.length}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {people.map(user => (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    onEdit={() => setFormState({ editing: user })}
+                    onDelete={() => setDeleteTarget(user)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
+        )}
+      </div>
+
       {formState && (
         <UserFormDialog
           editing={formState.editing}
@@ -359,7 +192,7 @@ const UsersPage = () => {
         title="Delete User?"
         description={
           <>
-            <strong>"{deleteTarget?.first_name} {deleteTarget?.last_name}"</strong>{' '}
+            <strong>"{deleteTarget && fullName(deleteTarget)}"</strong>{' '}
             ({deleteTarget?.email}) will be permanently deleted. This action cannot be undone.
           </>
         }
@@ -368,8 +201,61 @@ const UsersPage = () => {
         loading={deleting}
         onConfirm={handleDeleteConfirm}
       />
-    </>
+    </RailLayout>
   );
 };
+
+/** One account. Fixed widths so the columns line up down the list; narrow
+ *  screens drop the rightmost ones rather than wrap. */
+function UserRow({ user, onEdit, onDelete }: {
+  user: User;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const name = fullName(user);
+  const initials = name.split(' ').map(p => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
+  return (
+    <li
+      aria-label={name}
+      className="flex items-center gap-3 p-3 bg-white border rounded-lg hover:border-gray-300 transition-colors"
+    >
+      <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
+        {initials || '?'}
+      </div>
+      <div className="w-56 shrink-0 min-w-0">
+        <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
+        <p className="text-xs text-gray-400 truncate md:hidden">{user.email}</p>
+      </div>
+      <span className="hidden md:block flex-1 min-w-0 truncate text-sm text-gray-600">{user.email}</span>
+      <span className="hidden lg:block w-28 shrink-0 truncate text-sm text-gray-600">
+        {user.home_campus_name ?? '—'}
+      </span>
+      <span className="hidden xl:block w-28 shrink-0 text-xs text-gray-400 tabular-nums">
+        {formatJoined(user.date_joined)}
+      </span>
+      <div className="flex gap-0.5 shrink-0 ml-auto">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Edit ${name}`}
+          onClick={onEdit}
+          className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Delete ${name}`}
+          onClick={onDelete}
+          className="h-7 w-7 p-0 hover:bg-red-50 text-gray-400 hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </li>
+  );
+}
 
 export default UsersPage;

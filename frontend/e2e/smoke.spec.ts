@@ -27,7 +27,6 @@ const PAGES: Record<string, string[]> = {
     '/dashboard/catalogue',
     '/dashboard/users',
     '/dashboard/sla-rules',
-    '/dashboard/audit-log',
   ],
   hos: [
     '/hos',
@@ -38,25 +37,10 @@ const PAGES: Record<string, string[]> = {
     '/hos/facilities',
     '/hos/reports',
     '/hos/feedback',
-    '/hos/sla',
   ],
-  // No /director/pending: oversight is read-only (REVIEW.md §4), so holds are
-  // on the reports page, counted server-side rather than from one page of rows.
-  manager: [
-    '/director',
-    '/director/tickets',
-    '/director/facilities',
-    '/director/reports',
-    '/director/feedback',
-  ],
-  technician: [
-    '/tech',
-    '/tech/assigned',
-    '/tech/pending',
-    '/tech/escalated',
-    '/tech/feedback',
-    '/tech/reports',
-  ],
+  // Read-only across every campus: the ticket table lists, no ticket opens.
+  manager: ['/director', '/director/tickets', '/director/reports', '/director/technicians', '/director/facilities', '/director/campuses', '/director/feedback'],
+  technician: ['/tech', '/tech/available', '/tech/pending', '/tech/escalated', '/tech/assigned', '/tech/section', '/tech/reports', '/tech/feedback'],
   requester: ['/user', '/user/tickets'],
 };
 

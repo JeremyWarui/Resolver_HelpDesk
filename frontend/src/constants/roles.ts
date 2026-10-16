@@ -51,7 +51,8 @@ export const SCOPE_SUBTITLE: Partial<Record<UserRole, string>> = {
   manager: 'Every campus',
   hod: 'Your campus',
   hos: 'Your campus',
-  technician: 'Your trades at your campus',
+  // Only the Reports page shows it: a technician's figures cover their own jobs.
+  technician: 'Jobs assigned to you',
 };
 
 /** Who a ticket has climbed to. Keys are `Ticket.current_level`.
@@ -69,6 +70,10 @@ export const ESCALATION_LEVEL: Record<string, { short: string; full: string }> =
  *  `backend/apps/accounts/models.py`, which refuses a campus on any other role
  *  and refuses an assignment without one on these. */
 export const ROLES_REQUIRING_CAMPUS: UserRole[] = ['technician', 'hos', 'hod'];
+
+/** Roles that run the system from a desk. Their pages open on a phone, but are
+ *  laid out for a computer; requesters and technicians are the ones out and about. */
+export const DESK_ROLES: UserRole[] = ['admin', 'manager', 'hod', 'hos'];
 
 /** What the role-and-scope control edits: the role, the campus it covers, and
  *  (technicians only) the trades. The shape `accounts.posts.assign_role` takes. */

@@ -21,7 +21,7 @@ test('a service card opens the wizard on that trade\'s service items', async ({ 
   const wizard = page.getByRole('dialog');
   await expect(wizard).toBeVisible();
 
-  // The breadcrumb says which trade we are inside, so this asserts the
+  // The chosen-trade bar says which trade we are inside, so this asserts the
   // pre-fill resolved rather than merely that a list rendered.
   await expect(wizard.getByText(PLUMBING.trade, { exact: true })).toBeVisible();
 

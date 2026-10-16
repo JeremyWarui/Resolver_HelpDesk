@@ -36,8 +36,7 @@ test('a requester raises a plumbing ticket, which opens unassigned', async ({ pa
   await wizard.getByRole('button', { name: 'Office' }).click();
   await wizard.getByRole('combobox').last().click();
   await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByPlaceholder('e.g. Ground, 1st').fill('1st');
-  await wizard.getByPlaceholder('e.g. Room 14').fill(`Room ${suffix.slice(-3)}`);
+  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
   await wizard.getByRole('button', { name: 'Next' }).click();
 
   const created = page.waitForResponse(
@@ -53,14 +52,16 @@ test('a requester raises a plumbing ticket, which opens unassigned', async ({ pa
 test('it lands in the claimable pool of the matching trade, not the others', async ({ page }) => {
   // Esther is plumbing at Nairobi, so the ticket is hers to take.
   await login(page, USERS.technician);
-  await page.goto('/tech');
+  await page.goto('/tech/available');
   await expect(page.getByText(ticketNo, { exact: false }).first()).toBeVisible({ timeout: 20_000 });
 
   // Anthony is carpentry at the same campus. Scope is the (campus, trade) pair,
   // so a shared campus must not be enough to see it.
   await login(page, USERS.technicianOtherTrade);
-  await page.goto('/tech');
-  await page.waitForTimeout(3000);
+  await page.goto('/tech/available');
+  // The tab has loaded, either way, before its absence means anything.
+  const panel = page.getByRole('tabpanel');
+  await expect(panel.getByRole('article').first().or(panel.getByText('Nothing to claim'))).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(ticketNo, { exact: false })).toHaveCount(0);
 });
 
@@ -93,23 +94,30 @@ test('the HOS is not offered a claim — supervisors assign, they do not take', 
   await expect(sheet.getByRole('button', { name: 'Claim' })).toHaveCount(0);
 });
 
-test('the technician claims it, and one action carries it to in progress', async ({ page }) => {
+test('the technician claims it from its card, and one action carries it to in progress', async ({ page }) => {
   await login(page, USERS.technician);
-  await page.goto('/tech');
-  await page.getByText(ticketNo, { exact: false }).first().click();
-
-  const sheet = page.getByRole('dialog').first();
-  await expect(sheet.getByRole('button', { name: 'Claim' })).toBeVisible({ timeout: 20_000 });
+  await page.goto('/tech/available');
+  const card = page.getByRole('article', { name: new RegExp(ticketNo) });
+  await expect(card).toBeVisible({ timeout: 20_000 });
 
   const claimed = page.waitForResponse(
     (r) => r.url().includes('/claim/') && r.request().method() === 'POST',
   );
-  await sheet.getByRole('button', { name: 'Claim' }).click();
+  await card.getByRole('button', { name: 'Claim' }).click();
   expect((await claimed).status(), 'the claim must be accepted').toBe(200);
 
+  // Taken, it leaves Available for Active, offering the next step there.
+  await expect(card).toHaveCount(0);
+  await page.getByRole('tab', { name: /^Active/ }).click();
+  const mine = page.getByRole('article', { name: new RegExp(ticketNo) });
+  await expect(mine.getByRole('button', { name: 'Update status' })).toBeVisible();
+
   // One press, two hops: it is theirs and it is already started.
-  await expect(sheet.getByRole('button', { name: 'Claim' })).toBeHidden();
-  await expect(sheet.getByText('In Progress', { exact: false }).first()).toBeVisible();
+  // The card's title is its link.
+  await mine.getByRole('button').first().click();
+  const sheet = page.getByRole('dialog').first();
+  await expect(sheet.getByRole('button', { name: 'Claim' })).toHaveCount(0);
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/In Progress$/);
   await expect(sheet.getByText('Esther', { exact: false }).first()).toBeVisible();
 });
 
@@ -119,10 +127,11 @@ test('the trail records both hops, not just the one the technician pressed', asy
   await page.getByText(ticketNo, { exact: false }).first().click();
 
   const sheet = page.getByRole('dialog').first();
-  await expect(sheet.getByText('Assigned', { exact: false }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/In Progress$/, { timeout: 20_000 });
   // open → assigned → in_progress, both logged, so the trail reads the same as
   // two moves made by hand.
-  await expect(sheet.getByText(/Status changed|In Progress/).first()).toBeVisible();
+  await expect(sheet.getByText(/^· to Esther/).first()).toBeVisible();
+  await expect(sheet.getByText('Assigned → In Progress').first()).toBeVisible();
 });
 
 test('a second claim on the same ticket loses, with a 409', async ({ page }) => {

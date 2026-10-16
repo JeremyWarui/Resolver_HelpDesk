@@ -43,9 +43,8 @@ interface TicketTableProps {
    * A per-call override rather than a new variant: the technician's Pending
    * Work is the `pending` view minus one column — their own name, repeated
    * down the Assigned To column of a list that is theirs by definition — and
-   * "pending minus one column" is not a view purpose the way `queue`, `sla`
-   * and `pending` are. A variant for it would be a near-duplicate map entry,
-   * which is how this file came to hold six of them.
+   * "pending minus one column" is not a view purpose the way `queue` and
+   * `pending` are.
    */
   hideColumns?: string[];
 }
@@ -137,8 +136,8 @@ export function TicketTable({
       // spends the strongest signal the list has on something the badge
       // already carries — leaving nothing to distinguish the rows that need
       // attention now. Pages where a tint earns its place pass their own:
-      // EscalatedWorkView and SLATrackingView tint on `is_breaching`, which is
-      // a different fact and a rarer one.
+      // EscalatedWorkView tints on `is_breaching`, which is a different fact
+      // and a rarer one.
       rowClassName={rowClassName}
       emptyStateMessage={emptyMessage}
       emptyStateDescription={emptyDescription}

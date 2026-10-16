@@ -26,7 +26,8 @@ export interface TradeRef {
 export interface TicketLocation {
   facility_type: { id: number; name: string; code: string };
   facility: { id: number; name: string } | null;
-  values: Record<string, unknown>;
+  /** Where in the facility, in the requester's words. */
+  detail: string;
 }
 
 /** How a person appears inside a ticket payload. `full_name` is never blank. */
@@ -74,13 +75,19 @@ export interface Ticket {
   raised_by: AssignedUser;
   assigned_to: AssignedUser | null;
 
-  // SLA timestamps (server-owned; paused_at non-null means SLA frozen)
+  // SLA timestamps (server-owned; paused_at non-null means SLA frozen, and is
+  // on list rows too, so a held list can say how long)
   response_due_at?: string | null;
   resolution_due_at?: string | null;
   paused_at?: string | null;
   accumulated_pause?: string;
 
-  // Location (present when the trade's location_details is true)
+  /** Detail shape only: the caller sees this ticket only as its requester,
+   *  not as staff who also raised it. */
+  viewer_is_requester?: boolean;
+  /** The facility's name, on a list row. */
+  facility?: string;
+  /** The full location, on the detail shape. */
   location?: TicketLocation | null;
 
   // Timestamps
@@ -107,6 +114,10 @@ export interface Ticket {
    *  `resolution_due_at` to the clock is what keeps a row's colour agreeing
    *  with the badge on the ticket and the count on the dashboard. */
   is_breaching?: boolean;
+
+  /** Detail only: the server's verdict on the resolution target, from
+   *  `tickets/sla.py`. Null while live and on time, or with no target. */
+  sla_outcome?: 'met' | 'missed' | 'overdue' | null;
 
   /** Detail endpoint only. On a list row this is always undefined — read
    *  `has_feedback` there instead. */
@@ -139,7 +150,7 @@ export interface CreateTicketPayload {
   /** The facility names its own type, so only its id is sent. */
   location: {
     facility: number;
-    values: Record<string, string>;
+    detail: string;
   };
 }
 
@@ -174,14 +185,13 @@ export interface TicketsParams {
   raised_by?: number;    // requester user id
 }
 
-/** `comment` is the client's own label for a comment row; every other value is
- *  a `TicketLog.event_type`. */
+/** A `TicketLog.event_type`. */
 export type TicketEventType =
   | 'created' | 'assigned' | 'reassigned' | 'status_changed'
-  | 'comment' | 'comment_added' | 'resolved' | 'closed'
-  | 'reopened' | 'rated' | 'escalated' | 'priority_changed' | 'sla_breach';
+  | 'comment_added' | 'resolved' | 'closed'
+  | 'reopened' | 'rated' | 'escalated' | 'priority_changed';
 
-/** One row of the merged trail. A system action has no actor, and a person
+/** One row of the trail. A system action has no actor, and a person
  *  registered by email alone has no name yet, so both are optional. */
 export interface TicketTimelineEvent {
   id: number | string;

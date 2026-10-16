@@ -31,6 +31,8 @@ type PendingWorkRole = 'hod' | 'hos' | 'technician';
 interface Props {
   role: PendingWorkRole;
   onTicketSelect?: (id: number) => void;
+  /** Inside another page's tab: no page title or background of its own. */
+  embedded?: boolean;
 }
 
 /** The page is called the same thing for everyone; only what it covers differs. */
@@ -38,7 +40,7 @@ const SUBTITLE: Record<PendingWorkRole, string> = {
   hod: 'Jobs on hold across your campus — why, and for how long.',
   hos: 'Jobs your section has stopped, and what each one is waiting for.',
   // Only the technician's *own* held jobs, unlike the other two roles. The
-  // difference is that this page acts: `TicketStatusUpdateView` lets a
+  // difference is that this page acts: `TicketStatusView` lets a
   // technician change status only on tickets assigned to them — section scope
   // alone is view-only — so listing a section-mate's held job here would put a
   // Resume button on a row the server answers 403 for.
@@ -55,7 +57,7 @@ function pendingDays(ticket: Ticket): number | null {
   return Math.floor((Date.now() - new Date(ticket.paused_at).getTime()) / 86_400_000);
 }
 
-export default function PendingWorkView({ role, onTicketSelect }: Props) {
+export default function PendingWorkView({ role, onTicketSelect, embedded = false }: Props) {
   // page_size is generous on purpose: this list is bounded by how much work is
   // stuck, which is a small number in any healthy section — and if it is not
   // small, seeing all of it is the point.
@@ -70,7 +72,7 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
   const { tickets, loading, refetch } = useTickets(
     {
       status: 'pending',
-      page_size: 200,
+      page_size: 100,
       ...(isTechnician && userId ? { assigned_to: userId } : {}),
     },
     isTechnician && !userId,
@@ -104,11 +106,15 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
   const stalled = tickets.filter((t) => (pendingDays(t) ?? 0) >= 7).length;
 
   return (
-    <main className="flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Pending Work</h1>
+    <div className={embedded ? 'p-4 sm:p-5 space-y-4' : 'flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4'}>
+      {embedded ? (
         <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
-      </div>
+      ) : (
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Pending Work</h1>
+          <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
+        </div>
+      )}
 
       {loading ? (
         <Skeleton className="h-40 w-full" />
@@ -216,6 +222,6 @@ export default function PendingWorkView({ role, onTicketSelect }: Props) {
           }}
         />
       )}
-    </main>
+    </div>
   );
 }

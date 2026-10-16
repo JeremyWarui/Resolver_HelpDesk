@@ -10,7 +10,8 @@ const CampusesPage = lazy(() => import('./CampusesPage'));
 const CataloguePage = lazy(() => import('./Catalogue/CataloguePage'));
 const UsersPage = lazy(() => import('./UsersPage'));
 const SLARulesPage = lazy(() => import('./SLARulesPage'));
-const AuditLogPage = lazy(() => import('./AuditLogPage'));
+const NotificationsPage = lazy(() => import('@/features/shared/NotificationsPage'));
+const SystemFeedbackPage = lazy(() => import('./SystemFeedbackPage'));
 
 /** Configuration and oversight across every campus. The only role that manages
  *  the roster and the estate, so the two registers keep their edit controls. */
@@ -27,7 +28,8 @@ const AdminLayout = () => (
       inventory:   <CataloguePage />,
       users:       <UsersPage />,
       'sla-rules': <SLARulesPage />,
-      'audit-log': <AuditLogPage />,
+      'system-feedback': <SystemFeedbackPage />,
+      notifications: <NotificationsPage onTicketSelect={onTicketSelect} />,
     })}
   />
 );

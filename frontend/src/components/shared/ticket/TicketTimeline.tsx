@@ -9,7 +9,7 @@ import {
   Plus, UserPlus, ArrowRightLeft, ArrowRight,
   MessageCircle, ChevronsUp,
   CheckCheck, Archive, Undo2, Star,
-  Flag, AlertCircle, Activity,
+  Flag, Activity,
 } from 'lucide-react';
 
 interface TicketTimelineProps {
@@ -54,7 +54,6 @@ const EVENT_CONFIG: Record<TicketEventType, EventConfig> = {
   assigned:         { Icon: UserPlus,       colorVar: '--status-assigned',  label: 'Assigned'         },
   reassigned:       { Icon: ArrowRightLeft, colorVar: '--status-assigned',  label: 'Reassigned'       },
   status_changed:   { Icon: ArrowRight,     colorVar: '--status-progress',  label: 'Status changed'   },
-  comment:          { Icon: MessageCircle,  colorVar: '--status-assigned',  label: 'Comment added'    },
   comment_added:    { Icon: MessageCircle,  colorVar: '--status-assigned',  label: 'Comment added'    },
   escalated:        { Icon: ChevronsUp,     colorVar: '--status-escalated', label: 'Escalated'        },
   resolved:         { Icon: CheckCheck,     colorVar: '--status-resolved',  label: 'Resolved'         },
@@ -62,7 +61,6 @@ const EVENT_CONFIG: Record<TicketEventType, EventConfig> = {
   reopened:         { Icon: Undo2,          colorVar: '--status-assigned',  label: 'Reopened'         },
   rated:            { Icon: Star,           colorVar: '--status-resolved',  label: 'Rated'            },
   priority_changed: { Icon: Flag,           colorVar: '--status-progress',  label: 'Priority changed' },
-  sla_breach:       { Icon: AlertCircle,    colorVar: '--status-escalated', label: 'SLA breached'     },
 };
 
 function humanStatus(s: string) {
@@ -124,12 +122,8 @@ function DateChip({ label }: { label: string }) {
   );
 }
 
-// Events whose `note` (TicketLog.reason) is a message someone typed: progress
-// notes, hold reasons, resolution notes and the HOS's handover note.
-const NOTE_EVENT_TYPES: TicketEventType[] = [
-  'status_changed', 'resolved', 'closed', 'reopened', 'assigned', 'reassigned',
-];
-
+/** One line per event: what, who, when. Typed notes are delivered as messages
+ *  in Notifications, to the people they were written for, not shown here. */
 function EventRow({
   event,
   isLast,
@@ -137,13 +131,14 @@ function EventRow({
   event: TicketTimelineEvent;
   isLast: boolean;
 }) {
-  const cfg       = EVENT_CONFIG[event.event_type] ?? EVENT_CONFIG.status_changed;
-  const { Icon, colorVar } = cfg;
-  const isComment = event.event_type === 'comment' || event.event_type === 'comment_added';
-  const name      = actorName(event.actor);
-  const label     = isComment ? `Comment added` : cfg.label;
-  const subtext   = isComment ? name : buildSubtext(event);
-  const showNote  = !!event.note && NOTE_EVENT_TYPES.includes(event.event_type);
+  // An event type this build has no entry for still renders, under its own name.
+  const cfg: EventConfig = EVENT_CONFIG[event.event_type as TicketEventType] ?? {
+    Icon: Activity,
+    colorVar: '--status-closed',
+    label: humanStatus(event.event_type),
+  };
+  const { Icon, colorVar, label } = cfg;
+  const subtext = buildSubtext(event);
 
   return (
     <div className={cn('flex items-start gap-3', isLast ? '' : 'pb-2')}>
@@ -166,19 +161,13 @@ function EventRow({
       {/* Content */}
       <div className="flex-1 min-w-0 py-1">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex items-baseline gap-1.5">
+          {/* Wraps on a phone, where truncating would cut off where it went. */}
+          <span className="min-w-0 flex flex-wrap sm:flex-nowrap items-baseline gap-x-1.5">
             <span className="text-sm text-foreground">{label}</span>
-            <span className="text-sm text-muted-foreground truncate">· {subtext}</span>
-          </div>
-          <span className="text-xs text-muted-foreground/70 shrink-0 tabular-nums">
-            {formatTime(event.created_at)}
+            <span className="text-sm text-muted-foreground sm:truncate">· {subtext}</span>
           </span>
+          <span className="shrink-0 text-xs text-muted-foreground/70 tabular-nums">{formatTime(event.created_at)}</span>
         </div>
-        {showNote && (
-          <p className="mt-1 text-sm text-muted-foreground border-l-2 border-border pl-2.5 whitespace-pre-wrap">
-            {event.note}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -193,8 +182,7 @@ export function TicketTimeline({
   hideHeader = false,
 }: TicketTimelineProps) {
   // No role filtering here. The server already decides what each caller may
-  // read: a requester's log feed omits the staff comment events, and the
-  // comment endpoint refuses them outright.
+  // read: a requester's log feed omits the comment events.
 
   if (loading) {
     return (

@@ -25,8 +25,7 @@ test('a requester raises an unassigned ticket', async ({ page }) => {
   await wizard.getByRole('button', { name: 'Office' }).click();
   await wizard.getByRole('combobox').last().click();
   await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByPlaceholder('e.g. Ground, 1st').fill('3rd');
-  await wizard.getByPlaceholder('e.g. Room 14').fill(`Room ${suffix.slice(-3)}`);
+  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
   await wizard.getByRole('button', { name: 'Next' }).click();
 
   const created = page.waitForResponse(
@@ -86,7 +85,7 @@ test('the trail records who assigned it, to whom', async ({ page }) => {
   await page.getByText(ticketNo, { exact: false }).first().click();
 
   const sheet = page.getByRole('dialog').first();
-  await expect(sheet.getByText('Assigned', { exact: false }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/Assigned$/, { timeout: 20_000 });
   await expect(sheet.getByText('Esther', { exact: false }).first()).toBeVisible();
 });
 
@@ -105,7 +104,7 @@ test('the assignee starts the work the HOS handed them', async ({ page }) => {
   );
   await sheet.getByRole('button', { name: 'Start work' }).click();
   expect((await started).status(), 'assigned must move to in progress').toBe(200);
-  await expect(sheet.getByText('In Progress', { exact: false }).first()).toBeVisible({
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/In Progress$/, {
     timeout: 20_000,
   });
 });
@@ -151,17 +150,18 @@ test('the assignee resolves it, and the requester closes it', async ({ page }) =
   await expect(closedRow.getByText('Closed')).toBeVisible({ timeout: 20_000 });
 });
 
-test('the renamed routes resolve, and /tech/mobile still outranks /tech/*', async ({ page }) => {
+test('the role routes resolve, and / lands a signed-in user on their own dashboard', async ({ page }) => {
   await login(page, USERS.hos);
   await page.goto('/hos/reports');
   await expect(page.locator('header h1')).toHaveText('Reports');
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/hos$/);
 
   await login(page, USERS.manager);
   await page.goto('/director/reports');
   await expect(page.locator('header h1')).toHaveText('Reports');
 
-  // The static route must win over the splat, or the mobile shell is unreachable.
   await login(page, USERS.technician);
-  await page.goto('/tech/mobile');
-  await expect(page.locator('aside')).toHaveCount(0);
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/tech$/);
 });

@@ -14,7 +14,6 @@ const SIDEBAR_ITEMS: Array<{ label: string; path: string; title: string }> = [
   { label: 'Service Catalogue', path: '/dashboard/catalogue', title: 'Service Catalogue' },
   { label: 'Users', path: '/dashboard/users', title: 'Users' },
   { label: 'SLA Rules', path: '/dashboard/sla-rules', title: 'SLA Rules' },
-  { label: 'Audit Log', path: '/dashboard/audit-log', title: 'Audit Log' },
   { label: 'Dashboard', path: '/dashboard', title: 'Dashboard' },
 ];
 

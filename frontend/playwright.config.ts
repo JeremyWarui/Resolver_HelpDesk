@@ -23,7 +23,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: '../venv/Scripts/python manage.py runserver 8000',
+      command:
+        process.platform === 'win32'
+          ? '..\\venv\\Scripts\\python manage.py runserver 8000 --noreload'
+          : '../venv/bin/python manage.py runserver 8000 --noreload',
       cwd: '../backend',
       // Not /admin/login/ (Django's admin is not routed here) and not
       // /auth/login/ (GET returns 405, which Playwright does not accept as
@@ -37,6 +40,14 @@ export default defineConfig({
       url: 'http://localhost:5173',
       reuseExistingServer: true,
       timeout: 120_000,
+    },
+    {
+      // The built bundle, for installable.spec.ts: the service worker and the
+      // manifest exist only in a production build.
+      command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+      url: 'http://localhost:4173',
+      reuseExistingServer: true,
+      timeout: 180_000,
     },
   ],
 });

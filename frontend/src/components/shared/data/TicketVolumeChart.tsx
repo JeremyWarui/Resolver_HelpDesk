@@ -10,24 +10,24 @@ interface TicketVolumeChartProps {
   title?: string;
   height?: number;
   bucket?: Bucket;
+  /** The name of the second series in the legend and tooltip. */
+  settledLabel?: string;
 }
 
-/** Raised against settled, per bucket. Two series through `AppBarChart` rather
- *  than a second BarChart: the axes and grid are the same chart, and written
- *  twice they drifted. */
-const SERIES = [
-  { key: 'raised', name: 'Raised' },
-  { key: 'settled', name: 'Settled' },
-];
-
-/** Tickets raised over the window, against how many of them are settled. */
+/** Tickets raised over the window, against how many of them are settled: two
+ *  series on one `AppBarChart`, so they share the axes and grid. */
 export function TicketVolumeChart({
   trend,
   loading = false,
   title = 'Ticket Volume',
   height = 250,
   bucket = 'day',
+  settledLabel = 'Settled',
 }: TicketVolumeChartProps) {
+  const series = [
+    { key: 'raised', name: 'Raised' },
+    { key: 'settled', name: settledLabel },
+  ];
   const data = (trend ?? []).map((point) => ({
     name: bucketLabel(point.bucket, bucket),
     raised: point.total,
@@ -43,7 +43,7 @@ export function TicketVolumeChart({
         {loading ? (
           <Skeleton style={{ height }} className="w-full rounded-md" />
         ) : (
-          <AppBarChart data={data} height={height} series={SERIES} />
+          <AppBarChart data={data} height={height} series={series} />
         )}
       </CardContent>
     </Card>

@@ -3,7 +3,6 @@ import { useTicketTable } from '@/hooks/tickets/useTicketTable';
 import { useTicketTableFilters } from '@/components/shared/data/DataTable/utils/TicketTableFilters';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import { FilterPills } from '@/components/shared/data/FilterPills';
-import TechnicianStatsCards from '@/components/shared/data/TechnicianStatsCards';
 import { statusPills } from '@/constants/tickets';
 
 // `open` means unassigned, so it is never one of a technician's own tickets.
@@ -14,7 +13,7 @@ type TechTicketsProps = {
   onTicketSelect?: (ticketId: number) => void;
 };
 
-/** The technician's own queue — what is assigned to them, and nothing else. */
+/** Every job assigned to the technician, as a table: the All My Jobs tab. */
 function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -33,17 +32,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
     fixedParams,
   });
 
-  // Derived from the rows actually fetched, so the cards match the table.
-  const filterCounts = useMemo(() => {
-    const tickets = table.tickets;
-    return {
-      assigned: tickets.filter(t => t.status === 'assigned').length,
-      in_progress: tickets.filter(t => t.status === 'in_progress').length,
-      pending: tickets.filter(t => t.status === 'pending').length,
-      resolved: tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length,
-    };
-  }, [table.tickets]);
-
   const filters = useTicketTableFilters(table, { includeTrade: false });
 
   const handleFilterChange = (filter: string) => {
@@ -53,9 +41,7 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 bg-gray-50 space-y-4">
-      <TechnicianStatsCards counts={filterCounts} loading={table.loading} />
-
+    <div className="p-4 sm:p-5 space-y-4">
       <FilterPills
         pills={TECH_PILLS}
         active={statusFilter}
@@ -66,9 +52,9 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
 
       <TicketTable
         tickets={table.tickets}
-        variant="admin"
-        title="Assigned Tickets"
-        subtitle="Tickets assigned to you"
+        variant="my-jobs"
+        title="All my jobs"
+        subtitle="Every job assigned to you, finished ones included"
         loading={table.loading}
         filterOptions={filters}
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}

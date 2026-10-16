@@ -62,33 +62,17 @@ export const descriptionColumn = (header: string = "Description"): ColumnDef<Tic
 });
 
 /**
- * Where the job is.
- *
- * Reads `location`, not a top-level `facility`: a Ticket carries the place
- * under `location`, and the facility sits inside it.
- *
- * Every location names a facility off the register — `validate_location` in
- * apps/facilities/validators.py refuses a null one for every type — so the
- * fallbacks below are defensive rather than a supported shape. `values` carries
- * the extra fields that type asks for, and identifies the spot within it.
+ * Where the job is. A list row carries the facility's name as `facility`; a
+ * detail shape carries the full `location`, whose `detail` says where in it.
  */
 export const facilityColumn = (header: string = "Location"): ColumnDef<Ticket> => ({
   id: "facility",
-  accessorFn: (row) => {
-    const loc = row.location;
-    if (!loc) return '';
-    return loc.facility?.name ?? loc.facility_type?.name ?? '';
-  },
+  accessorFn: (row) => row.facility ?? row.location?.facility?.name ?? '',
   header,
   cell: ({ row }) => {
-    const loc = row.original.location;
-    const primary = loc?.facility?.name ?? loc?.facility_type?.name;
+    const primary = row.original.facility ?? row.original.location?.facility?.name;
     if (!primary) return <div className="text-muted-foreground text-xs">—</div>;
-    // e.g. {floor: "2", room: "204"} → "2, 204". Order comes from the server,
-    // which only ever sends the keys that type declares.
-    const detail = Object.values(loc?.values ?? {})
-      .filter((v) => v !== null && v !== undefined && v !== '')
-      .join(', ');
+    const detail = row.original.location?.detail;
     return (
       <div>
         <div className="text-sm font-medium leading-tight">{primary}</div>
@@ -150,19 +134,25 @@ export const priorityColumn = (header: string = "Priority"): ColumnDef<Ticket> =
   enableSorting: false,
 });
 
-// SLA countdown column — used in the sla variant.
-// Shows a compact progress bar with colour-shifting timer.
+// The resolution clock for a running job. A held job's clock is frozen and a
+// settled one is judged by `tickets/sla.py`, never by now, so neither counts down.
 export const slaCountdownColumn = (header: string = "SLA"): ColumnDef<Ticket> => ({
   id: "sla_countdown",
   accessorKey: "resolution_due_at",
   header,
   cell: ({ row }) => {
     const ticket = row.original;
+    if (ticket.status === "pending") {
+      return <span className="text-xs text-muted-foreground">Paused</span>;
+    }
+    if (ticket.status === "resolved" || ticket.status === "closed") {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
     return (
       <SLACountdown
         dueDate={ticket.resolution_due_at}
         createdAt={ticket.created_at}
-        isPaused={!!ticket.paused_at}
+        isPaused={false}
         compact
       />
     );
@@ -329,7 +319,7 @@ export function rateAndCloseColumn(options: {
       // `has_feedback`, not `feedback`: the list serializer sends the flag and
       // only the detail one nests the object, so `ticket.feedback` is always
       // undefined here — "Rate & close" never went away and "Rated" was
-      // unreachable. AwaitingRatingBanner reads the flag on these same rows.
+      // unreachable. The requester dashboard reads the flag on these same rows.
       if (ticket.status === "resolved" && !ticket.has_feedback) {
         return (
           <Button
@@ -344,7 +334,7 @@ export function rateAndCloseColumn(options: {
           </Button>
         );
       }
-      if (ticket.status === "resolved" && ticket.has_feedback) {
+      if (ticket.has_feedback) {
         return (
           <Badge variant="outline" className="text-xs">
             Rated

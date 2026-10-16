@@ -4,9 +4,10 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { campusesService, facilitiesService } from '@/lib/api/organizations';
-import type { Campus, Facility } from '@/types';
+import type { Campus, CampusRosterRow, Facility } from '@/types';
 
 const CAMPUSES_KEY = ['campuses'] as const;
+const ROSTER_KEY = ['campus-roster'] as const;
 const FACILITIES_KEY = ['facilities'] as const;
 
 export const useCampuses = () => {
@@ -21,6 +22,25 @@ export const useCampuses = () => {
     campuses: data ?? [],
     loading: isLoading,
     refetch: () => queryClient.invalidateQueries({ queryKey: CAMPUSES_KEY }),
+  };
+};
+
+/** The campus register with its staffing, for the Campuses screen. `refetch`
+ *  refreshes the plain campus list too, which every campus dropdown reads. */
+export const useCampusRoster = () => {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<CampusRosterRow[]>({
+    queryKey: ROSTER_KEY,
+    queryFn: () => campusesService.getRoster(),
+  });
+
+  return {
+    campuses: data ?? [],
+    loading: isLoading,
+    refetch: () => {
+      queryClient.invalidateQueries({ queryKey: ROSTER_KEY });
+      queryClient.invalidateQueries({ queryKey: CAMPUSES_KEY });
+    },
   };
 };
 

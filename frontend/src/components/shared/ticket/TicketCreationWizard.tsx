@@ -5,11 +5,10 @@
 // and priority are derived server-side: the requester grades nothing and routes
 // nothing.
 //
-// Every ticket names a facility off the register, so the type only decides
-// which extra fields are asked for. The forms themselves live in
-// `constants/catalogue.ts`, beside the codes they are keyed by.
+// Every ticket names a facility off the register and says where in it, in one
+// line. The type tiles only narrow the facility list.
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -24,7 +23,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { AttachmentUploader } from '@/components/shared/ticket/AttachmentUploader';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -34,11 +32,10 @@ import { useAuthStore } from '@/stores/authStore';
 import { createTicket, uploadAttachments } from '@/lib/api/tickets';
 import { useCatalog, useCampusFacilities } from '@/hooks/useCatalogue';
 import type { CatalogItem, CatalogTrade } from '@/lib/api/catalogue';
-import { tradeIcon } from '@/constants/catalogue';
+import { TradeIcon } from '@/components/shared/ticket/TradeIcon';
 import {
-  FACILITY_FORMS,
+  FACILITY_TILES,
   FACILITY_ORDER,
-  fieldMeta,
   type FacilityTypeValue,
 } from '@/constants/catalogue';
 
@@ -111,8 +108,8 @@ function OptionCard({ selected, onClick, title, description, badge }: {
   );
 }
 
-/** The one-row icon tile picker, used for both trades and facility types.
- *  Generic in the key so the facility tiles keep their narrow code type. */
+/** The one-row icon tile picker for facility types. Generic in the key so
+ *  the tiles keep their narrow code type. */
 function TileRow<K extends string>({ items, selected, onSelect, columns }: {
   items: { key: K; label: string; Icon: LucideIcon }[];
   selected: string | null;
@@ -143,9 +140,9 @@ function TileRow<K extends string>({ items, selected, onSelect, columns }: {
 
 function ReviewRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="px-4 py-3 flex items-center justify-between gap-4">
-      <span className="text-sm font-medium text-muted-foreground shrink-0 w-28">{label}</span>
-      <span className="text-sm text-foreground text-right flex-1">{children}</span>
+    <div className="px-3 sm:px-4 py-3 flex items-center justify-between gap-3 sm:gap-4">
+      <span className="text-sm font-medium text-muted-foreground shrink-0 w-24 sm:w-28">{label}</span>
+      <span className="text-sm text-foreground text-right flex-1 min-w-0 break-words">{children}</span>
     </div>
   );
 }
@@ -168,7 +165,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   const [attachments, setAttachments]       = useState<File[]>([]);
   const [typeCode, setTypeCode]             = useState<FacilityTypeValue | null>(null);
   const [facilityId, setFacilityId]         = useState<number | null>(null);
-  const [locationValues, setLocationValues] = useState<Record<string, string>>({});
+  const [locationDetail, setLocationDetail] = useState('');
   const [submitting, setSubmitting]         = useState<false | 'creating' | 'uploading'>(false);
   const [submitted, setSubmitted]           = useState(false);
 
@@ -177,7 +174,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   const { data: trades = [], isLoading: loading } = useCatalog();
   const { data: facilities = [] } = useCampusFacilities(campusId);
 
-  const form = typeCode ? FACILITY_FORMS[typeCode] : null;
+  const tile = typeCode ? FACILITY_TILES[typeCode] : null;
 
   /** The types this campus has something registered under. A type with no
    *  facility here has nothing to raise a ticket against. */
@@ -185,7 +182,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
     const withFacilities = new Set(facilities.map((f) => f.facility_type_code));
     return FACILITY_ORDER
       .filter((code) => withFacilities.has(code))
-      .map((code) => ({ key: code, label: FACILITY_FORMS[code].label, Icon: FACILITY_FORMS[code].Icon }));
+      .map((code) => ({ key: code, label: FACILITY_TILES[code].label, Icon: FACILITY_TILES[code].Icon }));
   }, [facilities]);
 
   const choices = useMemo(
@@ -212,7 +209,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
       setAttachments([]);
       setTypeCode(null);
       setFacilityId(null);
-      setLocationValues({});
+      setLocationDetail('');
       setSubmitted(false);
     }
   }
@@ -241,20 +238,19 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
     if (found) setTrade(found);
   }
 
-  function setVal(key: string, val: string) {
-    setLocationValues((prev) => ({ ...prev, [key]: val }));
-  }
+  // Picking a trade, or going back to change it, swaps the list under the
+  // pressed button; focus moves to the new list rather than the dialog's top.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isOpen && step === 1) bodyRef.current?.querySelector<HTMLElement>('[data-options] button')?.focus();
+  }, [isOpen, step, subStep, trades.length]);
 
   function pickType(code: FacilityTypeValue) {
     setTypeCode(code);
     setFacilityId(null);
-    setLocationValues({});
   }
 
-  const locationValid = useMemo(() => {
-    if (!form || !facilityId) return false;
-    return form.required.every((name) => !!locationValues[name]?.trim());
-  }, [form, facilityId, locationValues]);
+  const locationValid = facilityId != null && locationDetail.trim().length > 0;
 
   const canAdvance = useMemo(() => {
     if (step === 1) return item != null && subStep === 'item';
@@ -263,22 +259,14 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   }, [step, item, subStep, description, locationValid]);
 
   async function handleSubmit() {
-    if (!item || !form || !facilityId) return;
+    if (!item || !facilityId) return;
     setSubmitting('creating');
     try {
-      // Send only the fields this type knows about — the server rejects
-      // strays, and a blank optional field is not an answer.
-      const values: Record<string, string> = {};
-      for (const name of [...form.required, ...form.optional]) {
-        const v = locationValues[name]?.trim();
-        if (v) values[name] = v;
-      }
-
       const result = await createTicket({
         service_item: item.id,
         description: description.trim(),
         ...(contactPhone.trim() ? { contact_phone: contactPhone.trim() } : {}),
-        location: { facility: facilityId, values },
+        location: { facility: facilityId, detail: locationDetail.trim() },
       });
       // Attachments go up after the ticket exists — the endpoint is
       // /tickets/<id>/attachments/, so there is no id to post to until now.
@@ -326,7 +314,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[680px] w-full flex flex-col p-6 gap-0 h-[85vh]">
+      <DialogContent className="sm:max-w-[680px] w-full flex flex-col p-4 sm:p-6 gap-0 max-h-[90dvh]">
         <DialogHeader className="pb-4 border-b flex-shrink-0 pr-10">
           <div className="flex items-center justify-between gap-4">
             <DialogTitle className="text-base font-semibold">New Request</DialogTitle>
@@ -337,7 +325,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0">
+        <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto">
           <div className="py-5 space-y-4">
 
             {/* Success */}
@@ -356,14 +344,17 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
             {!submitted && step === 1 && (
               <div className="space-y-3">
 
-                {/* Breadcrumb when viewing items */}
+                {/* The chosen trade, with the way back to the others */}
                 {subStep === 'item' && trade && (
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                    <button type="button" onClick={goBackToTrades} className="text-primary hover:underline">
-                      Trades
-                    </button>
-                    <span>/</span>
-                    <span className="font-medium text-foreground">{trade.name}</span>
+                  <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2.5">
+                    <TradeIcon code={trade.code} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground">Kind of work</p>
+                      <p className="text-sm font-semibold truncate">{trade.name}</p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" className="text-xs h-auto py-1" onClick={goBackToTrades}>
+                      Change
+                    </Button>
                   </div>
                 )}
 
@@ -372,26 +363,38 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                   <>
                     <p className="text-sm text-muted-foreground">What kind of work does this need?</p>
                     {loading ? (
-                      <div className="grid grid-cols-5 gap-2">
-                        {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-16 w-full rounded-md" />)}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[72px] w-full rounded-lg" />)}
                       </div>
                     ) : trades.length === 0 ? (
                       <p className="text-sm text-muted-foreground italic">No maintenance trades are available at your campus.</p>
                     ) : (
-                      <TileRow
-                        columns="grid-cols-3 sm:grid-cols-5"
-                        selected={trade?.code ?? null}
-                        onSelect={(code) => {
-                          setTrade(trades.find((t) => t.code === code) ?? null);
-                          setItem(null);
-                          setSubStep('item');
-                        }}
-                        items={trades.map((t) => ({
-                          key: t.code,
-                          label: t.name,
-                          Icon: tradeIcon(t.code),
-                        }))}
-                      />
+                      <div className="grid gap-2 sm:grid-cols-2" data-options>
+                        {trades.map((t) => (
+                          <button
+                            key={t.code}
+                            type="button"
+                            aria-label={t.name}
+                            aria-describedby={`tcw-trade-${t.code}`}
+                            onClick={() => {
+                              setTrade(t);
+                              setItem(null);
+                              setSubStep('item');
+                            }}
+                            className="flex items-center gap-3 rounded-lg border bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <TradeIcon code={t.code} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-semibold">{t.name}</span>
+                              <span id={`tcw-trade-${t.code}`} className="block text-xs text-muted-foreground line-clamp-2">
+                                {t.items.slice(0, 3).map((i) => i.name).join(', ')}
+                                {t.items.length > 3 && '…'}
+                              </span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </>
                 )}
@@ -405,7 +408,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                     ) : (trade?.items ?? []).length === 0 ? (
                       <p className="text-sm text-muted-foreground italic">No services listed under this trade.</p>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2" data-options>
                         {(trade?.items ?? []).map((si) => (
                           <OptionCard
                             key={si.id}
@@ -479,7 +482,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                   />
                 </div>
 
-                {/* Location — always asked; the facility type shapes the form */}
+                {/* Location — always asked */}
                 <div className="flex items-center gap-3">
                   <hr className="flex-1 border-border/60" />
                   <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground whitespace-nowrap">
@@ -501,18 +504,18 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                     items={tiles}
                   />
 
-                  {!form && (
+                  {!tile && (
                     <p className="mt-4 text-center text-xs text-muted-foreground">Select a facility type above to continue</p>
                   )}
 
-                  {form && (
+                  {tile && (
                     <div className="mt-3 border-t border-border/50 pt-3 space-y-3">
                       <div className="space-y-1.5">
                         <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                          {form.label} <span className="text-destructive">*</span>
+                          {tile.label} <span className="text-destructive">*</span>
                         </Label>
                         <Select value={facilityId ? String(facilityId) : ''} onValueChange={(v) => setFacilityId(Number(v))}>
-                          <SelectTrigger className="h-8 text-sm">
+                          <SelectTrigger className="h-9 text-sm">
                             <SelectValue placeholder={choices.length === 0 ? 'None listed at your campus' : 'Select one'} />
                           </SelectTrigger>
                           <SelectContent>
@@ -521,26 +524,19 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                         </Select>
                       </div>
 
-                      {[...form.required, ...form.optional].length > 0 && (
-                        <div className="grid grid-cols-2 gap-2">
-                          {[...form.required, ...form.optional].map((name) => {
-                            const { label, placeholder } = fieldMeta(name);
-                            return (
-                              <div key={name} className="space-y-1.5">
-                                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                  {label} {form.required.includes(name) && <span className="text-destructive">*</span>}
-                                </Label>
-                                <Input
-                                  className="h-8 text-sm"
-                                  placeholder={placeholder}
-                                  value={locationValues[name] ?? ''}
-                                  onChange={(e) => setVal(name, e.target.value)}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                        <Label htmlFor="tcw-where" className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Where in it <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id="tcw-where"
+                          className="h-9 text-sm"
+                          maxLength={200}
+                          placeholder={tile.hint}
+                          value={locationDetail}
+                          onChange={(e) => setLocationDetail(e.target.value)}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -567,19 +563,12 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
                   <div className="border rounded-lg divide-y">
                     <ReviewRow label="Description"><span className="whitespace-pre-wrap">{description}</span></ReviewRow>
                     {contactPhone.trim() && <ReviewRow label="Contact">{contactPhone.trim()}</ReviewRow>}
-                    {form && <ReviewRow label="Location type">{form.label}</ReviewRow>}
                     {facilityId != null && (
-                      <ReviewRow label={form?.label ?? 'Facility'}>
+                      <ReviewRow label={tile?.label ?? 'Facility'}>
                         {choices.find((f) => f.id === facilityId)?.name ?? `#${facilityId}`}
                       </ReviewRow>
                     )}
-                    {form && [...form.required, ...form.optional]
-                      .filter((name) => locationValues[name]?.trim())
-                      .map((name) => (
-                        <ReviewRow key={name} label={fieldMeta(name).label}>
-                          {locationValues[name]}
-                        </ReviewRow>
-                      ))}
+                    {locationDetail.trim() && <ReviewRow label="Where">{locationDetail.trim()}</ReviewRow>}
                   </div>
                 </div>
 
@@ -596,7 +585,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         {!submitted && (

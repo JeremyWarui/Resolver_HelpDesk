@@ -2,22 +2,11 @@
 // The status pill, and the badge-colour helper the stat cards share with it.
 // Every colour is a --status-* CSS token, defined in index.css.
 
-import { STATUS_LABELS } from '@/constants/tickets';
+import { STATUS_LABELS, STATUS_TOKEN } from '@/constants/tickets';
 import { TokenPill } from './TokenPill';
 import type { Ticket } from '@/types';
 
 type TicketStatusValue = Ticket['status'];
-
-// Each status names its CSS variable base; the -bg / -text / -border triplets
-// live in index.css.
-const STATUS_CSS_BASE: Record<TicketStatusValue, string> = {
-  open:        '--status-open',
-  assigned:    '--status-assigned',
-  in_progress: '--status-progress',
-  pending:     '--status-pending',
-  resolved:    '--status-resolved',
-  closed:      '--status-closed',
-};
 
 // Semantic colour name → CSS variable pair, for a badge that carries a named
 // colour rather than a ticket status.
@@ -39,7 +28,7 @@ export function getBadgeStyle(color: string): React.CSSProperties {
 
 export function StatusBadge({ status, className }: { status: TicketStatusValue; className?: string }) {
   return (
-    <TokenPill token={STATUS_CSS_BASE[status] ?? '--status-closed'} className={className}>
+    <TokenPill token={STATUS_TOKEN[status] ?? '--status-closed'} className={className}>
       {STATUS_LABELS[status] ?? status.replace(/_/g, ' ')}
     </TokenPill>
   );

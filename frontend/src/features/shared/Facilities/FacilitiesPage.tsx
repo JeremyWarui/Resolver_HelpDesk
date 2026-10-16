@@ -122,7 +122,7 @@ export default function FacilitiesPage({ manage = true }: FacilitiesPageProps = 
           </p>
         </div>
         {manage && (
-          <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setFormOpen(true)}>
+          <Button size="sm" variant="brand" className="gap-1.5 shrink-0" onClick={() => setFormOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Facility
           </Button>

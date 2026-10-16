@@ -1,6 +1,7 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import {
   login,
+  seedPassword,
   uniqueSuffix,
   USERS,
   PLUMBING,
@@ -13,7 +14,7 @@ import {
 //
 // Worth driving in a browser rather than trusting types, because every step
 // here is a place where the frontend and backend agree only by convention:
-// the wizard posts a `location` shape that `TYPE_SPECS` validates server-side,
+// the wizard posts a `location` shape the create serializer validates,
 // claim depends on `open` implying unassigned, and the status modal's
 // `VALID_NEXT` is a hand-maintained mirror of `ALLOWED` in lifecycle.py.
 //
@@ -25,9 +26,19 @@ test.describe.configure({ mode: 'serial' });
 
 const suffix = uniqueSuffix();
 const DESCRIPTION = `E2E ${suffix} — tap dripping continuously in the wash room`;
+const COMMENT = `Washer is worn through; replacing it today (${suffix}).`;
 
 /** Set by the first test, read by the rest. */
 let ticketNo = '';
+let ticketId = 0;
+
+const API = 'http://localhost:8000/api/v1';
+
+async function authAs(request: APIRequestContext, email: string) {
+  const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });
+  expect(res.ok(), `login as ${email}`).toBeTruthy();
+  return { Authorization: `Bearer ${(await res.json()).accessToken}` };
+}
 
 /**
  * The ticket-table search box. Its placeholder differs by page — "Search..."
@@ -42,6 +53,15 @@ async function openTicket(page: Page): Promise<void> {
   const row = page.getByText(ticketNo, { exact: false }).first();
   await expect(row).toBeVisible();
   await row.click();
+  await expect(page.getByRole('dialog').getByText(ticketNo)).toBeVisible();
+}
+
+/** Open the ticket from the technician's My Jobs, on the tab it sits under. */
+async function openJob(page: Page, tab: 'Available' | 'Active'): Promise<void> {
+  await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+  // The card's title is the button that opens it; Claim is the other one.
+  const card = page.getByRole('article', { name: new RegExp(`${ticketNo}$`) });
+  await card.getByRole('button', { name: PLUMBING.item, exact: true }).click();
   await expect(page.getByRole('dialog').getByText(ticketNo)).toBeVisible();
 }
 
@@ -79,11 +99,10 @@ test('a requester raises a plumbing ticket with an office-block location', async
   await expect(wizard.getByText(EVIDENCE_NAME)).toBeVisible();
 
   await wizard.getByRole('button', { name: 'Office' }).click();
-  // office_block needs a facility plus floor and room (area is optional).
+  // A location is a facility off the register plus where in it.
   await wizard.getByRole('combobox').last().click();
   await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByPlaceholder('e.g. Ground, 1st').fill('2nd');
-  await wizard.getByPlaceholder('e.g. Room 14').fill(`Room ${suffix.slice(-3)}`);
+  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
   await wizard.getByRole('button', { name: 'Next' }).click();
 
   // ── Step 3: review and submit ─────────────────────────────────────────────
@@ -108,6 +127,7 @@ test('a requester raises a plumbing ticket with an office-block location', async
   // write response. That the ticket opens unassigned is asserted in the next
   // test, where the Claim button only renders for `open` + no assignee.
   ticketNo = body.ticket_no;
+  ticketId = body.id;
   expect(ticketNo, 'the backend must allocate a ticket number').toBeTruthy();
 
   await expect(wizard.getByText('Request submitted')).toBeVisible();
@@ -116,9 +136,9 @@ test('a requester raises a plumbing ticket with an office-block location', async
 test('the ticket reaches the plumbing technician at that campus', async ({ page }) => {
   // Scope is pairwise (campus AND trade), so this asserts more than "a list
   // rendered": Esther Wairimu is linked to (Nairobi, Plumbing) and the ticket
-  // routed to exactly that pair.
+  // routed to exactly that pair. It waits under Available for someone to claim.
   await login(page, USERS.technician);
-  await openTicket(page);
+  await openJob(page, 'Available');
 
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByText(DESCRIPTION)).toBeVisible();
@@ -133,18 +153,34 @@ test('claiming drives it from open straight to in progress', async ({ page }) =>
   // logged. The technician should not have to press twice to start work they
   // just volunteered for.
   await login(page, USERS.technician);
-  await openTicket(page);
+  await openJob(page, 'Available');
 
   const sheet = page.getByRole('dialog');
   await sheet.getByRole('button', { name: 'Claim' }).click();
 
   await expect(sheet.getByRole('button', { name: 'Claim' })).toBeHidden();
-  await expect(sheet.getByText('In Progress', { exact: false }).first()).toBeVisible();
+  await expect(sheet.getByRole('list', { name: 'Progress' }).locator('[aria-current="step"]')).toHaveText(/In Progress$/);
+
+  // The assignee logs what they found.
+  await sheet.getByPlaceholder('Add a comment…').fill(COMMENT);
+  await sheet.getByRole('button', { name: 'Send' }).click();
+  await expect(sheet.getByText(COMMENT)).toBeVisible();
+});
+
+test('while it is in progress the requester sees the trail but not the comments', async ({ page }) => {
+  await login(page, USERS.requester);
+  await page.getByRole('link', { name: 'My Tickets', exact: true }).click();
+  await openTicket(page);
+
+  const sheet = page.getByRole('dialog');
+  await expect(sheet.getByText('Activity')).toBeVisible();
+  await expect(sheet.getByText(COMMENT)).toHaveCount(0);
+  await expect(sheet.getByText('Notes from the maintenance team')).toHaveCount(0);
 });
 
 test('the assignee resolves it, and the requester sees it resolved', async ({ page }) => {
   await login(page, USERS.technician);
-  await openTicket(page);
+  await openJob(page, 'Active');
 
   const sheet = page.getByRole('dialog');
   await sheet.getByRole('button', { name: 'Update Status' }).click();
@@ -170,6 +206,15 @@ test('the assignee resolves it, and the requester sees it resolved', async ({ pa
   await expect(row).toBeVisible();
   await expect(row.getByText('Resolved')).toBeVisible();
 
+  // Resolved, the requester can read what the technician wrote, but not reply.
+  await row.getByText(ticketNo).click();
+  const detail = page.getByRole('dialog');
+  await expect(detail.getByText('Notes from the maintenance team')).toBeVisible();
+  await expect(detail.getByText(COMMENT)).toBeVisible();
+  await expect(detail.getByPlaceholder('Add a comment…')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(detail).toBeHidden();
+
   // Rating is the requester's half of the lifecycle: feedback, then close.
   // The Actions cell keys on `has_feedback` now — it read `ticket.feedback`,
   // which only the detail serializer sends, so the test was always undefined.
@@ -190,14 +235,14 @@ test('the assignee resolves it, and the requester sees it resolved', async ({ pa
   await expect(ratedRow.getByRole('button', { name: 'Rate & close' })).toHaveCount(0);
 });
 
-test('a technician at the same campus but a different trade cannot see it', async ({ page }) => {
+test('a technician at the same campus but a different trade cannot see it', async ({ request }) => {
   // The sharp negative. Anthony Gitau is at Nairobi like the assignee, but
   // linked to Carpentry and Painting — never Plumbing. Scope is pairwise
   // (campus AND trade) via Exists on SectionTechnician; the plausible
   // regression is scoping by campus alone, and this is the case that would
   // catch it from the UI. `scoped_ticket_qs` fails closed, so an unscoped
-  // ticket is not merely hidden from the table — it is not in the response.
-  await login(page, USERS.technicianOtherTrade);
-  await searchBox(page).fill(ticketNo);
-  await expect(page.getByText(ticketNo, { exact: false })).toHaveCount(0);
+  // ticket is not merely hidden from a list — the server refuses it.
+  const read = (auth: Record<string, string>) => request.get(`${API}/tickets/${ticketId}/`, { headers: auth });
+  expect((await read(await authAs(request, USERS.technician))).status(), 'the plumber reads it').toBe(200);
+  expect((await read(await authAs(request, USERS.technicianOtherTrade))).status()).toBe(403);
 });

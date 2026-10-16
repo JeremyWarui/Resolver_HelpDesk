@@ -1,11 +1,5 @@
 // The one navigation model. Per role, the sections it has: what the sidebar
 // draws, what URL each sits at, and what the header calls it.
-//
-// These were five maps in four files — the sidebar's items, the sidebar's
-// id → URL table, `sectionFromPath` and `headerTitle` here, and a private copy
-// of the last two inside AdminLayout. A section's label was written twice and
-// its URL twice, so a renamed section left a sidebar entry pointing at a
-// section no layout had.
 
 import type { UserRole } from '@/types';
 import {
@@ -21,16 +15,19 @@ import {
   UserCog,
   Clock,
   ShieldAlert,
-  Timer,
   MessageSquare,
   PauseCircle,
+  Bell,
+  MessagesSquare,
+  Wrench,
+  Hand,
 } from 'lucide-react';
 
 /** Live count shown beside a nav label, e.g. "Escalated (8)".
  *
  *  Only queues worth chasing carry one. A count on "Tickets" would be the
  *  section's whole backlog — a number nobody acts on, redrawn on every poll. */
-export type SidebarCount = 'escalated' | 'pending';
+export type SidebarCount = 'escalated' | 'pending' | 'notifications' | 'systemFeedback';
 
 interface NavItem {
   /** Section key: the sidebar's item, the layout's section map key, and the
@@ -44,6 +41,12 @@ interface NavItem {
   count?: SidebarCount;
   /** Opens the ticket wizard instead of routing to a section. */
   opensWizard?: boolean;
+  /** A tab of another section: routed and rendered, but not listed in the
+   *  sidebar, which marks `parent` instead and names the header after it. */
+  parent?: string;
+  /** Left out of the phone menu. Someone out on a job reaches what they act
+   *  on there; the full registers stay on a computer. The URL still opens. */
+  desktopOnly?: true;
 }
 
 export interface RoleNav {
@@ -55,18 +58,22 @@ export const ROLE_NAV: Record<UserRole, RoleNav> = {
   user: {
     items: [
       { id: 'dashboard',    path: '',        label: 'Dashboard',  icon: LayoutDashboard },
-      { id: 'userTickets',  path: 'tickets', label: 'My Tickets', icon: ClipboardList },
+      { id: 'userTickets',  path: 'tickets', label: 'My Tickets', icon: ClipboardList, desktopOnly: true },
       { id: 'submitTicket', path: 'new',     label: 'New Ticket', icon: PlusCircle, opensWizard: true },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
   },
   technician: {
     items: [
-      { id: 'dashboard',       path: '',          label: 'Section Tickets',  icon: LayoutDashboard },
-      { id: 'assignedTickets', path: 'assigned',  label: 'Assigned Tickets', icon: ClipboardList },
-      { id: 'pending',         path: 'pending',   label: 'Pending Work',     icon: PauseCircle, count: 'pending' },
-      { id: 'escalated',       path: 'escalated', label: 'Escalated',        icon: ShieldAlert, count: 'escalated' },
-      { id: 'feedback',        path: 'feedback',  label: 'Feedback',         icon: MessageSquare },
-      { id: 'reports',         path: 'reports',   label: 'Reports',          icon: FileText },
+      { id: 'dashboard',       path: '',          label: 'My Jobs',          icon: Wrench },
+      { id: 'available',       path: 'available', label: 'Available',        icon: Hand,          parent: 'dashboard' },
+      { id: 'pending',         path: 'pending',   label: 'On Hold',          icon: PauseCircle,   parent: 'dashboard' },
+      { id: 'escalated',       path: 'escalated', label: 'Escalated',        icon: ShieldAlert,   parent: 'dashboard' },
+      { id: 'assignedTickets', path: 'assigned',  label: 'All My Jobs',      icon: ClipboardList, parent: 'dashboard' },
+      { id: 'section',         path: 'section',   label: 'Section Tickets',  icon: LayoutDashboard, desktopOnly: true },
+      { id: 'reports',         path: 'reports',   label: 'My Reports',       icon: FileText },
+      { id: 'feedback',        path: 'feedback',  label: 'My Feedback',      icon: MessageSquare },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
   },
   hos: {
@@ -79,7 +86,7 @@ export const ROLE_NAV: Record<UserRole, RoleNav> = {
       { id: 'facilities',  path: 'facilities',  label: 'Facilities',   icon: Building },
       { id: 'reports',     path: 'reports',     label: 'Reports',      icon: FileText },
       { id: 'feedback',    path: 'feedback',    label: 'Feedback',     icon: MessageSquare },
-      { id: 'sla',         path: 'sla',         label: 'SLA Tracking', icon: Timer },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
     subtitle: 'Section Head Portal',
   },
@@ -93,20 +100,22 @@ export const ROLE_NAV: Record<UserRole, RoleNav> = {
       { id: 'facilities',  path: 'facilities',  label: 'Facilities',   icon: Building },
       { id: 'reports',     path: 'reports',     label: 'Reports',      icon: FileText },
       { id: 'feedback',    path: 'feedback',    label: 'Feedback',     icon: MessageSquare },
-      { id: 'sla',         path: 'sla',         label: 'SLA Tracking', icon: Timer },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
     subtitle: 'Head of Department Portal',
   },
-  // Reporting and analytics across every campus (REVIEW.md §4). Oversight is
-  // read-only, so no operational queue: holds are on the reports page, where
-  // the figure comes from the server's aggregate rather than one page of rows.
+  // The admin's view of the organisation, read-only, without the configuration
+  // screens. The ticket table lists every campus; no ticket opens.
   manager: {
     items: [
-      { id: 'dashboard',  path: '',           label: 'Dashboard',  icon: LayoutDashboard },
-      { id: 'tickets',    path: 'tickets',    label: 'Tickets',    icon: ClipboardList },
-      { id: 'facilities', path: 'facilities', label: 'Facilities', icon: Building },
-      { id: 'reports',    path: 'reports',    label: 'Reports',    icon: FileText },
-      { id: 'feedback',   path: 'feedback',   label: 'Feedback',   icon: MessageSquare },
+      { id: 'dashboard',   path: '',            label: 'Dashboard',   icon: LayoutDashboard },
+      { id: 'tickets',     path: 'tickets',     label: 'Tickets',     icon: ClipboardList },
+      { id: 'reports',     path: 'reports',     label: 'Reports',     icon: FileText },
+      { id: 'technicians', path: 'technicians', label: 'Technicians', icon: Users },
+      { id: 'facilities',  path: 'facilities',  label: 'Facilities',  icon: Building },
+      { id: 'campuses',    path: 'campuses',    label: 'Campuses',    icon: MapPin },
+      { id: 'feedback',    path: 'feedback',    label: 'Feedback',    icon: MessageSquare },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
     subtitle: 'Manager Portal',
   },
@@ -121,7 +130,8 @@ export const ROLE_NAV: Record<UserRole, RoleNav> = {
       { id: 'inventory',   path: 'catalogue',   label: 'Service Catalogue', icon: Tool },
       { id: 'users',       path: 'users',       label: 'Users',             icon: UserCog },
       { id: 'sla-rules',   path: 'sla-rules',   label: 'SLA Rules',         icon: Clock },
-      { id: 'audit-log',   path: 'audit-log',   label: 'Audit Log',         icon: ShieldAlert },
+      { id: 'system-feedback', path: 'system-feedback', label: 'System Feedback', icon: MessagesSquare, count: 'systemFeedback' },
+      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
     ],
   },
 };
@@ -135,5 +145,12 @@ export function sectionFromPath(nav: RoleNav, pathname: string): string {
 
 /** What the header calls a section. */
 export function sectionTitle(nav: RoleNav, id: string): string {
-  return nav.items.find((item) => item.id === id)?.label ?? 'Dashboard';
+  const item = nav.items.find((i) => i.id === id);
+  const named = item?.parent ? nav.items.find((i) => i.id === item.parent) : item;
+  return named?.label ?? 'Dashboard';
+}
+
+/** The sidebar entry a section lights up: itself, or the section it is a tab of. */
+export function sidebarSection(nav: RoleNav, id: string): string {
+  return nav.items.find((item) => item.id === id)?.parent ?? id;
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   UserCheck, RefreshCw, AlertCircle,
-  RotateCcw, Star, Hand, CheckCheck, Play, Paperclip, FileText,
+  RotateCcw, Star, Hand, CheckCheck, Play, Paperclip, FileText, PauseCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +12,7 @@ import { StatusBadge } from '@/components/shared/ticket/StatusBadge';
 import { PriorityBadge } from '@/components/shared/ticket/PriorityBadge';
 import { SLACountdown } from '@/components/shared/ticket/SLACountdown';
 import { TicketTimeline } from '@/components/shared/ticket/TicketTimeline';
+import { TicketProgress } from '@/components/shared/ticket/TicketProgress';
 import CommentThread from '@/components/shared/ticket/CommentThread';
 import { StatusUpdateModal } from '@/features/technician/StatusUpdateModal';
 import { AssignmentModal } from '@/features/shared/AssignmentModal';
@@ -20,26 +21,36 @@ import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { useTicketAttachments, useTicketDetail, useTicketInvalidate, useTicketTimeline } from '@/hooks/tickets/useTicketDetail';
 import { usePermissions } from '@/lib/auth/permissions';
 import { useAuthStore } from '@/stores/authStore';
-import { claimTicket, reopenTicket, updateTicketStatus } from '@/lib/api/tickets';
+import { claimTicket, reopenTicket, startWork } from '@/lib/api/tickets';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
-import { formatDate, formatDateTime } from '@/utils/date';
+import { formatDateTime } from '@/utils/date';
 import { formatPhoneLocal } from '@/utils/phone';
 import { formatBytes } from '@/utils/format';
-import { ROLE_LABELS } from '@/constants/roles';
-import type { Ticket, UserRole } from '@/types';
+import { ESCALATION_LEVEL } from '@/constants/roles';
+import { TokenPill } from '@/components/shared/ticket/TokenPill';
+import { HELD_STATUSES, REQUESTER_COMMENT_STATUSES, WORKING_STATUSES } from '@/constants/tickets';
+import type { Ticket } from '@/types';
 
 type ActiveModal = 'status' | 'assign' | 'rate' | 'reopen' | null;
+
+/** The server's verdict on the resolution target (`tickets/sla.py`), as a pill. */
+const SLA_OUTCOME: Record<NonNullable<Ticket['sla_outcome']>, { label: string; token: string }> = {
+  met: { label: 'Met', token: '--status-resolved' },
+  missed: { label: 'Missed', token: '--status-escalated' },
+  overdue: { label: 'Overdue', token: '--status-escalated' },
+};
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+    <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
       {children}
-    </p>
+    </h3>
   );
 }
 
+/** One labelled line in a details list; an empty value leaves the line out. */
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
   return (
@@ -47,6 +58,39 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       <span className="text-sm font-medium text-muted-foreground shrink-0">{label}</span>
       <span className="text-sm text-foreground text-right">{value}</span>
     </div>
+  );
+}
+
+/** A titled, bordered list of `DetailRow`s. */
+function DetailGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <div className="border rounded-lg divide-y">{children}</div>
+    </div>
+  );
+}
+
+/** A short, tinted note about what is happening now: a hold, a fix, a rating. */
+function Callout({ tone, icon, title, children }: {
+  /** A --status-* token base; its -bg and -text colour the note. */
+  tone: string;
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="rounded-lg border p-4 text-sm"
+      style={{ backgroundColor: `var(${tone}-bg)`, borderColor: `var(${tone}-bg)` }}
+    >
+      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: `var(${tone}-text)` }}>
+        {icon}
+        {title}
+      </h3>
+      <div className="text-gray-800">{children}</div>
+    </section>
   );
 }
 
@@ -122,6 +166,14 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   const [startSubmitting, setStartSubmitting] = useState(false);
 
   const isRaisedByCurrentUser = ticket?.raised_by?.id === currentUser?.id;
+  // Staff who raised a ticket in their own scope still work it as staff; the
+  // server decides which this caller is.
+  const viewsAsRequester = ticket?.viewer_is_requester ?? isRaisedByCurrentUser;
+  const showComments =
+    ticket != null &&
+    (viewsAsRequester
+      ? REQUESTER_COMMENT_STATUSES.includes(ticket.status)
+      : currentUser?.role !== 'manager');
 
   // The resolution note is prose and has no column on the ticket, so it is read
   // off the timeline. The hold reason is a column and is read from there.
@@ -131,15 +183,21 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     return ev?.note ?? null;
   }, [ticket, events]);
 
+  // How far it has climbed. Escalation is structural, so only the level is shown.
+  const escalatedTo =
+    ticket?.current_level && ticket.current_level !== 'technician'
+      ? ESCALATION_LEVEL[ticket.current_level]?.full ?? ticket.current_level
+      : null;
+
   // A technician claims an unassigned open ticket in their own (campus, trade)
-  // pairs. They can only reach an out-of-scope ticket as its requester, so
-  // excluding their own leaves exactly the claimable queue.
+  // pairs, their own raised ones included; outside those they are only its
+  // requester.
   const showClaim =
     currentUser?.role === 'technician' &&
     ticket != null &&
     ticket.status === 'open' &&
     ticket.assigned_to == null &&
-    !isRaisedByCurrentUser;
+    !viewsAsRequester;
 
   // "Start work" — the assignee leaving `assigned`. Its own button rather than
   // a trip through the status modal, because the modal insists on a progress
@@ -154,7 +212,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   const showStatusUpdate =
     permissions.canUpdateTicketStatus &&
     ticket != null &&
-    ['assigned', 'in_progress', 'pending'].includes(ticket.status);
+    HELD_STATUSES.includes(ticket.status);
 
   const showAssign =
     permissions.canAssignTicket && ticket?.status === 'open';
@@ -162,7 +220,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   const showReassign =
     permissions.canReassignTicket &&
     ticket != null &&
-    ['assigned', 'in_progress'].includes(ticket.status) &&
+    WORKING_STATUSES.includes(ticket.status) &&
     ticket.assigned_to != null;
 
   const showConfirmResolved =
@@ -200,7 +258,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     if (!ticket) return;
     setStartSubmitting(true);
     try {
-      await updateTicketStatus(ticket.id, 'in_progress', 'Started work');
+      await startWork(ticket.id);
       toast.success('Marked as in progress.');
       invalidate(ticket.id);
     } catch {
@@ -229,7 +287,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="w-[65vw] max-w-[65vw] sm:max-w-[65vw] min-w-[640px] flex flex-col p-0 gap-0"
+        className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:w-[90vw] sm:max-w-[90vw] lg:w-[80vw] lg:max-w-6xl max-h-[95dvh] flex flex-col p-0 gap-0 overflow-hidden"
         aria-describedby={undefined}
       >
         {(!open || ticketId == null) ? null : loading ? (
@@ -238,25 +296,32 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
           <TicketNotFound onClose={onClose} />
         ) : (
           <>
-            {/* ── Dialog header ──────────────────────────────────────────────── */}
-            <DialogHeader className="px-6 py-4 border-b shrink-0">
-              <div className="flex items-center gap-2 flex-wrap pr-8 min-w-0">
-                <DialogTitle asChild>
-                  <span className="font-bold text-sm text-muted-foreground shrink-0">{ticket.ticket_no}</span>
-                </DialogTitle>
-                <span className="text-muted-foreground shrink-0">:</span>
-                <span className="font-semibold text-sm min-w-0 truncate">
+            {/* ── Dialog header: what it is, how it stands, where it is in its life ── */}
+            <DialogHeader className="px-4 sm:px-6 pt-4 pb-4 border-b shrink-0 text-left space-y-3">
+              <div className="pr-8 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">{ticket.ticket_no}</span>
+                  <StatusBadge status={ticket.status} />
+                  {ticket.priority && <PriorityBadge priority={ticket.priority} />}
+                  {escalatedTo && (
+                    <TokenPill token="--status-escalated">Escalated to {escalatedTo}</TokenPill>
+                  )}
+                </div>
+                <DialogTitle className="mt-1.5 text-lg font-semibold leading-snug text-gray-900">
                   {ticket.service_item?.name ?? ticket.description ?? 'Untitled'}
-                </span>
-                <span className="text-muted-foreground shrink-0 mx-0.5">—</span>
-                <StatusBadge status={ticket.status} className="shrink-0" />
-                {ticket.priority && <PriorityBadge priority={ticket.priority} className="shrink-0" />}
+                </DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {ticket.trade?.name && <>{ticket.trade.name} · </>}
+                  {ticket.location?.facility?.name ?? ticket.requester_campus?.name}
+                  {' · '}opened {formatDateTime(ticket.created_at)}
+                </p>
               </div>
+              <TicketProgress status={ticket.status} className="max-w-xl" />
             </DialogHeader>
 
             {/* ── Action toolbar ─────────────────────────────────────────────── */}
             {(showClaim || showStartWork || showStatusUpdate || showAssign || showReassign || showConfirmResolved || showReopen) && (
-              <div className="px-6 py-3 border-b bg-muted/30 shrink-0 flex items-center justify-between gap-2">
+              <div className="px-4 sm:px-6 py-3 border-b bg-muted/30 shrink-0 flex flex-wrap items-center justify-between gap-2">
                 {/* Secondary actions — left */}
                 <div className="flex items-center gap-2 flex-wrap">
                   {showReopen && (
@@ -268,7 +333,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                 </div>
 
                 {/* Primary actions — right, with background colors */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
                   {showClaim && (
                     <Button
                       size="sm"
@@ -320,41 +385,30 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
             )}
 
             {/* ── Scrollable body ────────────────────────────────────────────── */}
-            <div className="flex-1 overflow-auto p-6 min-h-[68vh] max-h-[72vh]">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="flex-1 min-h-0 overflow-auto bg-gray-50/60 p-3 sm:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-5 items-start">
 
-                {/* Left column — 2/3 */}
-                <div className="lg:col-span-2 space-y-5">
-
-                  {/* Description */}
+                {/* Left column: the fault, its files, and what has happened */}
+                <div className="space-y-5 min-w-0">
                   <Card>
-                    <CardContent className="p-5">
-                      <SectionLabel>Description</SectionLabel>
+                    <CardContent className="p-4 sm:p-5">
+                      <SectionLabel>What&apos;s wrong</SectionLabel>
                       {ticket.description ? (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {ticket.description}
-                        </p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
                       ) : (
                         <p className="text-sm text-muted-foreground italic">No description provided.</p>
                       )}
-                    </CardContent>
-                  </Card>
 
-                  {/* Attachments — uploaded by the wizard after the ticket exists.
-                      Absent on most tickets, so the card only appears when there
-                      is something to show. */}
-                  {attachments.length > 0 && (
-                    <Card>
-                      <CardContent className="p-5">
-                        <SectionLabel>Attachments</SectionLabel>
-                        <ul className="grid gap-2 sm:grid-cols-2">
+                      {/* Attachments — uploaded by the wizard after the ticket exists. */}
+                      {attachments.length > 0 && (
+                        <ul className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Attachments">
                           {attachments.map((att) => (
                             <li key={att.id}>
                               <a
                                 href={att.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-3 rounded-md border px-3 py-2 hover:bg-accent/50"
+                                className="flex items-center gap-3 rounded-md border bg-white px-3 py-2 hover:bg-accent/50"
                               >
                                 {att.mime_type.startsWith('image/') ? (
                                   <img
@@ -367,9 +421,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                                   <FileText className="size-5 shrink-0 text-muted-foreground" />
                                 )}
                                 <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-xs font-medium">
-                                    {att.original_name}
-                                  </span>
+                                  <span className="block truncate text-xs font-medium">{att.original_name}</span>
                                   <span className="block text-[10px] text-muted-foreground">
                                     {formatBytes(att.stored_size)}
                                   </span>
@@ -379,24 +431,26 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                             </li>
                           ))}
                         </ul>
-                      </CardContent>
-                    </Card>
-                  )}
+                      )}
+                    </CardContent>
+                  </Card>
 
-                  {/* Activity, and the staff comment thread beneath it.
-                      The raiser gets the Activity trail only: comments are the
-                      staff working log and the server refuses them the thread,
-                      so rendering it would show them an error where the
-                      timeline already tells them what happened. */}
+                  {/* Activity, and the comment thread beneath it. Staff read
+                      and post; the raiser reads it only while the ticket is
+                      pending or resolved, which is when the server serves it. */}
                   <Card>
-                    <CardContent className="p-5">
+                    <CardContent className="p-4 sm:p-5">
                       <SectionLabel>Activity</SectionLabel>
                       <TicketTimeline events={events} loading={timelineLoading} hideHeader />
-                      {!isRaisedByCurrentUser && currentUser?.role !== 'manager' && (
+                      {showComments && (
                         <div className="mt-6 pt-5 border-t">
+                          {viewsAsRequester && (
+                            <SectionLabel>Notes from the maintenance team</SectionLabel>
+                          )}
                           <CommentThread
                             ticket={ticket}
                             hideHeader
+                            readOnly={viewsAsRequester}
                             viewerRole={currentUser?.role ?? undefined}
                             viewerId={currentUser?.id}
                             onCommentAdded={() => invalidate(ticket.id)}
@@ -407,160 +461,119 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                   </Card>
                 </div>
 
-                {/* Right column — 1/3 */}
-                <div className="space-y-5">
+                {/* Right column: what is happening now, then the facts */}
+                <div className="space-y-4 min-w-0">
 
-                  {/* Details */}
-                  <Card>
-                    <CardContent className="p-5 space-y-4">
-                      {ticket.service_item && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Service Request</p>
-                          <div className="border rounded-lg divide-y">
-                            <DetailRow label="Trade" value={ticket.trade?.name ?? ticket.service_item.trade?.name} />
-                            <DetailRow label="Service" value={ticket.service_item.name} />
-                          </div>
-                        </div>
+                  {/* Why the job is stopped. The label is resolved server-side. */}
+                  {ticket.status === 'pending' && ticket.pending_reason_display && (
+                    <Callout tone="--status-pending" icon={<PauseCircle className="h-4 w-4" />} title="On hold">
+                      <p className="font-medium">{ticket.pending_reason_display}</p>
+                      {ticket.pending_reason_note && (
+                        <p className="mt-1 text-gray-700">{ticket.pending_reason_note}</p>
                       )}
-                      <div className="space-y-1.5">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ticket Information</p>
-                        <div className="border rounded-lg divide-y">
-                          <DetailRow label="Campus" value={ticket.requester_campus?.name ?? '—'} />
-                          <DetailRow
-                            label="Raised by"
-                            value={
-                              typeof ticket.raised_by === 'string'
-                                ? ticket.raised_by
-                                : ticket.raised_by.full_name || ticket.raised_by.username
-                            }
-                          />
-                          <DetailRow
-                            label="Assigned to"
-                            value={
-                              ticket.assigned_to
-                                ? ticket.assigned_to.full_name
-                                : <span className="text-muted-foreground italic text-xs">Unassigned</span>
-                            }
-                          />
-                          {ticket.contact_phone && (
-                            <DetailRow
-                              label="Contact"
-                              value={
-                                <a href={`tel:${ticket.contact_phone}`} className="text-primary hover:underline">
-                                  {formatPhoneLocal(ticket.contact_phone)}
-                                </a>
-                              }
-                            />
-                          )}
-                          <DetailRow label="Opened" value={formatDateTime(ticket.created_at)} />
-                          {ticket.resolved_at && (
-                            <DetailRow label="Resolved" value={formatDate(ticket.resolved_at)} />
-                          )}
-                        </div>
-                      </div>
+                    </Callout>
+                  )}
 
-                      {ticket.location && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location Details</p>
-                          <div className="border rounded-lg divide-y">
-                            {ticket.location.facility_type?.name && (
-                              <DetailRow label="Facility type" value={ticket.location.facility_type.name} />
-                            )}
-                            {ticket.location.facility?.name && (
-                              <DetailRow label="Facility" value={ticket.location.facility.name} />
-                            )}
-                            {Object.entries(ticket.location.values ?? {}).map(([k, v]) => (
-                              <DetailRow
-                                key={k}
-                                label={k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                                value={String(v)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  {/* What the technician said when they resolved it. */}
+                  {resolutionNote && (
+                    <Callout tone="--status-resolved" icon={<CheckCheck className="h-4 w-4" />} title="Resolution">
+                      <p className="whitespace-pre-wrap">{resolutionNote}</p>
+                    </Callout>
+                  )}
 
-                  {/* `paused_at` is the server's own marker for a frozen clock —
-                      the same fact the ticket table reads, rather than a second
-                      derivation of it from the status. */}
-                  {ticket.resolution_due_at && (
+                  {/* The requester's rating. Nested on the detail payload only. */}
+                  {ticket.feedback && (
+                    <Callout tone="--status-approval" icon={<Star className="h-4 w-4" />} title="Requester feedback">
+                      <RatingStars rating={ticket.feedback.rating} comment={ticket.feedback.comment} />
+                    </Callout>
+                  )}
+
+                  {/* `paused_at` is the server's own marker for a frozen clock. */}
+                  {ticket.resolution_due_at && !['resolved', 'closed'].includes(ticket.status) && (
                     <Card>
-                      <CardContent className="p-5">
-                        <SectionLabel>SLA</SectionLabel>
+                      <CardContent className="p-4">
+                        <SectionLabel>Time to fix</SectionLabel>
                         <SLACountdown
                           dueDate={ticket.resolution_due_at}
                           createdAt={ticket.created_at}
                           isPaused={!!ticket.paused_at}
                         />
                         <p className="text-xs text-muted-foreground mt-2">
-                          Due: {formatDate(ticket.resolution_due_at)}
+                          Due {formatDateTime(ticket.resolution_due_at)}
                         </p>
                       </CardContent>
                     </Card>
                   )}
 
-                  {/* How far the ticket has climbed. Server-owned: escalation is
-                      structural, not a workflow anyone configures. */}
-                  {ticket.current_level && ticket.current_level !== 'technician' && (
-                    <Card style={{ borderColor: 'var(--status-escalated-border)' }}>
-                      <CardContent className="p-5">
-                        <SectionLabel>Escalation</SectionLabel>
-                        <div className="space-y-1.5 text-sm">
-                          <p>
-                            <span className="text-muted-foreground">Currently with: </span>
-                            <span className="font-semibold" style={{ color: 'var(--status-escalated-text)' }}>
-                              {ROLE_LABELS[ticket.current_level as UserRole] ?? ticket.current_level}
-                            </span>
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
 
-                  {/* Why the job is stopped, read straight off the ticket. The
-                      label is resolved server-side, so no vocabulary lives
-                      here. Amber for a waiting state. */}
-                  {ticket.status === 'pending' && ticket.pending_reason_display && (
-                    <Card style={{ borderColor: 'var(--status-approval-border)' }}>
-                      <CardContent className="p-5">
-                        <SectionLabel>On Hold</SectionLabel>
-                        <p className="text-sm font-medium" style={{ color: 'var(--status-approval-text)' }}>
-                          {ticket.pending_reason_display}
-                        </p>
-                        {ticket.pending_reason_note && (
-                          <p className="mt-1.5 text-sm text-muted-foreground">
-                            {ticket.pending_reason_note}
-                          </p>
+                  <Card>
+                    <CardContent className="p-4 sm:p-5 space-y-4">
+                      {ticket.service_item && (
+                        <DetailGroup title="Service Request">
+                          <DetailRow label="Trade" value={ticket.trade?.name ?? ticket.service_item.trade?.name} />
+                          <DetailRow label="Service" value={ticket.service_item.name} />
+                        </DetailGroup>
+                      )}
+                      <DetailGroup title="Ticket Information">
+                        <DetailRow label="Campus" value={ticket.requester_campus?.name ?? '—'} />
+                        <DetailRow
+                          label="Raised by"
+                          value={
+                            typeof ticket.raised_by === 'string'
+                              ? ticket.raised_by
+                              : ticket.raised_by.full_name || ticket.raised_by.username
+                          }
+                        />
+                        <DetailRow
+                          label="Assigned to"
+                          value={
+                            ticket.assigned_to
+                              ? ticket.assigned_to.full_name
+                              : <span className="text-muted-foreground italic text-xs">Unassigned</span>
+                          }
+                        />
+                        {ticket.contact_phone && (
+                          <DetailRow
+                            label="Contact"
+                            value={
+                              <a href={`tel:${ticket.contact_phone}`} className="text-primary hover:underline">
+                                {formatPhoneLocal(ticket.contact_phone)}
+                              </a>
+                            }
+                          />
                         )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* What the technician said when they resolved it. */}
-                  {resolutionNote && (
-                    <Card style={{ borderColor: 'var(--status-resolved-border, var(--status-resolved))' }}>
-                      <CardContent className="p-5">
-                        <SectionLabel>Resolution</SectionLabel>
-                        <div className="flex items-start gap-2">
-                          <CheckCheck className="h-4 w-4 mt-0.5 shrink-0" style={{ color: 'var(--status-resolved)' }} />
-                          <p className="text-sm whitespace-pre-wrap">{resolutionNote}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* The requester's rating. Nested on the detail payload only —
-                      a list row carries `has_feedback` instead. */}
-                  {ticket.feedback && (
-                    <Card>
-                      <CardContent className="p-5">
-                        <SectionLabel>Requester Feedback</SectionLabel>
-                        <RatingStars rating={ticket.feedback.rating} comment={ticket.feedback.comment} />
-                      </CardContent>
-                    </Card>
-                  )}
+                        <DetailRow label="Opened" value={formatDateTime(ticket.created_at)} />
+                        {ticket.resolution_due_at && (
+                          <DetailRow
+                            label="Fix by"
+                            value={
+                              <>
+                                {formatDateTime(ticket.resolution_due_at)}
+                                {ticket.sla_outcome && (
+                                  <TokenPill
+                                    token={SLA_OUTCOME[ticket.sla_outcome].token}
+                                    className="ml-1.5 align-middle"
+                                  >
+                                    {SLA_OUTCOME[ticket.sla_outcome].label}
+                                  </TokenPill>
+                                )}
+                              </>
+                            }
+                          />
+                        )}
+                        {ticket.resolved_at && (
+                          <DetailRow label="Resolved" value={formatDateTime(ticket.resolved_at)} />
+                        )}
+                      </DetailGroup>
+                      {ticket.location && (
+                        <DetailGroup title="Location Details">
+                          <DetailRow label="Facility type" value={ticket.location.facility_type?.name} />
+                          <DetailRow label="Facility" value={ticket.location.facility?.name} />
+                          <DetailRow label="Where" value={ticket.location.detail} />
+                        </DetailGroup>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             </div>

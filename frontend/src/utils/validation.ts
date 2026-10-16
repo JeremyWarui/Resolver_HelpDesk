@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 // The two forms that validate with zod. Everything else in the app validates
-// against a server contract it already holds — the wizard against TYPE_SPECS,
-// the status modal against VALID_NEXT_STATUS — so there is nothing to restate
+// against a server contract it already holds — the status modal against
+// VALID_NEXT_STATUS — so there is nothing to restate
 // here for them.
 
 /** Only what FacilitySerializer accepts on write. There is no code, status or

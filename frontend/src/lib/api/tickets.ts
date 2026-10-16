@@ -1,4 +1,4 @@
-import apiClient, { type Page } from './client';
+import apiClient, { fetchAll, type Page } from './client';
 import type {
   AssignedUser,
   Ticket,
@@ -156,39 +156,35 @@ export async function addComment(
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
+/** What rating a ticket answers. Rating a resolved ticket closes it. */
+export interface FeedbackResult {
+  rating: number;
+  comment: string;
+  created_at: string;
+  status: Ticket['status'];
+}
+
 export async function addFeedback(
   ticketId: number,
   rating: number,
   comment?: string
-): Promise<Ticket> {
-  const { data } = await apiClient.post<Ticket>(`/tickets/${ticketId}/feedback/`, {
+): Promise<FeedbackResult> {
+  const { data } = await apiClient.post<FeedbackResult>(`/tickets/${ticketId}/feedback/`, {
     rating,
     comment,
   });
   return data;
 }
 
-// ── Timeline (merged logs + comments) ────────────────────────────────────────
+// ── Timeline ─────────────────────────────────────────────────────────────────
 //
-// Fetches TicketLog and TicketComment in parallel and merges them into a unified
-// TicketTimelineEvent[] sorted ascending by created_at.
-//
-// The two legs have different audiences. The log is the trail of what happened
-// to the ticket and its raiser may read it; comments are the staff working log
-// and the raiser is refused. So the comment leg degrades to [] rather than
-// rejecting — under Promise.all a 403 there would take the whole timeline with
-// it, and the requester would be told nothing at all about their own ticket.
+// The ticket's TicketLog rows, oldest first. Comments are not merged in: each
+// one already has its `comment_added` row here, and the comment thread shows
+// the text.
 
 export async function getTicketTimeline(ticketId: number): Promise<TicketTimelineEvent[]> {
-  const [logsRes, commentsRes] = await Promise.all([
-    apiClient
-      .get<Feed<TicketLog> | TicketLog[]>(`/tickets/${ticketId}/logs/`)
-      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as Feed<TicketLog>).results ?? [])),
-    apiClient
-      .get<Feed<TicketComment> | TicketComment[]>(`/tickets/${ticketId}/comments/`)
-      .then((r) => (Array.isArray(r.data) ? r.data : (r.data as Feed<TicketComment>).results ?? []))
-      .catch(() => [] as TicketComment[]),
-  ]);
+  // Every page: the trail is a ticket's whole history, and a busy one runs past the first.
+  const logsRes = await fetchAll<TicketLog>(`/tickets/${ticketId}/logs/`);
 
   const logEvents: TicketTimelineEvent[] = (logsRes as TicketLog[]).map((log) => ({
     id: `log-${log.id}`,
@@ -206,24 +202,12 @@ export async function getTicketTimeline(ticketId: number): Promise<TicketTimelin
     created_at: log.created_at,
   }));
 
-  const commentEvents: TicketTimelineEvent[] = (commentsRes as TicketComment[]).map((c) => ({
-    id: `comment-${c.id}`,
-    event_type: 'comment' as TicketTimelineEvent['event_type'],
-    actor: c.author,
-    note: c.body,
-    created_at: c.created_at,
-  }));
-
-  return [...logEvents, ...commentEvents].sort(
+  return logEvents.sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
 }
 
 // ── Convenience status transitions ───────────────────────────────────────────
-
-export async function closeTicket(id: number): Promise<Ticket> {
-  return updateTicketStatus(id, 'closed', '');
-}
 
 // Reopen restarts the lifecycle at 'open' (unassigned, fresh SLA clock) —
 // mirrors the backend ALLOWED map (resolved/closed → open).
@@ -232,6 +216,11 @@ export async function reopenTicket(id: number): Promise<Ticket> {
 }
 
 // Technician self-assigns an unassigned open ticket in their section.
+/** The assignee starting a job: assigned to in progress, with a short note. */
+export async function startWork(id: number): Promise<Ticket> {
+  return updateTicketStatus(id, 'in_progress', 'Started work');
+}
+
 export async function claimTicket(id: number): Promise<Ticket> {
   const { data } = await apiClient.post<Ticket>(`/tickets/${id}/claim/`);
   return data;

@@ -1,38 +1,97 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login, USERS } from './helpers';
 
-// The manager tickets page renders, and its Overdue pill narrows the list
-// server-side rather than filtering the page the client happens to hold.
-test('the manager tickets page renders and has the Overdue filter', async ({ page }) => {
+// The manager reads the whole organisation: the admin's sections, read-only,
+// without the configuration screens. The ticket table lists every campus;
+// no ticket opens.
+
+function ticketDetailRequests(page: Page): string[] {
+  const seen: string[] = [];
+  page.on('request', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (/\/api\/v1\/tickets\/\d+\//.test(path)) seen.push(`${r.method()} ${path}`);
+  });
+  return seen;
+}
+
+test('the manager has the admin sections bar the configuration ones', async ({ page }) => {
+  await login(page, USERS.manager);
+  const nav = page.getByRole('navigation', { name: 'Sections' });
+
+  await expect(nav.getByRole('link')).toHaveText([
+    'Dashboard', 'Tickets', 'Reports', 'Technicians', 'Facilities', 'Campuses', 'Feedback',
+    // An unread count rides after the label.
+    /^Notifications/,
+  ]);
+});
+
+test('the manager lists every campus’s tickets but cannot open one', async ({ page }) => {
+  const opened = ticketDetailRequests(page);
   await login(page, USERS.manager);
   await page.getByRole('link', { name: 'Tickets', exact: true }).click();
 
-  await expect(page.getByText('Every campus')).toBeVisible();
+  const rows = page.locator('tbody tr');
+  await expect(rows.first()).toBeVisible({ timeout: 20_000 });
 
-  // Count once the unfiltered list has actually landed: a row rendering is not
-  // the same as the page being rendered.
-  const rows = page.getByRole('row');
-  await expect(rows.first()).toBeVisible();
-  let seen = -1;
-  await expect(async () => {
-    const n = await rows.count();
-    const settled = n === seen;
-    seen = n;
-    expect(settled, 'the unfiltered list is still rendering').toBe(true);
-  }).toPass({ timeout: 15_000 });
-  const allCount = seen;
+  // The list the table reads holds tickets from every campus. Asked per campus,
+  // because the first page is newest-first and other specs keep adding Nairobi
+  // tickets to it.
+  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const headers = { Authorization: `Bearer ${token}` };
+  const api = 'http://localhost:8000/api/v1';
+  const campusList = await (await page.request.get(`${api}/campuses/`, { headers })).json();
+  const campuses: { id: number; code: string }[] = campusList.results ?? campusList;
+  expect(campuses.length).toBe(5);
+  for (const campus of campuses) {
+    const res = await page.request.get(`${api}/tickets/?campus=${campus.id}&page_size=1`, { headers });
+    expect((await res.json()).count, `the manager lists ${campus.code} tickets`).toBeGreaterThan(0);
+  }
 
-  const overdue = page.getByRole('button', { name: 'Overdue' });
-  await expect(overdue).toBeVisible();
+  await rows.first().click();
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(opened, 'no ticket was fetched').toEqual([]);
+});
 
-  const filtered = page.waitForResponse(
-    (r) => r.url().includes('overdue=1') && r.ok(),
-  );
-  await overdue.click();
-  await filtered;
+test('the manager reads campuses without the controls to change them', async ({ page }) => {
+  await login(page, USERS.manager);
+  await page.getByRole('link', { name: 'Campuses', exact: true }).click();
 
-  // Narrows, never widens.
-  await expect(async () => {
-    expect(await page.getByRole('row').count()).toBeLessThanOrEqual(allCount);
-  }).toPass({ timeout: 15_000 });
+  await expect(page.locator('main').getByRole('region')).toHaveCount(5, { timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Add Campus' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^(Edit|Delete) / })).toHaveCount(0);
+});
+
+test('the manager reports cover response time, campuses, trades and technicians', async ({ page }) => {
+  await login(page, USERS.manager);
+  await page.getByRole('link', { name: 'Reports', exact: true }).click();
+  await expect(page.locator('header h1')).toHaveText('Reports');
+
+  await expect(page.getByText('Avg Response')).toBeVisible();
+  await expect(page.getByText('Avg Resolution')).toBeVisible();
+
+  // The tables mount as they scroll into view.
+  await page.locator('main').first().hover();
+  for (const title of ['Campus Performance', 'Technician Performance', 'Trade Performance']) {
+    await expect(async () => {
+      await page.mouse.wheel(0, 600);
+      await expect(page.getByText(title)).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 20_000 });
+  }
+});
+
+test('the server refuses the manager a ticket that is not their own', async ({ page }) => {
+  await login(page, USERS.manager);
+  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const list = await page.request.get('http://localhost:8000/api/v1/tickets/', { headers });
+  expect(list.status()).toBe(200);
+  const first = (await list.json()).results[0];
+  expect(first, 'the list is not empty').toBeTruthy();
+
+  const detail = await page.request.get(`http://localhost:8000/api/v1/tickets/${first.id}/`, {
+    headers,
+  });
+  expect(detail.status()).toBe(403);
 });

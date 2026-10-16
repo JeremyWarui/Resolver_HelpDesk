@@ -9,15 +9,13 @@ const TechniciansPage = lazy(() => import('@/features/shared/Technicians/Technic
 const FacilitiesPage = lazy(() => import('@/features/shared/Facilities/FacilitiesPage'));
 const RoleReportsPage = lazy(() => import('@/features/shared/RoleReportsPage'));
 const FeedbackTab = lazy(() => import('@/features/shared/FeedbackTab'));
-const SLATrackingView = lazy(() =>
-  import('@/features/shared/SLATrackingView').then((m) => ({ default: m.SLATrackingView })),
-);
+const NotificationsPage = lazy(() => import('@/features/shared/NotificationsPage'));
 
 /**
  * The layout both supervising roles render inside.
  *
  * An HOS runs one campus's technicians and an HOD oversees the HOS, but they
- * oversee the same work through the same nine sections — `ROLE_NAV.hos` and
+ * oversee the same work through the same sections — `ROLE_NAV.hos` and
  * `ROLE_NAV.hod` list the same ids. The difference between them is scope, and
  * scope is decided server-side from the JWT's role claim, so every page here
  * returns each one their own rows without being told which role asked.
@@ -38,7 +36,7 @@ export default function SupervisorLayout({ role }: { role: 'hos' | 'hod' }) {
         facilities:  <FacilitiesPage manage={false} />,
         reports:     <RoleReportsPage role={role} />,
         feedback:    <FeedbackTab role={role} />,
-        sla:         <SLATrackingView onTicketSelect={onTicketSelect} />,
+        notifications: <NotificationsPage onTicketSelect={onTicketSelect} />,
       })}
     />
   );

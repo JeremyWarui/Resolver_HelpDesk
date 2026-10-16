@@ -21,6 +21,8 @@ interface CommentThreadProps {
   /** The viewer's role and id, for the assigned-technician gate. */
   viewerRole?: string;
   viewerId?: number;
+  /** The requester's view: the comments without the box to post one. */
+  readOnly?: boolean;
 }
 
 function initials(name?: string) {
@@ -29,9 +31,9 @@ function initials(name?: string) {
 }
 
 /**
- * The staff working log on one ticket. The requester never reaches this
- * component; the gate below mirrors the server's, so a disabled input says why
- * rather than posting into a 403.
+ * The staff working log on one ticket. The requester reads it `readOnly`
+ * while the ticket is pending or resolved. The posting gate mirrors the
+ * server's, so a disabled input says why rather than posting into a 403.
  */
 function CommentThread({
   ticket,
@@ -39,6 +41,7 @@ function CommentThread({
   onCommentAdded,
   viewerRole,
   viewerId,
+  readOnly = false,
 }: CommentThreadProps) {
   const queryClient = useQueryClient();
   const key = ['ticket-comments', ticket.id];
@@ -95,7 +98,7 @@ function CommentThread({
           </div>
         ) : (
           comments.map((comment) => (
-            <div key={comment.id} className="flex gap-3 p-4 rounded-lg border bg-muted/40">
+            <div key={comment.id} className="flex gap-3 p-3 sm:p-4 rounded-lg border bg-muted/40">
               <Avatar className="h-8 w-8 mt-0.5 shrink-0">
                 <AvatarFallback className="text-xs">
                   {initials(comment.author.full_name)}
@@ -115,7 +118,7 @@ function CommentThread({
         )}
       </div>
 
-      {disabledHint ? (
+      {readOnly ? null : disabledHint ? (
         <p className="pt-3 border-t text-sm text-muted-foreground italic text-center py-2">
           {disabledHint}
         </p>

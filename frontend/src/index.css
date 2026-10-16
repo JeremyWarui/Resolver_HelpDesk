@@ -110,6 +110,14 @@
   --toast-error-text:     oklch(0.45 0.24 27);
   --toast-error-border:   oklch(0.50 0.24 27 / 0.4);
 
+  /* KSG brand: the sidebar and the auth panel only. White text holds 5.70:1
+     at the lightest brown. The green is an accent, never behind white text. */
+  --ksg-brown: #7F622C;
+  --ksg-brown-deep: #6E5224;
+  --ksg-brown-mid: #563F1B;
+  --ksg-brown-night: #3E2C12;
+  --ksg-green: #CBD300;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -245,6 +253,11 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-ksg-brown: var(--ksg-brown);
+  --color-ksg-brown-deep: var(--ksg-brown-deep);
+  --color-ksg-brown-mid: var(--ksg-brown-mid);
+  --color-ksg-brown-night: var(--ksg-brown-night);
+  --color-ksg-green: var(--ksg-green);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

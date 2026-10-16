@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { rovingKeyDown } from '@/utils/roving';
+
+const STAR_KEYS = ['1', '2', '3', '4', '5'] as const;
 
 export interface RatingSubmitPayload {
   rating: number;       // 1–5
@@ -54,13 +57,15 @@ export function RatingStars({
 interface RatingWidgetProps {
   onSubmit: (payload: RatingSubmitPayload) => Promise<void> | void;
   submitting?: boolean;
+  /** Stars already chosen, when the requester picked them before the dialog opened. */
+  initialRating?: number;
   className?: string;
 }
 
 /** Whether a ticket may be rated at all is the caller's decision — this only
  *  ever mounts inside `RatingModal`, which the "Rate & close" action opens. */
-export function RatingWidget({ onSubmit, submitting = false, className }: RatingWidgetProps) {
-  const [rating, setRating] = useState(0);
+export function RatingWidget({ onSubmit, submitting = false, initialRating = 0, className }: RatingWidgetProps) {
+  const [rating, setRating] = useState(initialRating);
   const [hovered, setHovered] = useState(0);
   const [comment, setComment] = useState('');
 
@@ -70,18 +75,31 @@ export function RatingWidget({ onSubmit, submitting = false, className }: Rating
     <div className={cn('space-y-5', className)}>
       {/* Stars */}
       <div className="space-y-2">
-        <Label>How satisfied are you with the resolution?</Label>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => {
+        <Label id="rating-stars-label">How satisfied are you with the resolution?</Label>
+        <div className="flex gap-1" role="radiogroup" aria-labelledby="rating-stars-label">
+          {STAR_KEYS.map((key) => {
+            const n = Number(key);
             const filled = n <= (hovered || rating);
+            const checked = rating === n;
             return (
               <button
                 key={n}
                 type="button"
+                role="radio"
+                aria-checked={checked}
+                // With nothing chosen the first star takes focus; after that the chosen one.
+                tabIndex={checked || (rating === 0 && n === 1) ? 0 : -1}
                 onClick={() => setRating(n)}
+                onKeyDown={(e) => {
+                  // From nothing chosen, Right lands on one star and Left on five:
+                  // start just past the end the key moves away from.
+                  const back = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+                  const from = rating ? String(rating) : back ? '1' : '5';
+                  rovingKeyDown(e, STAR_KEYS, from, (k) => setRating(Number(k)));
+                }}
                 onMouseEnter={() => setHovered(n)}
                 onMouseLeave={() => setHovered(0)}
-                className="p-0.5 focus:outline-none"
+                className="p-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500"
                 aria-label={`${n} star${n > 1 ? 's' : ''}`}
               >
                 <Star
@@ -101,8 +119,11 @@ export function RatingWidget({ onSubmit, submitting = false, className }: Rating
 
       {/* Comment */}
       <div className="space-y-2">
-        <Label>Additional feedback <span className="text-muted-foreground">(optional)</span></Label>
+        <Label htmlFor="rating-comment">
+          Additional feedback <span className="text-muted-foreground">(optional)</span>
+        </Label>
         <Textarea
+          id="rating-comment"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="Tell us more about your experience…"

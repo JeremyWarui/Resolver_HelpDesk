@@ -30,6 +30,8 @@ import { updateTicketStatus } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
+import { noteAudience } from '@/constants/notifications';
+import { useRole } from '@/lib/auth/permissions';
 
 interface Props {
   ticket: Ticket;
@@ -41,6 +43,7 @@ interface Props {
 }
 
 export function ResumeWorkModal({ ticket, mode, open, onClose, onDone }: Props) {
+  const role = useRole();
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -71,10 +74,8 @@ export function ResumeWorkModal({ ticket, mode, open, onClose, onDone }: Props) 
         await updateTicketStatus(ticket.id, 'in_progress', note.trim());
         toast.success(`${ticket.ticket_no} resumed`);
       } else {
-        // Still held, new cause. `pending → pending` is not a legal transition,
-        // so this passes through in_progress — one hold ends and another
-        // begins, which is what actually happened.
-        await updateTicketStatus(ticket.id, 'in_progress', 'Hold reason updated');
+        // Still held, new cause. The server ends one hold and begins another,
+        // and sends one message about it.
         await updateTicketStatus(ticket.id, 'pending', '', reason, note.trim());
         toast.success(`${ticket.ticket_no} — reason updated`);
       }
@@ -163,6 +164,8 @@ export function ResumeWorkModal({ ticket, mode, open, onClose, onDone }: Props) 
               rows={3}
               disabled={submitting}
             />
+            {/* Resuming and changing the reason both reach the requester and the HOS. */}
+            <p className="text-xs text-muted-foreground">{noteAudience(true, role)}</p>
           </div>
         </div>
 

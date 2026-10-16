@@ -9,22 +9,21 @@ import {
 import { CHART_COLORS as COLORS } from '@/constants/colors';
 import { PieTooltip } from '@/components/shared/data/ChartTooltips';
 
-
-
-
-
 interface AppPieChartProps {
   data: { name: string; value: number }[];
   height?: number;
-  innerRadius?: number;
-  outerRadius?: number;
+  /** Pixels, or a share of the space left by the legend, e.g. '55%'. */
+  innerRadius?: number | string;
+  outerRadius?: number | string;
 }
 
+/** A share-of-total donut with its legend underneath, so a narrow card
+ *  never puts the legend over the ring. */
 export function AppPieChart({
   data,
   height = 250,
-  innerRadius = 50,
-  outerRadius = 80,
+  innerRadius = '44%',
+  outerRadius = '62%',
 }: AppPieChartProps) {
   return (
     <div style={{ height }} className="w-full">
@@ -33,7 +32,7 @@ export function AppPieChart({
           <Pie
             data={data}
             cx="50%"
-            cy="50%"
+            cy="45%"
             innerRadius={innerRadius}
             outerRadius={outerRadius}
             paddingAngle={5}
@@ -48,9 +47,9 @@ export function AppPieChart({
             ))}
           </Pie>
           <Legend
-            layout="vertical"
-            verticalAlign="middle"
-            align="right"
+            layout="horizontal"
+            verticalAlign="bottom"
+            align="center"
             wrapperStyle={{ fontSize: '12px' }}
             formatter={(value) => <span style={{ fontSize: '10px' }}>{value}</span>}
           />

@@ -16,6 +16,7 @@ export const createStatusFilter = (
   value: statusFilter, // Add value for controlled component
   options: [
     { label: "All Statuses", value: "all" },
+    { label: "Active", value: "active" },
     ...allStatuses.map((status) => ({
       label: status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' '),
       value: status,

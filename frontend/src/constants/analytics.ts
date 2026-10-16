@@ -44,6 +44,17 @@ const ROLE_DIMENSIONS: Record<UserRole, Dimension[]> = {
 export const canGroupBy = (role: UserRole, dimension: Dimension) =>
   ROLE_DIMENSIONS[role]?.includes(dimension) ?? false;
 
+/** The report files each role may download. Mirrors `XLSX_ROLES` and
+ *  `PDF_ROLES` in `analytics/export.py`. */
+export const REPORT_DOWNLOADS: Record<UserRole, ('xlsx' | 'pdf')[]> = {
+  admin: ['xlsx'],
+  manager: ['xlsx', 'pdf'],
+  hod: ['xlsx', 'pdf'],
+  hos: ['xlsx', 'pdf'],
+  technician: ['xlsx', 'pdf'],
+  user: [],
+};
+
 /** What each dimension is called in a heading. */
 export const DIMENSION_LABELS = {
   trade: 'Trade',
@@ -63,6 +74,17 @@ export const FIGURES: Record<FigureKey, { label: string; render: (row: Figures) 
   open: { label: 'Open', render: (r) => String(r.open) },
   settled: { label: 'Settled', render: (r) => String(r.settled) },
   escalated: { label: 'Escalated', render: (r) => String(r.escalated) },
+  escalated_hos: { label: 'At HOS', render: (r) => String(r.escalated_hos) },
+  escalated_hod: { label: 'At HOD', render: (r) => String(r.escalated_hod) },
+  closed: { label: 'Closed', render: (r) => String(r.closed) },
+  completion_pct: {
+    label: 'Completion',
+    render: (r) => (r.completion_pct == null ? '—' : `${r.completion_pct}%`),
+  },
+  rated_pct: {
+    label: 'Rated',
+    render: (r) => (r.rated_pct == null ? '—' : `${r.rated_pct}%`),
+  },
   missed: { label: 'Missed', render: (r) => String(r.missed) },
   resolution_sla_pct: {
     label: 'Resolution SLA',

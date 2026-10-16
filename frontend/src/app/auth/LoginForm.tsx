@@ -60,10 +60,7 @@ export function LoginForm() {
 
       toast.success('Welcome back!');
 
-      let redirectPath = (result.role && ROLE_BASE[result.role as keyof typeof ROLE_BASE]) ?? '/user';
-      if (result.role === 'technician' && window.innerWidth < 640) {
-        redirectPath = '/tech/mobile';
-      }
+      const redirectPath = (result.role && ROLE_BASE[result.role as keyof typeof ROLE_BASE]) ?? '/user';
       // A full load, not a client navigation: the dashboard reads the session
       // the store hydrates at module load, and the axios interceptor picks up
       // the new token on the way.
@@ -76,14 +73,13 @@ export function LoginForm() {
 
   return (
     <AuthShell
-      accent="blue"
       heading="Resolver"
       blurb="A maintenance helpdesk for the Kenya School of Government — every request tracked, assigned and closed on time."
     >
       <Card className="w-full shadow-xl border-0">
         <CardHeader className="space-y-4 pb-8">
           <div className="flex justify-center">
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
+            <div className="w-14 h-14 bg-ksg-brown rounded-xl flex items-center justify-center shadow-lg">
               <Shield className="w-7 h-7 text-white" />
             </div>
           </div>
@@ -152,7 +148,7 @@ export function LoginForm() {
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg"
+                className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
                 disabled={isLoading}
               >
                 {isLoading ? 'Signing in...' : 'Sign In'}
@@ -164,7 +160,7 @@ export function LoginForm() {
             <button
               type="button"
               onClick={() => toast.info('Contact your administrator to reset your password.')}
-              className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors"
+              className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
             >
               Forgot your password?
             </button>
@@ -177,7 +173,7 @@ export function LoginForm() {
                 <button
                   type="button"
                   onClick={() => navigate('/register')}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors"
+                  className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
                 >
                   Create account
                 </button>

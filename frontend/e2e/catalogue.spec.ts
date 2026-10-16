@@ -30,7 +30,8 @@ test('catalogue CRUD: trade, service item, edit, delete', async ({ page }) => {
   await tradeDialog.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(tradeDialog).toBeHidden();
 
-  const tradeCard = page.locator('div.border.rounded-lg', { hasText: tradeName });
+  // Each trade is a region named after it, and every icon button says what it acts on.
+  const tradeCard = page.getByRole('region', { name: tradeName, exact: true });
   await expect(tradeCard.getByRole('heading', { name: tradeName })).toBeVisible();
 
   // ── Add a service item under it ───────────────────────────────────────────
@@ -43,27 +44,26 @@ test('catalogue CRUD: trade, service item, edit, delete', async ({ page }) => {
   await expect(tradeCard.getByText(itemName)).toBeVisible();
 
   // ── Rename the trade ──────────────────────────────────────────────────────
-  await tradeCard.getByRole('button').first().click(); // pencil
+  await tradeCard.getByRole('button', { name: `Edit ${tradeName}`, exact: true }).click();
   const editDialog = page.getByRole('dialog');
   await expect(editDialog.getByText('Edit Trade')).toBeVisible();
   await editDialog.getByRole('textbox', { name: 'Trade Name *' }).fill(tradeNameEdited);
   await editDialog.getByRole('button', { name: 'Update' }).click();
   await expect(editDialog).toBeHidden();
 
-  const editedCard = page.locator('div.border.rounded-lg', { hasText: tradeNameEdited });
+  const editedCard = page.getByRole('region', { name: tradeNameEdited, exact: true });
   await expect(editedCard.getByRole('heading', { name: tradeNameEdited })).toBeVisible();
 
   // ── Delete the item, then the trade (cleanup) ─────────────────────────────
-  const itemRow = editedCard.locator('div.rounded-md', { hasText: itemName });
-  await itemRow.getByRole('button').nth(1).click(); // trash
+  await editedCard.getByRole('button', { name: `Delete ${itemName}`, exact: true }).click();
   const itemConfirm = page.getByRole('alertdialog');
   await expect(itemConfirm.getByText('Delete service item?')).toBeVisible();
   await itemConfirm.getByRole('button', { name: 'Delete' }).click();
   await expect(editedCard.getByText(itemName)).toHaveCount(0);
 
-  await editedCard.getByRole('button').nth(1).click(); // trash
+  await editedCard.getByRole('button', { name: `Delete ${tradeNameEdited}`, exact: true }).click();
   const tradeConfirm = page.getByRole('alertdialog');
   await expect(tradeConfirm.getByText('Delete trade?')).toBeVisible();
   await tradeConfirm.getByRole('button', { name: 'Delete' }).click();
-  await expect(page.locator('div.border.rounded-lg', { hasText: tradeNameEdited })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: tradeNameEdited, exact: true })).toHaveCount(0);
 });

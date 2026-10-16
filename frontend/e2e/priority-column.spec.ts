@@ -39,7 +39,7 @@ test('the technician sees Priority by default — they work by it', async ({ pag
   await page.setViewportSize({ width: 1600, height: 1000 });
   await login(page, USERS.technician);
 
-  await page.getByRole('link', { name: 'Assigned Tickets' }).click();
+  await page.getByRole('tab', { name: 'All My Jobs' }).click();
   await expect(page).toHaveURL(/\/tech\/assigned$/);
 
   await expect(headers(page).filter({ hasText: PRIORITY })).toHaveCount(1);

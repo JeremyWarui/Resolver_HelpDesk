@@ -23,6 +23,8 @@ import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket } from '@/types';
 import { VALID_NEXT_STATUS } from '@/constants/tickets';
+import { noteAudience } from '@/constants/notifications';
+import { useRole } from '@/lib/auth/permissions';
 
 
 
@@ -41,6 +43,7 @@ interface StatusUpdateModalProps {
 }
 
 export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUpdateModalProps) {
+  const role = useRole();
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [note, setNote] = useState('');
   const [pendingReason, setPendingReason] = useState('');
@@ -170,6 +173,12 @@ export function StatusUpdateModal({ ticket, open, onClose, onSuccess }: StatusUp
               rows={5}
               disabled={submitting}
             />
+            <p className="text-xs text-muted-foreground">
+              {noteAudience(
+                selectedStatus === 'pending' || selectedStatus === 'resolved' || ticket.status === 'pending',
+                role,
+              )}
+            </p>
           </div>
 
           {/* Pending reason — required only when moving to pending */}

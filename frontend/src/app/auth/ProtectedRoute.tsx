@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { ROLE_BASE } from '@/constants/roles';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -50,3 +51,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   return <>{children}</>;
 };
+
+/** `/`, which is also the installed app's start page: the signed-in user's own
+ *  dashboard, or the login screen. */
+export function HomeRedirect() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.user?.role);
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <Navigate to={(role && ROLE_BASE[role]) || '/user'} replace />;
+}

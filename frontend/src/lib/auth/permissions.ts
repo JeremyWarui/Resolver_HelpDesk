@@ -49,7 +49,7 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
     canReopenTicket: false,
   },
 
-  // Oversight is read-only (REVIEW.md §4).
+  // The manager reads figures only and acts on no ticket.
   manager: NONE,
 
   admin: {

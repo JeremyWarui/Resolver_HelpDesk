@@ -18,10 +18,11 @@ export interface PermissionMap {
 
 export type TicketTableVariant =
   | 'queue'       // HOS/HOD/Technician — full columns, bulk actions, filter bar
-  | 'sla'         // SLA tracking — replaces date cols with countdown bar
   | 'admin'       // Admin view — all columns including internal fields
   | 'my-tickets'  // User's own ticket history — mid-density
-  | 'pending';    // Work on hold — why, for how long, and who to ask
+  | 'pending'     // Work on hold — why, for how long, and who to ask
+  | 'my-jobs'     // A technician's own jobs — when each is due, never who has it
+  | 'section';    // A technician's trades at their campus — who has each, and when it is due
 
 export interface FilterPill {
   key: string;
@@ -31,6 +32,23 @@ export interface FilterPill {
            | 'open' | 'assigned' | 'in_progress' | 'pending' | 'resolved' | 'closed';
 }
 
+/** Mirrors `SystemFeedback.CATEGORIES`. */
+export type SystemFeedbackCategory = 'problem' | 'idea' | 'praise' | 'other';
+
+/** Mirrors SystemFeedbackSerializer. The author fields are the admin's read. */
+export interface SystemFeedbackEntry {
+  id: number;
+  category: SystemFeedbackCategory;
+  message: string;
+  page: string;
+  reviewed: boolean;
+  created_at: string;
+  author_name: string;
+  author_email: string | null;
+  author_role: string;
+  author_campus: string | null;
+}
+
 /** Mirrors `Notification.EVENT_TYPES`. */
 export type NotificationEventType =
   | 'ticket_created'
@@ -38,8 +56,7 @@ export type NotificationEventType =
   | 'ticket_status_changed'
   | 'comment_added'
   | 'ticket_resolved'
-  | 'ticket_escalated'
-  | 'sla_breach';
+  | 'ticket_escalated';
 
 export interface AppNotification {
   id: number;
@@ -47,6 +64,11 @@ export interface AppNotification {
   title: string;
   body: string;
   ticket_id: number | null;
+  /** Who acted; null for a message nobody sent, such as an escalation. */
+  actor_name: string | null;
+  /** What they wrote: a handover, progress, hold or resolution note, or a
+   *  comment. Empty when they wrote nothing. */
+  note: string;
   read: boolean;
   created_at: string;
 }

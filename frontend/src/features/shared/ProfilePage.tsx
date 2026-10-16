@@ -1,71 +1,76 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table';
-import { ROLE_LABELS } from '@/constants/roles';
+import { Card } from '@/components/ui/card';
+import { RoleLayout } from '@/components/layout/RoleLayout';
+import { ROLE_BADGE_STYLES, ROLE_LABELS } from '@/constants/roles';
+import { cn } from '@/lib/utils';
 
-/** The signed-in account, read-only. Two campuses: where they are based, and
- *  what their role covers. */
+/** The signed-in account, read-only, inside the same shell as every other page.
+ *  Two campuses: where they are based, and what their role covers. */
 export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
-  const navigate = useNavigate();
-
   if (!user) return null;
 
   const fullName = `${user.first_name} ${user.last_name}`.trim() || user.username;
+  const initials = (user.first_name?.[0] ?? '') + (user.last_name?.[0] ?? '') || user.username[0];
 
-  const rows: { label: string; value: string }[] = [
-    { label: 'First Name', value: user.first_name || '—' },
-    { label: 'Last Name', value: user.last_name || '—' },
-    { label: 'Username', value: user.username },
+  const details: { label: string; value: string }[] = [
+    { label: 'First name', value: user.first_name || '—' },
+    { label: 'Last name', value: user.last_name || '—' },
     { label: 'Email', value: user.email },
+    { label: 'Username', value: user.username },
     { label: 'Role', value: ROLE_LABELS[user.role] },
+    { label: 'Based at', value: user.home_campus_name ?? '—' },
   ];
-  if (user.home_campus_name) {
-    rows.push({ label: 'Campus', value: user.home_campus_name });
-  }
   if (user.primary_campus_name) {
-    rows.push({ label: 'Covers', value: user.primary_campus_name });
+    details.push({ label: 'Role covers', value: user.primary_campus_name });
   }
 
   return (
-    <div className="flex flex-col h-full bg-muted/30">
-      <div className="px-6 py-4 border-b bg-background shrink-0 flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-lg font-semibold">My Profile</h1>
-          <p className="text-sm text-muted-foreground">Your account details.</p>
+    <RoleLayout title="My Profile" currentUser={user}>
+      <div className="p-4 sm:p-6 bg-gray-50 min-h-full">
+        <div className="max-w-3xl space-y-4">
+          <Card className="p-5 sm:p-6 flex items-center gap-4 sm:gap-5">
+            <div
+              aria-hidden
+              className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-lg sm:text-xl font-semibold text-gray-700 uppercase"
+            >
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">{fullName}</h2>
+              <p className="text-sm text-gray-500 truncate">{user.email}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', ROLE_BADGE_STYLES[user.role])}>
+                  {ROLE_LABELS[user.role]}
+                </span>
+                {user.home_campus_name && (
+                  <span className="text-xs text-gray-500">{user.home_campus_name} campus</span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <div className="px-5 sm:px-6 pt-5 pb-3">
+              <p className="text-sm font-semibold text-gray-700">Account details</p>
+            </div>
+            <dl className="grid sm:grid-cols-2 border-t border-gray-100">
+              {details.map(({ label, value }) => (
+                <div key={label} className="px-5 sm:px-6 py-3.5 border-b border-gray-100 sm:odd:border-r">
+                  <dt className="text-xs text-gray-500">{label}</dt>
+                  <dd className="mt-0.5 text-sm font-medium text-gray-900 break-words">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="flex items-start gap-2 px-5 sm:px-6 py-4 text-xs text-gray-500">
+              <Info className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+              Your name and username come from your email address. To change any of them, or your
+              role or campus, ask an administrator.
+            </p>
+          </Card>
         </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto p-6">
-        <Card className="max-w-lg overflow-hidden">
-          <CardHeader className="border-b bg-muted/30 py-4">
-            <CardTitle className="text-base">{fullName}</CardTitle>
-            <p className="text-sm text-muted-foreground">@{user.username}</p>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.label} className="hover:bg-transparent">
-                    <TableCell className="w-40 whitespace-normal py-3 text-xs font-medium text-muted-foreground">
-                      {row.label}
-                    </TableCell>
-                    <TableCell className="whitespace-normal py-3 text-sm font-medium text-foreground">
-                      {row.value}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    </RoleLayout>
   );
 }
