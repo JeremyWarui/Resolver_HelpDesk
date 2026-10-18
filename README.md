@@ -16,8 +16,7 @@ Resolver_HelpDesk/
 ├── backend/     Django 6.0 + DRF 3.16 + PostgreSQL
 ├── frontend/    React + TypeScript + Vite
 ├── docs/        Briefing and the reports styling guide
-├── CLAUDE.md    How the system is built
-├── REVIEW.md    What the system must do
+├── CLAUDE.md    What the system does and how it is built
 ├── README.md
 └── CHANGELOG.md
 ```
@@ -38,21 +37,19 @@ enterprise Service Desk platform. Build artefacts and dependency trees
 
 ## Status
 
-**Backend reviewed and trimmed against `REVIEW.md`; frontend not yet.** The
-backend suite is green (186 test functions) and the seed runs end to end. The
-frontend still calls the pre-trim contract in several places and is the next
-piece of work.
-
-`REVIEW.md` is what the system is required to do. `CLAUDE.md` is the working
-guide and the architecture reference — start there.
+Backend and frontend run end to end: the backend suite, the type check, the
+build and the Playwright suite (desktop and phone width) are green, and the
+seed fills a demo database. `CLAUDE.md` is the working guide — start there.
 
 What this is, in one paragraph: one department (Administration), one section
 type (Maintenance), five trades, five campuses. Roles are one per user, with no
 cover and no switching. Technician scope is two-dimensional — campus **and**
-trade — and enforced pairwise. Every ticket carries a location chosen from six
-facility types, and a priority the HOS sets at assignment. Escalation is
-structural: technician → HOS → HOD. Notifications are polled; there are no
-WebSockets, no web push and no per-campus workflow configuration.
+trade — and enforced pairwise. Every ticket names a registered facility and
+where in it, and carries a priority the HOS sets at assignment. Escalation is
+structural: technician → HOS → HOD. The manager reads organisation-wide
+figures and opens no ticket. Notifications are polled; there are no
+WebSockets, no web push and no per-campus workflow configuration. The web app
+installs to a phone's home screen from the browser.
 
 ## Getting started
 
@@ -70,7 +67,7 @@ pytest -q --no-cov
 ```
 
 `seed` is idempotent and refuses to run without `SEED_DEFAULT_PASSWORD`. It
-creates 5 campuses, 5 trades, 28 service items, 56 facilities, 41 users and 168
+creates 5 campuses, 5 trades, 28 service items, 56 facilities, 41 users and about 440
 demo tickets spread over the previous 90 days.
 
 Sign-in is by email address, and a seeded person's address is their name —

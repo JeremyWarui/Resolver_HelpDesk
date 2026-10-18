@@ -37,3 +37,6 @@ playwright-report/
 
 # Emails written by the file mail backend
 backend/sent_mail/
+
+# Editor settings, one per developer
+pyrightconfig.json

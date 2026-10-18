@@ -8,8 +8,7 @@ reports.
 entirely by env vars) · JWT · pytest
 
 Notifications are polled over REST — there are no WebSockets, no Channels and
-no web push. `../CLAUDE.md` is the architecture guide; `../REVIEW.md` is what
-the system is required to do.
+no web push. `../CLAUDE.md` is the architecture guide.
 
 ---
 
@@ -65,6 +64,7 @@ apps/
 ├── facilities/   — Facility, FacilityType
 ├── analytics/    — metrics engine and the one reporting endpoint
 ├── notifications/— Notification, and the emitters that write it
+├── system_feedback/ — SystemFeedback: what people say about the system
 └── common/       — roles, pagination, admin, the seed command
 ```
 
@@ -105,6 +105,7 @@ All under `/api/v1/`:
 ```
 Auth:        POST /auth/login/  /auth/register/  /auth/refresh/  /auth/logout/
              GET  /auth/me/     /auth/campuses/   (campuses is public)
+             POST /auth/password-reset/  /auth/password-reset/confirm/   (emailed link)
 Tickets:     GET  /tickets/                POST /tickets/
              GET  /tickets/{id}/
              POST /tickets/{id}/status/    POST /tickets/{id}/assign/
@@ -114,16 +115,28 @@ Tickets:     GET  /tickets/                POST /tickets/
              GET+POST /tickets/{id}/attachments/
              DELETE   /tickets/{id}/attachments/{id}/
              GET  /tickets/filter-options/  GET /tickets/feedback/
-Users:       GET+POST /users/   PATCH+DELETE /users/{id}/
+Users:       GET+POST /users/   PATCH /users/{id}/   (admin; no DELETE)
+             POST /users/{id}/deactivate/  /users/{id}/reactivate/   (admin)
              GET+POST /users/{id}/role-assignments/   (admin)
              GET  /technicians/   /campus-roster/
 Reference:   GET  /campuses/  /trades/  /service-items/  /catalog/
              GET  /priorities/  /facilities/  /facility-types/
-Analytics:   GET  /analytics/            (every figure, one call)
-Notifications: GET /notifications/  PATCH /notifications/{id}/read/
-             POST /notifications/read-all/
-Audit log:   GET  /admin/audit-log/      (admin only)
+Analytics:   GET  /analytics/            (figures for one role's scope; the technician's reports)
+             GET  /analytics/overview/   (the Reports page; admin, manager, HOD, HOS)
+             GET  /analytics/dashboard/  (manager, HOD, HOS)
+             GET  /analytics/desk/       (the admin's dashboard)
+             GET  /analytics/cover/      (technicians per campus and trade)
+             GET  /analytics/export/xlsx/  /analytics/export/pdf/   (every role with reports)
+Escalation:  GET  /escalations/  /escalations/preview/   POST /escalations/run/   (admin)
+Notifications: GET /notifications/  (?limit=1..100 ?unread=1 ?event_type=a,b ?before=<id>)
+             PATCH /notifications/{id}/read/   POST /notifications/read-all/
+Feedback:    POST /system-feedback/  (anyone signed in, 10 an hour)
+             GET  /system-feedback/  (?status=new|reviewed)   PATCH /system-feedback/{id}/  (admin)
+             An unknown ?status, ?event_type, or a non-numeric ?limit/?before is a 400.
 ```
+
+The manager is refused every ticket endpoint bar their own raised tickets, and
+reads the reports over every campus.
 
 ---
 
@@ -138,7 +151,7 @@ Audit log:   GET  /admin/audit-log/      (admin only)
 | `bottlenecks(qs)` | rows | what is on hold **now**, by reason, with the oldest hold in each — a snapshot, so it takes no window |
 | `trend(qs, window, bucket)` | rows | volume by day, week or month |
 
-`GET /analytics/` returns all four in one call, and is the only reporting endpoint. Which dimensions a role may ask for is `role_config.py`, and it fails closed.
+Every reporting endpoint calls these four; none computes a figure of its own. `overview.py` arranges them into the Reports page, `dashboard.py` into the dashboard, and `export.py` into the Excel and PDF downloads. Which dimensions a role may group `/analytics/` by is `role_config.py`, and it fails closed.
 
 Because `bottlenecks` is a snapshot, **a hold is reportable only while it lasts**. Nothing keeps hold history, so there is no answer to "what was on hold in March". That is a decision, not a gap: each pause stays on its ticket's own trail as a `status_changed` row, and only the aggregate is dropped.
 
@@ -160,9 +173,7 @@ Tests live in `backend/tests/` and run on in-memory SQLite
 
 ```bash
 SEED_DEFAULT_PASSWORD='<pw>' python manage.py seed  # idempotent; --no-demo for structure only
-python manage.py process_auto_escalations           # escalation sweep (hourly)
-python manage.py check_sla                          # record breaches (every 5 min)
-# both take --dry-run
+python manage.py process_auto_escalations --scheduled  # escalation check, every 15 minutes; --dry-run to preview
 ```
 
 ---
@@ -182,7 +193,9 @@ the pk in `Ticket.save()`. There is no sequence table.
 
 **Status workflow:** `open → assigned → in_progress ⇄ pending → resolved → closed`
 
-**Escalation:** Technician → HOS → HOD — structural, time-based, cron-driven.
+**Escalation:** Technician → HOS → HOD — structural and time-based, checked
+every `ESCALATION_INTERVAL_MINUTES` (15) by a scheduled task.
+`scripts/windows/register-escalation-task.ps1` registers it on Windows.
 
 **Priority** is a property of a ticket, not of a service. Every ticket opens at
 the lowest rank and the HOS sets the real one when they assign it, so nobody

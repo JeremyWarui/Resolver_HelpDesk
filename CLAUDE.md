@@ -2,8 +2,8 @@
 
 > **Kenya School of Government — Maintenance Helpdesk**
 > Django 6.0 · DRF 3.16 · PostgreSQL · React + TS + Vite
-> `REVIEW.md` says what the system must do. This file says how it is built.
-> If either disagrees with the code, the code wins and the doc is the bug.
+> This file says what the system does and how it is built.
+> If it disagrees with the code, the code wins and the doc is the bug.
 
 **Response style: be terse.** Don't restate code you just wrote, don't echo file
 contents back, don't end with summaries unless asked.
@@ -19,8 +19,8 @@ Maintenance section per campus, so the campus *is* the org tree — there is no
 department or section table.
 
 Six roles: **user** raises tickets, **technician** works them, **HOS** runs a
-campus's technicians, **HOD** oversees the HOS, **manager** reads reports across
-every campus and touches nothing, **admin** configures the system.
+campus's technicians, **HOD** oversees the HOS, **manager** reads the figures
+for every campus and opens no ticket, **admin** configures the system.
 
 Not a generic service desk. Do not build for other departments or sections.
 
@@ -39,8 +39,18 @@ SEED_DEFAULT_PASSWORD='<demo password>' ../venv/Scripts/python manage.py seed   
 npx tsc -b --noEmit     # the fast check — run it after any type or API change
 npm run build
 npm run dev
-E2E_PASSWORD='<seed password>' npm run test:e2e   # Playwright; starts both servers
+E2E_PASSWORD='<seed password>' npm run test:e2e   # Playwright; starts the servers
+node scripts/check-nav.mjs     # every nav item has a section, and back
+node scripts/render-icons.cjs  # PNG app icons from public/pwa-512.svg
 ```
+
+The e2e suite runs on its own servers and its own database, never the
+developer's. `e2e/backend.mjs` migrates and seeds a fresh SQLite file in the OS
+temp folder and serves it on 8001; `vite dev` runs on 5174 and a production
+build under `vite preview` on 4174 (for `installable.spec.ts`). None of them is
+reused, so the dev servers on 8000 and 5173 can stay up. `DATABASE_URL` in the
+environment overrides `backend/.env`, which is how the file takes over. A spec
+calling the API directly uses `http://localhost:8001`.
 
 Tests run on in-memory SQLite (`resolver/test_settings.py`), so the suite never
 touches a real database. The app runs on local PostgreSQL; copy
@@ -48,8 +58,9 @@ touches a real database. The app runs on local PostgreSQL; copy
 
 `seed` needs `SEED_DEFAULT_PASSWORD` or it refuses to run. It creates 5
 campuses, 5 trades, 28 service items, 6 facility types, 56 facilities, 41 users
-and 168 demo tickets over 90 days, with their history, comments, notifications
-and a few attachments. It is deterministic and safe to re-run.
+and about 440 demo tickets over 90 days, with their history, comments, notifications,
+a few attachments and some system feedback. It is deterministic and safe to
+re-run; `manage.py flush` first to start again from nothing.
 
 Every account is `first.last@ksg.ac.ke`, so the address does not say who is
 what. The command prints one login per role when it finishes.
@@ -64,6 +75,7 @@ backend/apps/
 ├── sla/           Priority — targets and escalation thresholds
 ├── tickets/       Ticket, TicketLog, TicketComment, TicketAttachment
 ├── notifications/ Notification and the emitters that write it
+├── system_feedback/ SystemFeedback — what people say about the system itself
 ├── analytics/     the metrics engine and the one reporting endpoint
 └── common/        roles, pagination, admin, the seed command
 ```
@@ -76,7 +88,7 @@ There is no `services/` subpackage. A service module sits directly in its app:
 `accounts/{identity,scope,posts}.py`, `analytics/{metrics,role_config}.py`.
 
 **A view never writes a ticket's state.** It calls `transition_status`,
-`assign_ticket` or `claim_ticket` in `tickets/lifecycle.py`.
+`assign_ticket`, `claim_ticket` or `rate_ticket` in `tickets/lifecycle.py`.
 
 ### The frontend
 
@@ -91,7 +103,7 @@ frontend/src/
 ├── hooks/         flat, except hooks/tickets/ where four belong together
 ├── lib/api/       one module per backend app; named exports, bar the
 │                  axios instance itself
-├── constants/     one file per subject, seven of them
+├── constants/     one file per subject, eight of them
 ├── types/         reached only as `@/types`
 ├── stores/        zustand: the session, and sidebar state
 └── utils/         dates, phone, bytes, DRF errors, identity, validation
@@ -145,8 +157,8 @@ function docstring what it does, a `#` comment why. Two lines is plenty;
 ## The data
 
 **Ticket** holds current state only: who raised it, the campus and trade, the
-service item, the facility and its location values, the priority, assignee,
-status, SLA clock and rating. What *happened* to it is a **TicketLog** row,
+service item, the facility and where in it (`location_detail`, one line of
+free text), the priority, assignee, status, SLA clock and rating. What *happened* to it is a **TicketLog** row,
 append-only.
 
 Routing is derived, never chosen: the requester picks a service item and a
@@ -160,20 +172,35 @@ A technician's scope is a set of **(campus, trade)** pairs, one
 
 | Role | Sees | Can do |
 |---|---|---|
-| user | own tickets | raise, read the trail, rate, close, reopen |
-| technician | own (campus, trade) pairs | claim, work, comment on tickets assigned to them |
-| HOS | own campus | assign, set priority, move any ticket, comment |
-| HOD | own campus | the same as HOS |
-| manager | every campus | read reports. Nothing else. |
-| admin | everything | configure, manage users and roles, read the audit log |
+| user | own tickets | raise, read the trail, read comments while pending or resolved, rate, close, reopen |
+| technician | own (campus, trade) pairs; reports and ratings on jobs assigned to them | claim, work, comment on tickets assigned to them |
+| HOS | own campus, every trade, its facilities | assign, set priority, move any ticket, comment, read ratings |
+| HOD | own campus, every trade, its facilities | the same as HOS; the last escalation level |
+| manager | every campus: ticket table, reports, technicians, facilities, campuses, ratings | read only; opens no ticket |
+| admin | everything | configure, manage users and roles |
 
-**Comments are the staff working log, not a conversation with the requester.**
-The requester can neither read nor post them. No comments before a technician is
-assigned or after the ticket is closed. Among technicians, only the assignee may
-post. The manager may not post.
+Every role can also raise tickets and read its own under My Requests, and
+has a Notifications page. Everyone but the admin can send system feedback
+from the sidebar; the admin reads it under System Feedback.
 
-**The requester reads the activity trail instead**, and their copy leaves out
-comment events — a row they cannot open is a dead end.
+**Comments are the staff working log.** Staff in scope read them. Posting opens
+once a technician is assigned and closes with the ticket; among technicians
+only the assignee may post. The requester never posts, and reads the thread
+only while the ticket is `pending` or `resolved` (`REQUESTER_COMMENT_STATUSES`,
+mirrored in `src/constants/tickets.ts`); they are notified of a comment posted
+at those statuses. Their activity trail leaves out comment events.
+
+**Three ticket scopes in `tickets/scope.py`.** `scoped_ticket_qs` is what a
+role may open and act on; `listed_ticket_qs` what its ticket table and filter
+dropdowns list; `reporting_ticket_qs` what its figures (`/analytics/`) and
+ratings (`/tickets/feedback/`) cover. They differ for two roles. The manager
+opens nothing but lists and reports on every campus. A technician lists their
+(campus, trade) pairs but reports only on jobs assigned to them.
+
+Facilities follow the campus: the admin and manager read every campus's
+register, everyone else their home campus plus any campus their post or
+trades cover. Campuses and the campus roster are read by the admin and the
+manager only.
 
 ## Ticket lifecycle
 
@@ -188,14 +215,29 @@ open → assigned → in_progress → resolved → closed
 and `closed` can reopen.
 
 `ALLOWED` in `tickets/lifecycle.py` is the map. The frontend mirrors it in
-`VALID_NEXT_STATUS` (`src/constants/tickets.ts`), read by `StatusUpdateModal.tsx`
-and `MobileTicketDetail.tsx`. Keep the two in step.
+`VALID_NEXT_STATUS` (`src/constants/tickets.ts`), read by `StatusUpdateModal.tsx`.
+Keep the two in step.
 
 `open` means unassigned, which claim relies on — so reopening clears the
-assignee and restarts the clock. Claim takes a ticket from open to in_progress
+assignee, drops the escalation level back to technician and restarts the clock. Claim takes a ticket from open to in_progress
 in one action, logging both hops. `pending` needs a reason from a fixed list of
 six, never free text, or it cannot be reported on. A settled ticket cannot be
 assigned; reopen it first.
+
+Rating is the requester's sign-off: `rate_ticket` records the rating and, if
+the ticket is resolved, closes it in the same transaction, so no ticket is
+ever rated and still resolved. A ticket closed without a rating may still be
+rated. Reopening clears the rating; the old one stays on the trail.
+
+Demo tickets from `seed` are raised by someone based at the ticket's campus,
+and only closed ones carry a rating. Arrivals are densest now and thin out
+smoothly over 90 days; a ticket's status follows from its age
+(`STATUS_BY_AGE`), so new work is live and nothing past two weeks is still
+open. Some finish late, so the SLA figures are not all 100%. Descriptions,
+handover notes and rating comments are written the way people write them.
+Escalation runs until nothing moves and is dated when each ticket crossed its
+threshold, so some tickets reach the HOD. `tests/test_seed.py` holds each of
+these, seeding once per module.
 
 ## SLA and escalation
 
@@ -203,8 +245,11 @@ Each priority carries four durations: a response target, a resolution target,
 and two escalation thresholds. A ticket opens at the lowest priority and the HOS
 sets the real one when they assign it, so nobody grades their own urgency.
 
-The clock starts when the ticket is raised. A hold freezes it, and both targets
-move out by however long the hold lasted.
+The clock starts when the ticket is raised and again when it is reopened;
+`clock_started_at` records which. A hold freezes it, and both targets move out
+by however long the hold lasted. Escalation and a priority change both measure
+from `clock_started_at`, never `created_at`, or a reopened ticket would
+escalate at once and get deadlines already in the past.
 
 **Overdue and missed are different words.** Overdue means live now and past
 target. Missed means settled, and it finished late. A settled ticket is judged
@@ -213,8 +258,18 @@ ticket ever closed turns red eventually. Both come from `tickets/sla.py`, which
 is the only place either is defined.
 
 Escalation is structural: technician → HOS → HOD, on the priority's two
-thresholds, run by `process_auto_escalations`. A vacant post is skipped and the
-ticket keeps climbing.
+thresholds, run by `process_auto_escalations --scheduled` every
+`ESCALATION_INTERVAL_MINUTES` (15). On the Windows server,
+`scripts/windows/register-escalation-task.ps1` registers that task once. A vacant
+post is skipped and the ticket keeps climbing. There is no separate SLA-breach
+job: overdue is computed live, and escalation is the alert.
+
+Each pass is an `EscalationRun`, and the SLA Rules page reads the scheduled ones
+to say whether the schedule is alive (`schedule_state`: never, stale, failing,
+running). Only a run started with `--scheduled` counts; Run now and a run typed
+at the command line are recorded but prove nothing about the task. Each ticket
+moves in its own transaction under a row lock, pinned to the level it was read
+at, so overlapping runs never move a ticket twice.
 
 ## Scope: the critical path
 
@@ -251,17 +306,26 @@ out-of-scope 403 test in `tests/test_ticket_action_scope.py`.
 
 **Two ticket shapes.** The list row carries what a table cell renders: number,
 who and where, service item, trade, priority, assignee, facility name, status,
-level, resolution target, hold label, late flag, rated flag, timestamps. The
+level, resolution target, hold label and when the hold began, late flag, rated flag, timestamps. The
 detail shape adds the contact phone, the full location, the SLA internals, the
 hold reason and note, and the feedback. Never read a detail-only field off a
 list row.
 
 **One list envelope.** Paged lists return DRF's `{count, next, previous,
-results}`. Comments, logs and the audit trail are cursor-paged and return the
+results}`. Comments and logs are cursor-paged and return the
 same keys, with `count` null. Short fixed lists (trades, technicians,
-attachments) return a bare array. Notifications return `{results, unread_count}`.
+attachments) return a bare array. Notifications return `{results, unread_count,
+has_more}`, 50 at a time unless `?limit=` (at most 100) says otherwise, paged
+with `?before=<id>`. The Notifications page asks for 20 and offers Load more.
 
 **Everything is snake_case.**
+
+Ratings read over a period, by when they were given: `/tickets/feedback/`
+pages them 20 at a time (`days`, or `date_from` and `date_to`, as on
+`/analytics/`; `?rating=1..5` narrows to one star), and
+`/tickets/feedback/summary/` gives the period's count, average, comments and
+stars over every rating in it, from `metrics.ratings`. The Feedback page never
+computes a figure from the rows it has loaded.
 
 Reference data the wizard needs: `/catalog/` (active trades and their active
 items), `/facilities/?campus=`, `/facility-types/`, `/priorities/`.
@@ -300,6 +364,15 @@ green for all of them. Run the Playwright suite after UI changes;
   `group`, `bottlenecks`, `trend`, each taking a scoped queryset and a window.
   `_figure_set()` defines every figure once. Edit there, never in a view, and
   use direct `Ticket` columns only: a join fans the rows out.
+- **The report downloads read the same figures.** `apps/analytics/export.py`
+  builds the Excel workbook (openpyxl) and the PDF summary (ReportLab) from
+  `report_data`, which calls `metrics` over `reporting_ticket_qs`. Never
+  compute a figure there. Every role with reports gets both files: the admin,
+  manager, HOD and HOS their Reports page, the technician their own work
+  (`summary_rows`) (`XLSX_ROLES`, `PDF_ROLES`,
+  mirrored by `REPORT_DOWNLOADS` in `src/constants/analytics.ts`).
+  `test_the_workbook_says_what_the_reports_page_says` holds the two together.
+  Times in both are Kenyan time.
 - **Every grouped query needs its own `order_by()`.** An inherited ordering
   field joins the GROUP BY and splits each bucket into one row per ticket.
   `test_a_bucket_is_one_row_however_the_tickets_in_it_differ` guards it.
@@ -310,17 +383,26 @@ green for all of them. Run the Playwright suite after UI changes;
 - **Group by trade, never by section.** Maintenance is the only section, so a
   section breakdown restates the campus chart beside it. `role_config.py`
   refuses it; charts, tables and filter dropdowns must follow.
-- **`TYPE_SPECS`** (`apps/facilities/validators.py`) is the location contract.
-  The frontend mirrors it in one place: `src/constants/catalogue.ts`, which
-  holds both the codes and `FACILITY_FORMS`. Change the two together.
+- **Facility types** are `FACILITY_TYPES` in `apps/facilities/models.py`. The
+  frontend mirrors the codes once, in `src/constants/catalogue.ts` with their
+  wizard tiles (`FACILITY_TILES`). Change the two together.
+- **One layout for every screen size.** There is no separate mobile app. Below
+  `sm` the sidebar becomes the `MobileNav` drawer, and `e2e/phone.spec.ts`
+  fails any section wider than a 390px screen. The phone is for the people
+  out and about: the drawer leaves out sections marked `desktopOnly` in
+  `roleNav.ts` (a requester's My Tickets table, a technician's Section
+  Tickets), and the requester's dashboard pages through every active request
+  instead. The desk roles (`DESK_ROLES`: admin, manager, HOD, HOS) keep every
+  section on a phone, under a dismissible note that the pages are laid out for
+  a computer; their tables are not reworked for a phone. The app installs from the
+  browser (`vite-plugin-pwa`, `src/sw.ts`); the service worker caches the app
+  shell only, never an API response.
 - **A new query param means a filter and a negative test**, same commit. A param
   nothing reads looks like scoping and does nothing.
 - **An SLA percentage means `met / (met + missed)`** — settled work only. That
-  is what `resolution_sla_pct` computes in `metrics.py`, and the gauge on the
-  SLA page computes the same thing so the two cannot disagree. Overdue work is
-  live and has no outcome yet: counting it as failed there once read 47% against
-  the reports page's 89% for the same section at the same moment. Overdue has
-  its own card; it does not belong in this denominator.
+  is what `resolution_sla_pct` computes in `metrics.py`, and no page computes
+  its own. Overdue work is live and has no outcome yet, so it has its own card
+  and does not belong in this denominator.
 - **Never gate rendering on a React Query result's identity.** `useQuery` hands
   back the same array reference on every render once it is cached, so
   `if (prev !== data)` fires on the first load and then never again. The ticket
@@ -334,9 +416,39 @@ green for all of them. Run the Playwright suite after UI changes;
   `apps/tickets/phone.py`.
 - **Notifications are polled, not pushed.** The emitters in
   `apps/notifications/notify.py` are wrapped so a failed notification can never
-  break the ticket update that triggered it.
+  break the ticket update that triggered it. The feed filters with `?unread=1`
+  and `?event_type=a,b`, and `unread_count` ignores both, so the sidebar badge
+  never stops at a filter. The sidebar's Notifications item is the only way in;
+  on a phone the menu button carries a dot while anything is unread.
+- **A notification is a message.** One action sends one message to each
+  recipient, never to the person who acted. A typed note travels with it as
+  `Notification.note`, to the people it was written for: the HOS's handover to
+  the technician; a progress note to the requester; a hold's reason and note,
+  and a resolution note, to the requester and the HOS. The activity trail shows
+  one line per event and never the notes. The feed is newest first by
+  `created_at`, with the id breaking ties, so a back-dated row lands in place.
+- **System feedback is not a rating.** `apps/system_feedback/` holds what people
+  say about Resolver itself; a rating of a fix stays on its ticket. The sender
+  and their role come from the request, never the body, and sending is
+  throttled (`DEFAULT_THROTTLE_RATES`).
 - **Retiring is the only delete.** `Ticket.service_item` is `PROTECT`, so a
   trade or item that has ever been used cannot be removed — `is_active` takes it
   out of the catalogue instead.
+- **Accounts are deactivated, never deleted** (`/users/{id}/deactivate/` and
+  `/reactivate/`; DELETE is a 405). A deactivated person cannot sign in or
+  refresh, cannot be assigned, leaves their post vacant so escalation skips
+  them, and drops out of notifications, the staffing figures and every
+  technician list. Every query that finds a person to act on filters
+  `is_active=True`; a new one must too. `posts.assign_role` refuses to give a
+  deactivated account a post someone else holds.
+- **One Reports page, two kinds of dashboard.** The admin, manager, HOD and HOS
+  share one Reports page (`/analytics/overview/`, `OVERVIEW_ROLES`); the HOD and
+  HOS see their campus and a technician table where the admin and manager see
+  campuses (`EVERY_CAMPUS_ROLES`, mirrored in `src/constants/roles.ts`). The
+  manager, HOD and HOS share one dashboard (`/analytics/dashboard/`,
+  `DASHBOARD_ROLES`). The admin's dashboard is `/analytics/desk/`:
+  escalation health, cover gaps, accounts to fix (`accounts/health.py`), email
+  set up or not, and a row per campus. Cover by trade on the Technicians page
+  is `/analytics/cover/`.
 
 No feature is done without tests.
