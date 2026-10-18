@@ -24,6 +24,3 @@ export const CHART_COLORS = [
   FLUENT_UI_COLORS.purple,
   FLUENT_UI_COLORS.cyan,
 ] as const;
-
-/** Badge palette for stat cards. */
-export type BadgeColor = 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';

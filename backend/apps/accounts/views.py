@@ -40,21 +40,9 @@ _logger = logging.getLogger(__name__)
 User = get_user_model()
 
 REFRESH_COOKIE = "resolver_refresh"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
 
-def get_assignment(user):
-    # select_related covers the two FKs RoleAssignmentSerializer renders. The
-    # trade list is a separate query no select_related can reach, and this is
-    # never serialized many at once.
-    return (
-        RoleAssignment.objects.filter(user=user)
-        .select_related("campus")
-        .first()
-    )
-
-
-def build_tokens_for_assignment(user, role_assignment):
+def build_tokens(user):
     """Return a (refresh, access) pair carrying the two claims that get read.
 
     `role` is what `common.roles.resolve_role` trusts, `campus_id` is what the
@@ -62,18 +50,16 @@ def build_tokens_for_assignment(user, role_assignment):
     not encrypted, so an unread claim is a field published for no reason.
     """
     refresh = RefreshToken.for_user(user)
-    refresh["role"] = role_assignment.role if role_assignment else None
+    refresh["role"] = user.role
     # Their *home* campus, not what their role oversees.
     refresh["campus_id"] = user.campus_id
     return refresh, refresh.access_token
 
 
-def serialize_auth_user(user, assignment):
+def serialize_auth_user(user):
     """The signed-in user in the shape `/users/` renders, plus their role."""
     data = UserAdminSerializer(user).data
-    data["active_role"] = (
-        RoleAssignmentSerializer(assignment).data if assignment else None
-    )
+    data["active_role"] = RoleAssignmentSerializer(user.assignment).data if user.assignment else None
     return data
 
 
@@ -81,7 +67,7 @@ def _set_refresh_cookie(response, refresh_token):
     response.set_cookie(
         key=REFRESH_COOKIE,
         value=str(refresh_token),
-        max_age=COOKIE_MAX_AGE,
+        max_age=int(api_settings.REFRESH_TOKEN_LIFETIME.total_seconds()),
         httponly=True,
         samesite="Lax",
         # Off only for local http development. This carries a seven-day session.
@@ -89,16 +75,15 @@ def _set_refresh_cookie(response, refresh_token):
     )
 
 
-def _session_response(user, http_status=status.HTTP_200_OK):
-    """The one shape a successful sign-in produces. Login and register share it."""
-    assignment = get_assignment(user)
-    refresh, access = build_tokens_for_assignment(user, assignment)
+def _session_response(user):
+    """What a successful sign-in returns: the user, an access token, the refresh cookie."""
+    refresh, access = build_tokens(user)
     response = Response(
         {
-            "user": serialize_auth_user(user, assignment),
+            "user": serialize_auth_user(user),
             "accessToken": str(access),
         },
-        status=http_status,
+        status=status.HTTP_200_OK,
     )
     _set_refresh_cookie(response, refresh)
     return response
@@ -110,20 +95,18 @@ def _get_user(pk):
 
 def _authenticate_by_email(email, password):
     """Sign in on the email address, since Django authenticates on the username."""
-    # Email is not unique at the database level: `createsuperuser` leaves blanks.
-    for candidate in User.objects.filter(email__iexact=email).order_by("pk"):
-        user = authenticate(username=candidate.username, password=password)
-        if user:
-            return user
-    return None
+    account = User.objects.filter(email__iexact=email).first()
+    if account is None:
+        return None
+    return authenticate(username=account.username, password=password)
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_login(request):
     """POST /auth/login/ — {email, password} to an access token and refresh cookie."""
-    email = (request.data.get("email") or "").strip()
-    password = request.data.get("password") or ""
+    email = (_field(request, "email") or "").strip()
+    password = _field(request, "password") or ""
 
     if not email or not password:
         return Response(
@@ -143,11 +126,11 @@ def jwt_login(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def jwt_register(request):
-    """POST /auth/register/ — create an account and sign in."""
+    """POST /auth/register/ — create an account. Signing in is a separate step."""
     serializer = UserCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
-    return _session_response(user, http_status=status.HTTP_201_CREATED)
+    return Response(serialize_auth_user(user), status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -174,8 +157,7 @@ def jwt_refresh(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    assignment = get_assignment(user)
-    new_refresh, new_access = build_tokens_for_assignment(user, assignment)
+    new_refresh, new_access = build_tokens(user)
 
     # The role as the database has it, not a verdict on whether it moved. The
     # client compares it against the cached user object it draws the shell
@@ -184,7 +166,7 @@ def jwt_refresh(request):
     response = Response(
         {
             "accessToken": str(new_access),
-            "role": assignment.role if assignment else None,
+            "role": user.role,
         },
         status=status.HTTP_200_OK,
     )
@@ -215,7 +197,7 @@ class MeView(APIView):
 
     def get(self, request):
         # Re-read, not from the token's claims: a role change lands on this call.
-        return Response(serialize_auth_user(request.user, get_assignment(request.user)))
+        return Response(serialize_auth_user(request.user))
 
 
 class CampusRosterView(generics.ListAPIView):
@@ -226,7 +208,7 @@ class CampusRosterView(generics.ListAPIView):
     """
 
     serializer_class = CampusRosterSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrManagerReadOnly]
+    permission_classes = [IsAdminOrManagerReadOnly]
 
     def get_queryset(self):
         return (
@@ -265,11 +247,11 @@ class UserRoleAssignmentView(APIView):
     """GET and POST /users/{pk}/role-assignments/ — read the one role, or replace it."""
 
     # Admin only: one Maintenance HOS per campus is an org-level decision.
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAdminGroup]
 
     def get(self, request, pk):
         """Return the one role as a single-element list, because the frontend reads a list."""
-        ra = get_assignment(_get_user(pk))
+        ra = _get_user(pk).assignment
         return Response([RoleAssignmentSerializer(ra).data] if ra else [])
 
     def post(self, request, pk):
@@ -277,9 +259,9 @@ class UserRoleAssignmentView(APIView):
         target = _get_user(pk)
         serializer = RoleAssignmentWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        _, displaced = serializer.save(target, actor=request.user)
+        assignment, displaced = serializer.save(target, actor=request.user)
 
-        body = RoleAssignmentSerializer(get_assignment(target)).data
+        body = RoleAssignmentSerializer(assignment).data
         if displaced is not None:
             name = display_name(displaced)
             body["displaced"] = {
@@ -297,7 +279,7 @@ class UserRoleAssignmentView(APIView):
 class UserListCreateView(generics.ListCreateAPIView):
     """GET and POST /users/ — the admin user list, and account creation."""
 
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAdminGroup]
     queryset = (
         User.objects.select_related("campus", "role_assignment__campus")
         .prefetch_related("technician_trades")
@@ -322,7 +304,7 @@ class UserListCreateView(generics.ListCreateAPIView):
 class UserDetailView(APIView):
     """PATCH /users/{pk}/. An account is never deleted: see UserActiveView."""
 
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAdminGroup]
 
     def patch(self, request, pk):
         serializer = UserUpdateSerializer(
@@ -340,7 +322,7 @@ class UserActiveView(APIView):
     cannot deactivate themselves.
     """
 
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAdminGroup]
     active = True
 
     def post(self, request, pk):

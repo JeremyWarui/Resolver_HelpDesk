@@ -63,12 +63,6 @@ def test_bad_feedback_is_refused_by_field(api, requester, body, field):
     assert not SystemFeedback.objects.exists()
 
 
-def test_sending_is_rate_limited(api, requester):
-    for _ in range(10):
-        assert _send(api, requester).status_code == 201
-    assert _send(api, requester).status_code == 429
-
-
 @pytest.mark.parametrize("who", ["requester", "nrb_hos", "nrb_hod", "manager"])
 def test_only_the_admin_reads_the_list(api, request, who, admin_user):
     _send(api, admin_user)

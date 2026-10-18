@@ -10,7 +10,6 @@ page and its downloads say the same things.
 """
 
 from apps.accounts.identity import display_name
-from apps.accounts.models import TechnicianTrade
 from apps.facilities.models import Facility
 from apps.org.models import Campus, ServiceItem, Trade
 
@@ -106,7 +105,7 @@ def technician_table(qs, window: dict, campus_ids=None) -> list:
     live = {row["key"]: row for row in metrics.snapshot(qs, ["technician"]) if row["key"] is not None}
     names = {key: row["label"] for key, row in {**live, **period}.items()}
     if campus_ids:
-        for link in TechnicianTrade.objects.filter(campus_id__in=campus_ids, user__is_active=True).select_related("user"):
+        for link in metrics.working_links(campus_ids).select_related("user"):
             names.setdefault(link.user_id, display_name(link.user))
     rows = []
     for key, label in names.items():

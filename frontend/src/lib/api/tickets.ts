@@ -5,7 +5,6 @@ import type {
   EscalationRun,
   EscalationStatus,
   Ticket,
-  TicketsResponse,
   CreateTicketPayload,
   TicketsParams,
   TicketTimelineEvent,
@@ -31,8 +30,8 @@ export interface TicketComment {
 
 // ── List & detail ─────────────────────────────────────────────────────────────
 
-export async function getTickets(params?: TicketsParams): Promise<TicketsResponse> {
-  const { data } = await apiClient.get<TicketsResponse>('/tickets/', { params });
+export async function getTickets(params?: TicketsParams): Promise<Page<Ticket>> {
+  const { data } = await apiClient.get<Page<Ticket>>('/tickets/', { params });
   return data;
 }
 
@@ -50,7 +49,6 @@ export interface PendingReasonOption {
 }
 
 interface TicketFilterOptions {
-  campuses: TicketFilterOption[];
   trades: TicketFilterOption[];
   technicians: TicketFilterOption[];
   requesters: TicketFilterOption[];
@@ -260,13 +258,6 @@ export interface TicketFeedbackRow {
   created_at: string;
 }
 
-interface TicketFeedbackResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: TicketFeedbackRow[];
-}
-
 /** A fixed span of rating dates, as ISO strings. Fixed so pages cannot drift. */
 export interface FeedbackWindow {
   date_from: string;
@@ -278,8 +269,8 @@ export async function getFeedback(
   window: FeedbackWindow,
   rating: number | null,
   page = 1,
-): Promise<TicketFeedbackResponse> {
-  const { data } = await apiClient.get<TicketFeedbackResponse>('/tickets/feedback/', {
+): Promise<Page<TicketFeedbackRow>> {
+  const { data } = await apiClient.get<Page<TicketFeedbackRow>>('/tickets/feedback/', {
     params: { ...window, page, ...(rating ? { rating } : {}) },
   });
   return data;

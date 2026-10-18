@@ -241,7 +241,6 @@ def test_technician_may_not_progress_someone_elses_ticket(
     electrical,
 ):
     """Campus scope grants sight of a ticket, not authority over it."""
-    from tests import factories
 
     bystander = factories.make_technician("second_elec", nrb, [electrical])
     api.force_authenticate(bystander)
@@ -336,8 +335,6 @@ def test_only_the_assignee_may_comment_among_technicians(
     nrb,
     electrical,
 ):
-    from tests import factories
-
     bystander = factories.make_technician("third_elec", nrb, [electrical])
     api.force_authenticate(bystander)
     assert _post_comment(api, assigned_ticket).status_code == 403
@@ -485,16 +482,6 @@ def test_the_requesters_trail_omits_the_staff_comment_events(
     assert any(row["event_type"] == "comment_added" for row in rows)
 
 
-def _assign(api, ticket, technician, **extra):
-    from django.urls import reverse
-
-    return api.post(
-        reverse("ticket-assign", args=[ticket.pk]),
-        {"assigned_to": technician.pk, **extra},
-        format="json",
-    )
-
-
 def _rate(api, ticket, **payload):
     return api.post(
         reverse("ticket-feedback", args=[ticket.pk]), payload, format="json"
@@ -633,12 +620,6 @@ def test_an_unresolved_ticket_cannot_be_rated(api, requester, nrb_electrical_tic
     assert _rate(api, nrb_electrical_ticket, rating=5).status_code == 400
 
 
-def _overdue_ids(api):
-    response = api.get(reverse("ticket-list"), {"overdue": "1"})
-    assert response.status_code == 200
-    return {row["ticket_no"] for row in response.json()["results"]}
-
-
 def test_a_settled_ticket_cannot_be_assigned(
     api,
     nrb_hos,
@@ -684,9 +665,7 @@ def test_a_settled_ticket_cannot_be_assigned(
 def test_the_detail_carries_the_sla_verdict_from_tickets_sla(
     api, requester, nrb, electrical, priorities, status, resolved_offset, due_offset, outcome
 ):
-    from datetime import timedelta
 
-    from django.utils import timezone
 
     now = timezone.now()
     ticket = factories.make_ticket(requester, nrb, electrical)

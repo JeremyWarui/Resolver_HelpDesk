@@ -76,10 +76,7 @@ export default function TicketStatsCards({ params }: { params?: AnalyticsParams 
       description: 'Live and past target',
       iconBgColor: 'bg-status-escalated/10',
       icon: <AlertCircle className="h-6 w-6 text-status-escalated" />,
-      badge: {
-        value: overdue > 0 ? `${overdue} late` : 'On track',
-        color: (overdue > 0 ? 'red' : 'green') as 'red' | 'green',
-      },
+      badge: { value: overdue > 0 ? `${overdue} late` : 'On track', alert: overdue > 0 },
     },
   ];
 

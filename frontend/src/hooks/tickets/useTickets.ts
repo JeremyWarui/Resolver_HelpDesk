@@ -84,7 +84,6 @@ export function useTicketFilterOptions(enabled = true) {
   });
 
   return {
-    campuses: (data?.campuses ?? []) as TicketFilterOption[],
     trades: (data?.trades ?? []) as TicketFilterOption[],
     technicians: (data?.technicians ?? []) as TicketFilterOption[],
     requesters: (data?.requesters ?? []) as TicketFilterOption[],

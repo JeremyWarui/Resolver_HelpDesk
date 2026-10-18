@@ -9,14 +9,36 @@ import {
   VARIANT_COLUMN_VISIBILITY,
 } from '@/components/shared/data/DataTable/utils/TicketTableColumns';
 import type { FilterOption } from '@/components/shared/data/DataTable/DataTable';
+import type { SortingState } from '@tanstack/react-table';
 import type { Ticket, TicketTableVariant, } from '@/types';
 
+/** A table the server pages, sorts and searches, so all three cover every page. */
 export interface TablePagination {
   total: number;
   pageIndex: number;
   pageSize: number;
   onPageChange: (index: number) => void;
   onPageSizeChange: (size: number) => void;
+  /** The search box's text, as typed. */
+  onSearchChange: (text: string) => void;
+  /** The API's `ordering` value, or undefined for its default order. */
+  onOrderingChange: (ordering: string | undefined) => void;
+}
+
+// Sortable column id → the field /tickets/ accepts in `?ordering=`.
+const ORDERING_FIELD: Record<string, string> = {
+  ticket_no: 'ticket_no',
+  tradeName: 'trade__name',
+  status: 'status',
+  created_at: 'created_at',
+  updated_at: 'updated_at',
+};
+
+function toOrdering(sorting: SortingState): string | undefined {
+  const sort = sorting[0];
+  const field = sort && ORDERING_FIELD[sort.id];
+  if (!field) return undefined;
+  return sort.desc ? `-${field}` : field;
 }
 
 interface TicketTableProps {
@@ -49,6 +71,11 @@ interface TicketTableProps {
 }
 
 const TICKET_NOUN = { one: 'ticket', many: 'tickets' };
+
+/** What the search box matches, the same three fields `/tickets/?search=` reads:
+ *  the number, the service item (the Title column), and the description. */
+const searchText = (ticket: Ticket) =>
+  [ticket.ticket_no, ticket.service_item?.name, ticket.description].filter(Boolean).join(' ');
 
 export function TicketTable({
   tickets,
@@ -97,26 +124,10 @@ export function TicketTable({
     [variant, showsPriority, hideColumns],
   );
 
-  // DataTable's search box filters a hidden `searchField` column, which a plain
-  // Ticket lacks. It is built here so every TicketTable gets a working search box.
-  const rows = useMemo(
-    () =>
-      tickets.map((ticket) => ({
-        ...ticket,
-        // ID and "title" as the box promises — a ticket has no title field,
-        // so the Title column shows `service_item.name` and this matches it.
-        searchField: [ticket.ticket_no, ticket.service_item?.name, ticket.description]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-      })),
-    [tickets],
-  );
-
   return (
     <DataTable
       columns={columns}
-      data={rows}
+      data={tickets}
       title={title}
       subtitle={subtitle}
       loading={loading}
@@ -132,9 +143,13 @@ export function TicketTable({
       noun={TICKET_NOUN}
       manualPagination={!!pagination}
       totalItems={pagination?.total}
+      pageIndex={pagination?.pageIndex}
       defaultPageSize={pagination?.pageSize ?? defaultPageSize}
       onPageChange={pagination?.onPageChange}
       onPageSizeChange={pagination?.onPageSizeChange}
+      onSearchChange={pagination?.onSearchChange}
+      searchText={searchText}
+      onSortingChange={pagination && ((sorting) => pagination.onOrderingChange(toOrdering(sorting)))}
       filterOptions={filterOptions}
     />
   );

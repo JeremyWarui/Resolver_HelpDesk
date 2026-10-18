@@ -1,5 +1,5 @@
 import apiClient, { rows } from './client';
-import type { ServiceItem, Trade } from '@/types';
+import type { CodeRef, ServiceItem, Trade } from '@/types';
 import type { Facility } from '@/types';
 
 // ── Catalogue tree ───────────────────────────────────────────────────────────
@@ -15,15 +15,9 @@ export type CatalogTrade = Trade & { items: CatalogItem[] };
 /** A facility type. The wizard reads `facility_type` off an existing facility
  *  on the campus; creating the first facility of a type has no such row, so the
  *  admin form asks for the list itself. */
-export interface FacilityTypeRow {
-  id: number;
-  name: string;
-  code: string;
-}
-
-export async function getFacilityTypes(): Promise<FacilityTypeRow[]> {
+export async function getFacilityTypes(): Promise<CodeRef[]> {
   const { data } = await apiClient.get('/facility-types/');
-  return rows<FacilityTypeRow>(data);
+  return rows<CodeRef>(data);
 }
 
 export async function getCatalog(): Promise<CatalogTrade[]> {

@@ -86,6 +86,20 @@ export function reconcileRole(serverRole: UserRole | null): boolean {
   return true;
 }
 
+/** How long a refused refresh waits for another tab's token to arrive. */
+const OTHER_TAB_WAIT_MS = 1000;
+
+/** A token another tab stored after `before`, or null if none arrives in time. */
+async function tokenFromAnotherTab(before: string | null): Promise<string | null> {
+  const deadline = Date.now() + OTHER_TAB_WAIT_MS;
+  while (Date.now() < deadline) {
+    const now = useAuthStore.getState().token;
+    if (now && now !== before) return now;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return null;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -95,8 +109,10 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Queue concurrent 401s while a refresh is already in progress
+    // Queue concurrent 401s while a refresh is already in progress. Marked as
+    // retried, so a replay that still fails does not start a second refresh.
     if (isRefreshing) {
+      originalRequest._retry = true;
       return new Promise<string>((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       }).then((token) => {
@@ -107,6 +123,7 @@ apiClient.interceptors.response.use(
 
     originalRequest._retry = true;
     isRefreshing = true;
+    const tokenBefore = useAuthStore.getState().token;
 
     try {
       // Use bare axios (not apiClient) to avoid triggering this interceptor again
@@ -133,6 +150,15 @@ apiClient.interceptors.response.use(
       originalRequest.headers.Authorization = `Bearer ${newToken}`;
       return apiClient(originalRequest);
     } catch (refreshError) {
+      // Two tabs share one refresh cookie. When the other tab rotated it first,
+      // this refresh is refused, but the other tab's new token reaches this one
+      // through storage a moment later: use it rather than signing both out.
+      const newer = await tokenFromAnotherTab(tokenBefore);
+      if (newer) {
+        processQueue(null, newer);
+        originalRequest.headers.Authorization = `Bearer ${newer}`;
+        return apiClient(originalRequest);
+      }
       processQueue(refreshError, null);
       clearSessionAndRedirect();
       return Promise.reject(refreshError);

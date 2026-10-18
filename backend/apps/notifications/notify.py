@@ -11,7 +11,11 @@ ticket is the work. The frontend polls `/notifications/`; nothing is pushed.
 import functools
 import logging
 
+from django.db import transaction
+
 from apps.accounts.identity import display_name
+from apps.accounts.scope import post_holder
+from apps.notifications.models import Notification
 from apps.tickets.constants import REQUESTER_COMMENT_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -28,41 +32,30 @@ def _never_fails(emit):
     @functools.wraps(emit)
     def guarded(*args, **kwargs):
         try:
-            return emit(*args, **kwargs)
+            # A savepoint, so a failed write rolls back alone and the caller's
+            # transaction, which holds the ticket change, carries on.
+            with transaction.atomic():
+                return emit(*args, **kwargs)
         except Exception as exc:
             logger.warning("%s failed: %s", emit.__name__, exc, exc_info=True)
 
     return guarded
 
 
-def _role_holder_ids(role, **scope) -> list[int]:
-    """User IDs of the role-holders at a given scope — [] if the scope is unset.
-
-    Swallows its own errors for the same reason `_never_fails` exists: a
-    recipient lookup must not be what breaks the ticket update.
-    """
-    if any(v is None for v in scope.values()):
-        return []
-    try:
-        from apps.accounts.models import RoleAssignment
-
-        return list(
-            RoleAssignment.objects.filter(role=role, user__is_active=True, **scope).values_list(
-                "user_id", flat=True
-            )
-        )
-    except Exception:
-        return []
+def _holder_ids(role, ticket) -> list[int]:
+    """The id of whoever holds this post at the ticket's campus, or none when it is vacant."""
+    holder = post_holder(role, campus_id=ticket.requester_campus_id)
+    return [holder.pk] if holder else []
 
 
 def _hos_ids(ticket) -> list[int]:
     """The head of section at the ticket's campus."""
-    return _role_holder_ids("hos", campus_id=ticket.requester_campus_id)
+    return _holder_ids("hos", ticket)
 
 
 def _supervisor_ids(ticket) -> list[int]:
     """The HOS and HOD at the ticket's campus."""
-    return _hos_ids(ticket) + _role_holder_ids("hod", campus_id=ticket.requester_campus_id)
+    return _holder_ids("hos", ticket) + _holder_ids("hod", ticket)
 
 
 def _service(ticket) -> str:
@@ -92,33 +85,23 @@ def _notify_users(
     actor=None,
     note: str = "",
 ) -> None:
-    """Write one message per recipient, never to the actor (bulk insert, no-op on error)."""
+    """Write one message per recipient, never to the actor, in one insert."""
     actor_id = getattr(actor, "pk", None)
     recipients = {uid for uid in user_ids if uid and uid != actor_id}
     if not recipients:
         return
-    try:
-        from django.db import transaction
-
-        from apps.notifications.models import Notification
-
-        rows = [
-            Notification(
-                user_id=uid,
-                event_type=event_type,
-                title=_clip(title, 128),
-                body=_clip(body, 256),
-                ticket=ticket,
-                actor=actor,
-                note=(note or "").strip(),
-            )
-            for uid in recipients
-        ]
-        # A savepoint: a failed insert must not abort the caller's transaction.
-        with transaction.atomic():
-            Notification.objects.bulk_create(rows)
-    except Exception as exc:
-        logger.warning("_notify_users failed: %s", exc)
+    Notification.objects.bulk_create(
+        Notification(
+            user_id=uid,
+            event_type=event_type,
+            title=_clip(title, 128),
+            body=_clip(body, 256),
+            ticket=ticket,
+            actor=actor,
+            note=(note or "").strip(),
+        )
+        for uid in recipients
+    )
 
 
 @_never_fails

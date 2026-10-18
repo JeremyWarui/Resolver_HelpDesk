@@ -26,8 +26,7 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
-# Django's CSRF Origin check compares against this explicitly, not against
-# ALLOWED_HOSTS: without it, POSTs to /admin/login/ fail behind an HTTPS proxy.
+# Django's CSRF Origin check compares against this, not against ALLOWED_HOSTS.
 CSRF_TRUSTED_ORIGINS = [
     o.strip()
     for o in os.getenv(
@@ -42,11 +41,9 @@ CSRF_TRUSTED_ORIGINS = [
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "django.contrib.messages",
     "django.contrib.staticfiles",
     "apps.common",
     "apps.accounts",
@@ -102,7 +99,6 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -117,7 +113,6 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -126,29 +121,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "resolver.wsgi.application"
 
 
-if os.getenv("DATABASE_URL"):
-    DATABASES = {
-        "default": dj_database_url.config(
-            default=os.getenv("DATABASE_URL"),
-            conn_max_age=0,
-            conn_health_checks=True,
-        )
-    }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.getenv("DB_NAME"),
-            "USER": os.getenv("DB_USER"),
-            "PASSWORD": os.getenv("DB_PASSWORD"),
-            "HOST": os.getenv("DB_HOST"),
-            "PORT": os.getenv("DB_PORT"),
-            # The app runs against local PostgreSQL and the tests never touch it:
-            # resolver/test_settings.py replaces DATABASES with in-memory SQLite.
-            "CONN_MAX_AGE": 0,
-            "CONN_HEALTH_CHECKS": True,
-        }
-    }
+# Read from DATABASE_URL, e.g. postgres://user:password@localhost:5432/resolver.
+# Characters such as @ : / in the password are percent-encoded (@ is %40).
+if not os.getenv("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL environment variable is not set.")
+DATABASES = {
+    "default": dj_database_url.config(conn_health_checks=True),
+}
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -206,8 +185,6 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 # How long a password reset link works, in seconds.
 PASSWORD_RESET_TIMEOUT = 60 * 60
 
-USE_I18N = True
-
 USE_TZ = True
 
 
@@ -216,13 +193,6 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-
-STATICFILES_FINDERS = [
-    "django.contrib.staticfiles.finders.FileSystemFinder",
-    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
-]
-
-STATICFILES_DIRS = []
 
 STORAGES = {
     "default": {
@@ -282,16 +252,8 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": False,
     # Each token carries a hash of the password, so changing it ends every
     # session at once, access tokens included.
     "CHECK_REVOKE_TOKEN": True,
-    "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,
-    "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "sub",
-    "AUTH_HEADER_TYPES": ("Bearer",),
-    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
-    "TOKEN_TYPE_CLAIM": "token_type",
-    "JTI_CLAIM": "jti",
 }

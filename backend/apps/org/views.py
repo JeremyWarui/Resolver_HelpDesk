@@ -6,9 +6,10 @@ campus is a post, and `accounts.CampusRosterView` answers that. Nothing here
 reads a user, so `org` depends on no other app.
 """
 
-from django.db.models import Prefetch
-from rest_framework import generics, viewsets
+from django.db.models import Prefetch, ProtectedError
+from rest_framework import generics, mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from apps.common.roles import IsAdminOrManagerReadOnly, IsAdminOrReadOnly
 from apps.org.models import Campus, ServiceItem, Trade
@@ -29,7 +30,20 @@ class CampusViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrManagerReadOnly]
 
 
-class TradeViewSet(viewsets.ModelViewSet):
+class RetireInsteadOfDelete:
+    """A 409 for a row tickets point at: `Ticket.service_item` is PROTECT."""
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"detail": "Tickets have been raised against it. Retire it instead."},
+                status=409,
+            )
+
+
+class TradeViewSet(RetireInsteadOfDelete, viewsets.ModelViewSet):
     serializer_class = TradeSerializer
     permission_classes = [IsAdminOrReadOnly]
     # A bare list, not a page: five trades exist and the set is fixed.
@@ -39,18 +53,18 @@ class TradeViewSet(viewsets.ModelViewSet):
         return Trade.objects.prefetch_related("service_items").order_by("name")
 
 
-class ServiceItemViewSet(viewsets.ModelViewSet):
+class ServiceItemViewSet(
+    RetireInsteadOfDelete,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Admin writes to service items. They are read through `/catalog/` and `/trades/`."""
+
     serializer_class = ServiceItemSerializer
     permission_classes = [IsAdminOrReadOnly]
-
-    def get_queryset(self):
-        # No select_related: `order_by("trade")` joins org_trade for
-        # Trade.Meta.ordering already, and the serializer renders the FK as id.
-        qs = ServiceItem.objects.order_by("trade", "name")
-        trade_id = self.request.query_params.get("trade")
-        if trade_id:
-            qs = qs.filter(trade_id=trade_id)
-        return qs
+    queryset = ServiceItem.objects.all()
 
 
 class CatalogTreeView(generics.ListAPIView):

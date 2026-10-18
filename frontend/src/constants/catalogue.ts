@@ -25,8 +25,8 @@ export const TRADE_ICONS: Record<string, LucideIcon> = {
 };
 
 /** Each trade's colour, from the chart palette, and the tint behind its icon.
- *  Keyed on the seeded code; an unknown code still renders, in grey. */
-export const TRADE_THEMES: Record<string, { color: string; lightBg: string }> = {
+ *  Keyed on the seeded code; read it through `tradeTheme`. */
+const TRADE_THEMES: Record<string, { color: string; lightBg: string }> = {
   PLUMB: { color: CHART_COLORS[0], lightBg: 'bg-blue-100' },
   CARP:  { color: CHART_COLORS[1], lightBg: 'bg-green-100' },
   ELEC:  { color: CHART_COLORS[2], lightBg: 'bg-orange-100' },
@@ -34,11 +34,15 @@ export const TRADE_THEMES: Record<string, { color: string; lightBg: string }> = 
   MAS:   { color: CHART_COLORS[5], lightBg: 'bg-cyan-100' },
 };
 
-export const FALLBACK_TRADE_THEME = { color: '#6B7280', lightBg: 'bg-gray-100' };
+/** A trade's colour and icon tint. An unknown or missing code still renders, in grey. */
+export function tradeTheme(code: string | null | undefined): { color: string; lightBg: string } {
+  return TRADE_THEMES[code ?? ''] ?? { color: '#6B7280', lightBg: 'bg-gray-100' };
+}
 
 // ── Facility types ────────────────────────────────────────────────────────────
 
-// The codes. Adding a type on this side is the code here and its tile in
+// The codes, in the order the wizard draws their tiles, most-used first.
+// Adding a type on this side is the code here and its tile in
 // FACILITY_TILES below, which is keyed by FacilityTypeValue so the compiler
 // points at the gap.
 export const FACILITY_TYPE_CODES = [
@@ -68,8 +72,3 @@ export const FACILITY_TILES: Record<FacilityTypeValue, FacilityTile> = {
   equipment:    { label: 'Equipment',  Icon: Wrench,    hint: 'e.g. Plant room' },
   grounds:      { label: 'Grounds',    Icon: TreePine,  hint: 'e.g. Near gate B' },
 };
-
-/** Order the tiles are drawn in, most-used first. */
-export const FACILITY_ORDER: FacilityTypeValue[] = [
-  'office_block', 'hostel', 'building', 'residential', 'equipment', 'grounds',
-];

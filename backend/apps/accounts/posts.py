@@ -5,14 +5,9 @@ Writing the row is granting the access: `accounts.scope` reads the same row
 back, so there is no second copy to keep in step.
 """
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
-from apps.accounts.models import (
-    SCOPE_FIELD_BY_ROLE,
-    RoleAssignment,
-    TechnicianTrade,
-)
-from apps.org.models import Campus
+from apps.accounts.models import CAMPUS_ROLES, RoleAssignment, TechnicianTrade
 
 # One person per supervisor post at a campus, so filling one displaces whoever
 # held it. `manager` is here too: one organisation, one manager.
@@ -36,6 +31,10 @@ def assign_role(target, role, *, campus=None, trades=(), actor=None):
     to the serializer that took it from a client. Raises `PostRefused` when a
     deactivated account would take a post from someone else.
     """
+    current = RoleAssignment.objects.filter(user=target).first()
+    if current is not None and _unchanged(current, target, role, campus, trades):
+        return current, None
+
     if not target.is_active and _holder(target, role, campus) is not None:
         raise PostRefused(
             "This account is deactivated, so the post would be left with nobody "
@@ -45,9 +44,16 @@ def assign_role(target, role, *, campus=None, trades=(), actor=None):
 
     # Replaced, not updated, so assigned_by/assigned_at record *this* change.
     RoleAssignment.objects.filter(user=target).delete()
-    assignment = RoleAssignment.objects.create(
-        user=target, role=role, campus=campus, assigned_by=actor
-    )
+    try:
+        with transaction.atomic():
+            assignment = RoleAssignment.objects.create(
+                user=target, role=role, campus=campus, assigned_by=actor
+            )
+    except IntegrityError:
+        # Another admin filled the same post between the read above and now.
+        raise PostRefused(
+            "Someone else was given this post a moment ago. Reload and try again."
+        ) from None
 
     # A technician moving campus must not keep the old campus's trades.
     TechnicianTrade.objects.filter(user=target).delete()
@@ -62,13 +68,22 @@ class PostRefused(ValueError):
     """A role write that would empty a post rather than fill it."""
 
 
+def _unchanged(current, target, role, campus, trades):
+    """Whether the user already holds exactly this post, with exactly these trades."""
+    if current.role != role or current.campus_id != (campus.pk if campus else None):
+        return False
+    held = set(TechnicianTrade.objects.filter(user=target).values_list("campus_id", "trade_id"))
+    wanted = {(campus.pk, t.pk) for t in trades} if role == "technician" else set()
+    return held == wanted
+
+
 def _holder(target, role, campus):
     """Whoever other than `target` holds this single-holder post, as their RoleAssignment."""
     if role not in SINGLE_HOLDER_ROLES:
         return None
-    if SCOPE_FIELD_BY_ROLE[role] == "campus" and campus is None:
+    if role in CAMPUS_ROLES and campus is None:
         return None
-    scope = {"campus": campus} if SCOPE_FIELD_BY_ROLE[role] == "campus" else {}
+    scope = {"campus": campus} if role in CAMPUS_ROLES else {}
     return (
         RoleAssignment.objects.select_related("user")
         .filter(role=role, **scope)
@@ -88,20 +103,3 @@ def _displace_incumbent(target, role, campus, actor):
     incumbent.delete()
     RoleAssignment.objects.create(user=user, role="user", assigned_by=actor)
     return user
-
-
-def scope_kwargs_from_ids(role, *, campus_id=None):
-    """Resolve a client-supplied campus id to the scope a role requires.
-
-    Raises `LookupError` carrying a field name and a message the caller
-    renders as a validation error.
-    """
-    if SCOPE_FIELD_BY_ROLE.get(role) != "campus":
-        return {}
-
-    if not campus_id:
-        raise LookupError(("campus_id", f"A {role} assignment requires a campus."))
-    campus = Campus.objects.filter(pk=campus_id).first()
-    if campus is None:
-        raise LookupError(("campus_id", "Campus not found."))
-    return {"campus": campus}

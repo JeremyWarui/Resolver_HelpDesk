@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS, API } from './helpers';
+import { apiGet, login, USERS } from './helpers';
 
 // The Feedback page reads a period: its figures cover every rating in it, the
 // comments load a page at a time, and a star narrows them. Read-only; the
@@ -14,15 +14,10 @@ interface Summary {
 }
 
 async function summaryOver(page: Page, days: number): Promise<Summary> {
-  return page.evaluate(async ({ url, days }) => {
-    const to = new Date();
-    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-    const query = `?date_from=${encodeURIComponent(from.toISOString())}&date_to=${encodeURIComponent(to.toISOString())}`;
-    const r = await fetch(url + query, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  }, { url: `${API}/tickets/feedback/summary/`, days });
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const query = `?date_from=${encodeURIComponent(from.toISOString())}&date_to=${encodeURIComponent(to.toISOString())}`;
+  return apiGet<Summary>(page, `/tickets/feedback/summary/${query}`);
 }
 
 async function openFeedback(page: Page, who: string) {

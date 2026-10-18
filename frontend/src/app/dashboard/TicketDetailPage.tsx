@@ -21,7 +21,8 @@ import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
 import { useTicketAttachments, useTicketDetail, useTicketInvalidate, useTicketTimeline } from '@/hooks/tickets/useTicketDetail';
 import { usePermissions } from '@/lib/auth/permissions';
 import { useAuthStore } from '@/stores/authStore';
-import { claimTicket, reopenTicket, startWork } from '@/lib/api/tickets';
+import { reopenTicket } from '@/lib/api/tickets';
+import { oneTapAction, useJobActions } from '@/hooks/tickets/useJobActions';
 import { RatingStars } from '@/components/shared/ticket/RatingWidget';
 import { formatDateTime } from '@/utils/date';
 import { formatPhoneLocal } from '@/utils/phone';
@@ -162,8 +163,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
 
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
-  const [claimSubmitting, setClaimSubmitting] = useState(false);
-  const [startSubmitting, setStartSubmitting] = useState(false);
+  const jobs = useJobActions();
 
   const isRaisedByCurrentUser = ticket?.raised_by?.id === currentUser?.id;
   // Staff who raised a ticket in their own scope still work it as staff; the
@@ -189,22 +189,11 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
       ? ESCALATION_LEVEL[ticket.current_level]?.full ?? ticket.current_level
       : null;
 
-  // A technician claims an unassigned open ticket in their own (campus, trade)
-  // pairs, their own raised ones included; outside those they are only its
-  // requester.
-  const showClaim =
-    currentUser?.role === 'technician' &&
-    ticket != null &&
-    ticket.status === 'open' &&
-    ticket.assigned_to == null &&
-    !viewsAsRequester;
-
-  // "Start work": the assignee leaves `assigned` in one tap, with no progress
-  // note. Time spent in `assigned` is what the response-time SLA measures.
-  const showStartWork =
-    ticket != null &&
-    ticket.status === 'assigned' &&
-    ticket.assigned_to?.id === currentUser?.id;
+  // A technician claims open work in their own (campus, trade) pairs, their
+  // own raised tickets included; outside those they are only its requester.
+  const oneTap = ticket ? oneTapAction(ticket, currentUser?.id) : null;
+  const showClaim = oneTap === 'claim' && currentUser?.role === 'technician' && !viewsAsRequester;
+  const showStartWork = oneTap === 'start';
 
   const showStatusUpdate =
     permissions.canUpdateTicketStatus &&
@@ -215,7 +204,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     permissions.canAssignTicket && ticket?.status === 'open';
 
   const showReassign =
-    permissions.canReassignTicket &&
+    permissions.canAssignTicket &&
     ticket != null &&
     WORKING_STATUSES.includes(ticket.status) &&
     ticket.assigned_to != null;
@@ -231,8 +220,8 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     ['resolved', 'closed'].includes(ticket.status) &&
     isRaisedByCurrentUser;
 
-  function onModalSuccess(updated: Ticket) {
-    invalidate(updated.id);
+  // The modal refreshed the ticket's caches itself.
+  function onModalSuccess() {
     setActiveModal(null);
   }
 
@@ -248,36 +237,6 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
       toast.error('Failed to reopen ticket.');
     } finally {
       setReopenSubmitting(false);
-    }
-  }
-
-  async function handleStartWork() {
-    if (!ticket) return;
-    setStartSubmitting(true);
-    try {
-      await startWork(ticket.id);
-      toast.success('Marked as in progress.');
-      invalidate(ticket.id);
-    } catch {
-      toast.error('Could not start this ticket. Please try again.');
-      invalidate(ticket.id);
-    } finally {
-      setStartSubmitting(false);
-    }
-  }
-
-  async function handleClaim() {
-    if (!ticket) return;
-    setClaimSubmitting(true);
-    try {
-      await claimTicket(ticket.id);
-      toast.success('Ticket claimed — it is yours and now in progress.');
-      invalidate(ticket.id);
-    } catch {
-      toast.error('Could not claim this ticket. It may already be assigned.');
-      invalidate(ticket.id);
-    } finally {
-      setClaimSubmitting(false);
     }
   }
 
@@ -335,11 +294,11 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                     <Button
                       size="sm"
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={handleClaim}
-                      disabled={claimSubmitting}
+                      onClick={() => jobs.run(ticket, 'claim')}
+                      disabled={jobs.busy.has(ticket.id)}
                     >
                       <Hand className="h-3.5 w-3.5 mr-1.5" />
-                      {claimSubmitting ? 'Claiming…' : 'Claim'}
+                      {jobs.busy.has(ticket.id) ? 'Claiming…' : 'Claim'}
                     </Button>
                   )}
                   {showAssign && (
@@ -358,11 +317,11 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                     <Button
                       size="sm"
                       className="bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={handleStartWork}
-                      disabled={startSubmitting}
+                      onClick={() => jobs.run(ticket, 'start')}
+                      disabled={jobs.busy.has(ticket.id)}
                     >
                       <Play className="h-3.5 w-3.5 mr-1.5" />
-                      {startSubmitting ? 'Starting…' : 'Start work'}
+                      {jobs.busy.has(ticket.id) ? 'Starting…' : 'Start work'}
                     </Button>
                   )}
                   {showStatusUpdate && (
@@ -438,7 +397,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                   <Card>
                     <CardContent className="p-4 sm:p-5">
                       <SectionLabel>Activity</SectionLabel>
-                      <TicketTimeline events={events} loading={timelineLoading} hideHeader />
+                      <TicketTimeline events={events} loading={timelineLoading} />
                       {showComments && (
                         <div className="mt-6 pt-5 border-t">
                           {viewsAsRequester && (
@@ -446,11 +405,9 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                           )}
                           <CommentThread
                             ticket={ticket}
-                            hideHeader
                             readOnly={viewsAsRequester}
                             viewerRole={currentUser?.role ?? undefined}
                             viewerId={currentUser?.id}
-                            onCommentAdded={() => invalidate(ticket.id)}
                           />
                         </div>
                       )}
@@ -492,7 +449,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                         <SectionLabel>Time to resolve</SectionLabel>
                         <SLACountdown
                           dueDate={ticket.resolution_due_at}
-                          createdAt={ticket.created_at}
+                          startedAt={ticket.clock_started_at}
                           isPaused={!!ticket.paused_at}
                         />
                         <p className="text-xs text-muted-foreground mt-2">

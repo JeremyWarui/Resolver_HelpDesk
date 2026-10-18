@@ -30,7 +30,7 @@ class FacilityViewSet(viewsets.ModelViewSet):
 
     The admin and the manager read every campus. Everyone else reads their
     home campus, where they raise tickets, plus any campus their post or
-    trades cover. `?campus=` and `?facility_type=` narrow it further.
+    trades cover. `?campus=` narrows it further.
     """
 
     serializer_class = FacilitySerializer
@@ -47,9 +47,6 @@ class FacilityViewSet(viewsets.ModelViewSet):
                 Q(campus__in=visible_campuses(user, role)) | Q(campus_id=user.campus_id)
             )
         campus = self.request.query_params.get("campus")
-        facility_type = self.request.query_params.get("facility_type")
         if campus:
             qs = qs.filter(campus_id=campus)
-        if facility_type:
-            qs = qs.filter(facility_type__code=facility_type)
         return qs

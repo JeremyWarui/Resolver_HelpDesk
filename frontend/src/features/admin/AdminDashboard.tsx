@@ -5,22 +5,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import MetricCard from '@/components/shared/data/MetricCard';
 import { useDesk } from '@/hooks/useAnalytics';
 import type { DeskEnvelope } from '@/types';
-import { relativeTime } from '@/utils/date';
+import { timeAgo } from '@/utils/date';
+import { FEEDBACK_CATEGORIES } from '@/constants/systemFeedback';
+import { ESCALATION_SCHEDULE } from '@/constants/roles';
 import { cn } from '@/lib/utils';
 
-const FEEDBACK_TONE = {
-  problem: { label: 'Problem', tone: 'bg-red-50 text-red-800' },
-  idea: { label: 'Idea', tone: 'bg-blue-50 text-blue-800' },
-  praise: { label: 'Praise', tone: 'bg-emerald-50 text-emerald-800' },
-  other: { label: 'Other', tone: 'bg-gray-50 text-gray-700' },
-} as const;
-
-const ESCALATION = {
-  never: { value: 'Not scheduled', alert: true },
-  failing: { value: 'Failing', alert: true },
-  stale: { value: 'Stopped', alert: true },
-  running: { value: 'Running', alert: false },
-} as const;
+const CATEGORY = Object.fromEntries(FEEDBACK_CATEGORIES.map((c) => [c.key, c]));
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -70,14 +60,14 @@ interface CardSpec {
 
 function setupCards(desk: DeskEnvelope | null): CardSpec[] {
   const e = desk?.escalation;
-  const look = ESCALATION[e?.state ?? 'never'];
+  const look = ESCALATION_SCHEDULE[e?.state ?? 'never'];
   const due = e ? (e.due_hos || e.due_hod ? `${e.due_hos} due to the HOS · ${e.due_hod} to the HOD` : 'Nothing due to climb') : '';
   const fix = desk?.accounts_to_fix;
   return [
     {
       title: 'Escalation check',
-      value: look.value,
-      description: e?.last_finished_at ? `Last run ${relativeTime(e.last_finished_at)} · ${due}` : `Never run · ${due}`,
+      value: look.label,
+      description: e?.last_finished_at ? `Last run ${timeAgo(e.last_finished_at)} · ${due}` : `Never run · ${due}`,
       icon: <Clock className={look.alert ? 'h-5 w-5 text-red-700' : 'h-5 w-5 text-emerald-700'} />,
       iconBgColor: look.alert ? 'bg-red-100' : 'bg-emerald-100',
       alert: look.alert, section: 'sla-rules',
@@ -138,9 +128,9 @@ function movingCards(desk: DeskEnvelope | null): CardSpec[] {
     {
       title: 'Unread system feedback',
       value: f?.unread ?? 0,
-      description: f ? (['problem', 'idea', 'praise', 'other'] as const)
+      description: f ? FEEDBACK_CATEGORIES.map((c) => c.key)
         .filter((k) => f.by_category[k])
-        .map((k) => plural(f.by_category[k], FEEDBACK_TONE[k].label.toLowerCase()))
+        .map((k) => plural(f.by_category[k], CATEGORY[k].label.toLowerCase()))
         .join(' · ') || 'Nothing new' : '',
       icon: <MessageSquare className="h-5 w-5 text-blue-600" />, iconBgColor: 'bg-blue-100',
       alert: false, section: 'system-feedback',
@@ -245,12 +235,12 @@ function UnreadFeedback({ desk, onNavigate }: { desk: DeskEnvelope | null; onNav
               <tbody>
                 {rows.map((f) => (
                   <tr key={f.id} className="border-t border-gray-100 first:border-t-0">
-                    <th scope="row" className={cn('w-28 border-r border-gray-100 px-4 py-2.5 text-left align-top font-semibold', FEEDBACK_TONE[f.category].tone)}>
-                      {FEEDBACK_TONE[f.category].label}
+                    <th scope="row" className={cn('w-28 border-r border-gray-100 px-4 py-2.5 text-left align-top font-semibold', CATEGORY[f.category].tint)}>
+                      {CATEGORY[f.category].label}
                     </th>
                     <td className="px-4 py-2.5 text-gray-900">{f.message}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right align-top text-muted-foreground">
-                      {f.author_role} · {relativeTime(f.created_at)}
+                      {f.author_role} · {timeAgo(f.created_at)}
                     </td>
                   </tr>
                 ))}

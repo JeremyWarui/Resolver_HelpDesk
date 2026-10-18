@@ -93,7 +93,7 @@ def test_a_manager_reads_every_campuses_ratings_and_filter_options(
         msa_electrical_ticket.ticket_no,
     }
     options = api.get(reverse("ticket-filter-options")).json()
-    assert len(options["campuses"]) == 2
+    assert len(options["requesters"]) == 2
 
 
 def test_a_manager_reads_the_campus_registers_but_cannot_change_them(

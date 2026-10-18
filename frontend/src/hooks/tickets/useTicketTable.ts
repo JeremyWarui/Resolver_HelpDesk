@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTickets } from './useTickets';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket, TicketsParams } from '@/types';
@@ -30,6 +30,9 @@ export interface UseTicketTableResult {
   setUserFilter: (user: number | null) => void;
   setOverdueFilter: (overdue: boolean) => void;
 
+  /** The search the server is filtering by: the box's text, once typing pauses. */
+  search: string;
+
   /** Which row is highlighted. */
   selectedTicket: Ticket | null;
 
@@ -48,6 +51,8 @@ export interface UseTicketTableResult {
   // Constants
   allStatuses: string[];
 }
+
+const SEARCH_DELAY_MS = 300;
 
 export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResult => {
   const {
@@ -73,6 +78,12 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   const [technicianFilter, setTechnicianFilterRaw] = useState<number | null>(null);
   const [userFilter, setUserFilterRaw] = useState<number | null>(null);
   const [overdueFilter, setOverdueFilterRaw] = useState<boolean>(false);
+
+  // Search and sort run on the server too, so they cover every page.
+  // The box's text is sent once typing pauses, not on every key.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [ordering, setOrderingRaw] = useState<string | undefined>(undefined);
 
   // Any server-side filter change must restart pagination at page 1.
   const resetToFirstPage = useCallback(() => {
@@ -104,6 +115,21 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     resetToFirstPage();
   }, [resetToFirstPage]);
 
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === search) return;
+    const timer = setTimeout(() => {
+      setSearch(trimmed);
+      resetToFirstPage();
+    }, SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput, search, resetToFirstPage]);
+
+  const setOrdering = useCallback((next: string | undefined) => {
+    setOrderingRaw(next);
+    resetToFirstPage();
+  }, [resetToFirstPage]);
+
   // Which row is highlighted, read back as DataTable's `selectedRowId`.
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
@@ -118,8 +144,10 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     // Server-side, like every other filter here: the table is paginated, so a
     // client-side filter would only see the page it holds.
     ...(overdueFilter ? { overdue: '1' as const } : {}),
+    ...(search ? { search } : {}),
+    ...(ordering ? { ordering } : {}),
     ...(fixedParams ?? {}),
-  }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, fixedParams]);
+  }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, search, ordering, fixedParams]);
 
   const { tickets, totalTickets, loading } = useTickets(
     ticketParams,
@@ -129,8 +157,6 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   const { trades } = useTicketFilterOptions();
 
   // ==================== HANDLERS ====================
-  // The rows themselves are mapped in `TicketTable`, which adds the hidden
-  // `searchField` every consumer of this hook renders through.
   const handleViewTicket = useCallback((ticket: Ticket) => {
     setSelectedTicket(ticket);
   }, []);
@@ -160,6 +186,8 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     setUserFilter,
     setOverdueFilter,
 
+    search,
+
     selectedTicket,
 
     tickets,
@@ -175,6 +203,8 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
       pageSize,
       onPageChange: setPageIndex,
       onPageSizeChange: setPageSize,
+      onSearchChange: setSearchInput,
+      onOrderingChange: setOrdering,
     },
 
     allStatuses: ALL_TICKET_STATUSES,

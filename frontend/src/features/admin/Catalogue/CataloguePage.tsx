@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { handleDRFError } from '@/utils/handleDRFError';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,11 +28,13 @@ export default function CataloguePage() {
   const [tradeForm, setTradeForm] = useState<{ editing: Trade | null } | null>(null);
   const [itemForm, setItemForm] = useState<{ editing: ServiceItem | null; tradeId?: number } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { trades, loading, invalidate } = useTrades();
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
       if (deleteTarget.type === 'trade') {
         await catalogueService.deleteTrade(deleteTarget.id);
@@ -42,9 +45,11 @@ export default function CataloguePage() {
       }
       setDeleteTarget(null);
       invalidate();
-    } catch {
-      // Ticket.service_item is PROTECT, so anything ever raised against stays.
-      toast.error('Could not delete it — tickets have been raised against it. Retire it instead.');
+    } catch (error) {
+      // 409: Ticket.service_item is PROTECT, so anything ever raised against stays.
+      handleDRFError(error, { fallbackMessage: 'Could not delete it. Please try again.' });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -188,6 +193,7 @@ export default function CataloguePage() {
         }
         onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
         onConfirm={handleDelete}
+        loading={deleting}
         confirmLabel="Delete"
         variant="destructive"
       />

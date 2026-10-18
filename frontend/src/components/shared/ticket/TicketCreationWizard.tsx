@@ -10,6 +10,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Check, Loader2, CheckCircle2, MapPin, Phone,
@@ -21,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { AttachmentUploader } from '@/components/shared/ticket/AttachmentUploader';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,7 +35,7 @@ import type { CatalogItem, CatalogTrade } from '@/lib/api/catalogue';
 import { TradeIcon } from '@/components/shared/ticket/TradeIcon';
 import {
   FACILITY_TILES,
-  FACILITY_ORDER,
+  FACILITY_TYPE_CODES,
   type FacilityTypeValue,
 } from '@/constants/catalogue';
 
@@ -89,21 +89,15 @@ function StepIndicator({ current }: { current: Step }) {
   );
 }
 
-function OptionCard({ selected, onClick, title, description, badge }: {
-  selected: boolean; onClick: () => void; title: string; description?: string; badge?: string;
+function OptionCard({ selected, onClick, title }: {
+  selected: boolean; onClick: () => void; title: string;
 }) {
   return (
     <button type="button" onClick={onClick} className={cn(
       'w-full text-left rounded-lg border p-3 transition-colors',
       selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border hover:border-primary/40 hover:bg-muted/40',
     )}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium truncate">{title}</p>
-          {description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{description}</p>}
-        </div>
-        {badge && <Badge variant="outline" className="text-xs shrink-0">{badge}</Badge>}
-      </div>
+      <p className="text-sm font-medium truncate">{title}</p>
     </button>
   );
 }
@@ -151,8 +145,9 @@ function ReviewRow({ label, children }: { label: string; children: React.ReactNo
 
 export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickStart }: TicketCreationWizardProps) {
   const storeUser = useAuthStore((s) => s.user);
-  const campusId = storeUser?.primary_campus_id ?? null;
+  const campusId = storeUser?.home_campus_id ?? null;
   const queryClient = useQueryClient();
+  const invalidate = useTicketInvalidate();
 
   // Wizard state
   const [step, setStep]                     = useState<Step>(1);
@@ -180,7 +175,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
    *  facility here has nothing to raise a ticket against. */
   const tiles = useMemo(() => {
     const withFacilities = new Set(facilities.map((f) => f.facility_type_code));
-    return FACILITY_ORDER
+    return FACILITY_TYPE_CODES
       .filter((code) => withFacilities.has(code))
       .map((code) => ({ key: code, label: FACILITY_TILES[code].label, Icon: FACILITY_TILES[code].Icon }));
   }, [facilities]);
@@ -278,7 +273,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
             `Ticket ${result.ticket_no} created, but the attachments could not be uploaded. ` +
             `You can add them from the ticket.`,
           );
-          queryClient.invalidateQueries({ queryKey: ['tickets'] });
+          invalidate();
           setSubmitted(true);
           onSuccess?.();
           return;
@@ -286,7 +281,7 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
       }
 
       toast.success(`Ticket ${result.ticket_no} created`);
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      invalidate();
       setSubmitted(true);
       onSuccess?.();
     } catch {

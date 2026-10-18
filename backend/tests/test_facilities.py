@@ -156,7 +156,6 @@ def test_the_facility_registry_is_readable_by_everyone_and_writable_by_admins(
     """Read-open, write-admin, from the shared `IsAdminOrReadOnly`. Both halves
     are asserted here.
     """
-    from django.urls import reverse
 
     url = reverse("facility-list")
     payload = {

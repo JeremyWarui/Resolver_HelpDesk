@@ -53,6 +53,16 @@ def test_an_account_row_carries_the_post_its_holder_has(
     assert row["home_campus_name"] == nrb.name
 
 
+def test_there_is_no_django_admin_site(api):
+    """Roles go through assign_role and tickets through lifecycle; a back
+    office that edits either row directly would skip both."""
+    from django.apps import apps
+
+    assert not apps.is_installed("django.contrib.admin")
+    assert api.get("/admin/").status_code == 404
+    assert api.get("/admin/login/").status_code == 404
+
+
 def test_there_is_no_cross_ticket_audit_log(api, admin_user):
     """A ticket's history is its own timeline; nothing lists every log row."""
     api.force_authenticate(admin_user)

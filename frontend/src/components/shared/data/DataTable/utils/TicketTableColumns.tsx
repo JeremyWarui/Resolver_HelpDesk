@@ -35,7 +35,6 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
     TableUtils.slaCountdownColumn('SLA'),
     TableUtils.pendingReasonColumn('Reason'),
     TableUtils.pendingForColumn('Pending for'),
-    TableUtils.searchFieldColumn(),
   ];
 
   // Actions column, by variant. `queue` and `admin` get none: the whole row
@@ -50,26 +49,26 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
 }
 
 // Variant → initial column visibility map.
-// Hidden columns are still in the table (so search still works) but not rendered.
+// Hidden columns are still in the table, and the Columns menu turns them on.
 // `pending_reason` and `pending_for` belong to the Pending Work view; elsewhere
 // most rows are not on hold, and both would read as an em dash.
 export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string, boolean>> = {
   // `description` is hidden: it repeats the service item the Title column
   // already shows, with "reported by …" appended.
   queue: {
-    searchField: false, facility: false, sla_countdown: false,
+    facility: false, sla_countdown: false,
     priority: false, updated_at: false, raised_by: false, description: false,
     pending_reason: false, pending_for: false,
   },
   admin: {
-    searchField: false, facility: false, sla_countdown: false,
+    facility: false, sla_countdown: false,
     priority: false, updated_at: false,
     pending_reason: false, pending_for: false,
   },
   // The requester wrote the description, so it is hidden here too; where the
   // job is takes its place.
   'my-tickets': {
-    searchField: false, sla_countdown: false, description: false,
+    sla_countdown: false, description: false,
     priority: false, updated_at: false, raised_by: false,
     pending_reason: false, pending_for: false,
   },
@@ -77,17 +76,17 @@ export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string
   // the SLA columns are frozen — none of the three tells the reader anything.
   // Facility stays visible: "which building" is half the chasing decision.
   pending: {
-    searchField: false, status: false, sla_countdown: false,
+    status: false, sla_countdown: false,
     updated_at: false, raised_by: false, description: false,
   },
   // Every row is the technician's, so who has it says nothing; how long is
   // left is what sets the order of work.
   'my-jobs': {
-    searchField: false, facility: false, assigned_to: false, description: false,
+    facility: false, assigned_to: false, description: false,
     updated_at: false, pending_reason: false, pending_for: false,
   },
   'section': {
-    searchField: false, facility: false, description: false,
+    facility: false, description: false,
     updated_at: false, pending_reason: false, pending_for: false,
   },
 };

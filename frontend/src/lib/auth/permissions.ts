@@ -10,7 +10,6 @@ import type { PermissionMap, UserRole } from '@/types';
 /** Signed out, or a role the map does not know: refuse everything. */
 const NONE: PermissionMap = {
   canAssignTicket: false,
-  canReassignTicket: false,
   canUpdateTicketStatus: false,
   canCloseTicket: false,
   canReopenTicket: false,
@@ -19,7 +18,6 @@ const NONE: PermissionMap = {
 const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
   user: {
     canAssignTicket: false,
-    canReassignTicket: false,
     canUpdateTicketStatus: false,
     canCloseTicket: true,    // the requester confirms resolution
     canReopenTicket: true,   // and reopens if it was not fixed
@@ -27,7 +25,6 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
 
   technician: {
     canAssignTicket: false,
-    canReassignTicket: false,
     canUpdateTicketStatus: true,   // their own assigned tickets
     canCloseTicket: false,
     canReopenTicket: false,
@@ -35,7 +32,6 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
 
   hos: {
     canAssignTicket: true,
-    canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: false,
     canReopenTicket: false,
@@ -43,7 +39,6 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
 
   hod: {
     canAssignTicket: true,
-    canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: false,
     canReopenTicket: false,
@@ -54,7 +49,6 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
 
   admin: {
     canAssignTicket: true,
-    canReassignTicket: true,
     canUpdateTicketStatus: true,
     canCloseTicket: true,
     canReopenTicket: true,

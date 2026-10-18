@@ -16,8 +16,3 @@ export function formatPct(value: number | null | undefined): string {
 export function belowTarget(value: number | null | undefined, target: number | null | undefined): boolean {
   return target != null && value != null && value < target;
 }
-
-/** Seconds as decimal hours, as the reports print a time to resolve: 34.6h. */
-export function formatHours(seconds: number | null | undefined): string {
-  return seconds == null ? '—' : `${(seconds / 3600).toFixed(1)}h`;
-}

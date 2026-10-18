@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { TechnicianRow } from '@/types';
-import { belowTarget, formatHours as hours, formatPct as pct } from '@/utils/format';
+import { belowTarget, formatPct as pct } from '@/utils/format';
+import { formatSeconds } from '@/utils/date';
 import { cn } from '@/lib/utils';
 
 interface TechnicianTableProps {
@@ -72,7 +73,7 @@ export default function TechnicianTable({ rows, target, variant }: TechnicianTab
                     <td className={cn('p-2 font-semibold', belowTarget(row.resolution_sla_pct, target) && 'text-red-700')}>
                       {pct(row.resolution_sla_pct)}
                     </td>
-                    {!week && <td className="p-2">{hours(row.resolution_seconds_avg)}</td>}
+                    {!week && <td className="p-2">{formatSeconds(row.resolution_seconds_avg)}</td>}
                     <td className="p-2">{row.rating_avg ?? '—'}</td>
                   </tr>
                 ))}

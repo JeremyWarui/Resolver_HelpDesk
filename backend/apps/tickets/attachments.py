@@ -18,17 +18,14 @@ IMAGE_QUALITY = 75
 
 IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 
-ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | {
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
-
+# Every type a ticket accepts, and the extension it is stored under.
 MIME_TO_EXT = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
 }
+ALLOWED_MIME_TYPES = frozenset(MIME_TO_EXT)
 
 
 def process_upload(file_obj, content_type: str) -> tuple[bytes, str]:

@@ -1,6 +1,8 @@
 // Types shared by the component layer: permissions, table variants, filter
 // pills and the notification feed.
 
+import type { Ticket } from './ticket.types';
+
 /**
  * What a role may do to a ticket it can already see. Guards the buttons on the
  * ticket detail; the API is the authoritative layer.
@@ -9,7 +11,6 @@
  */
 export interface PermissionMap {
   canAssignTicket: boolean;
-  canReassignTicket: boolean;
   canUpdateTicketStatus: boolean;
   canCloseTicket: boolean;
   canReopenTicket: boolean;
@@ -26,9 +27,8 @@ export type TicketTableVariant =
 export interface FilterPill {
   key: string;
   label: string;
-  count?: number;
-  variant?: 'default' | 'danger' | 'warning' | 'success'
-           | 'open' | 'assigned' | 'in_progress' | 'pending' | 'resolved' | 'closed';
+  /** A ticket status tints the pill with that status's colour; `danger` is Overdue's red. */
+  variant?: Ticket['status'] | 'danger';
 }
 
 /** Mirrors `SystemFeedback.CATEGORIES`. */

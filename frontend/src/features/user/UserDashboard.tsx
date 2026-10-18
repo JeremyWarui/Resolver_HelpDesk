@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ArrowRight, CheckCircle2, MapPin, PauseCircle, Plus, Star, UserRound } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -42,7 +41,6 @@ const titleOf = (t: Ticket) => t.service_item?.name ?? t.trade?.name ?? 'Request
  * A resolved ticket is always unrated, because rating it closes it.
  */
 const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
-  const queryClient = useQueryClient();
   const userData = useAuthStore((s) => s.user);
   const inFlight = useTickets({ mine: 1, status: 'active', page_size: ACTIVE_LIMIT });
   const resolved = useTickets({ mine: 1, status: 'resolved', page_size: AWAITING_LIMIT });
@@ -56,11 +54,6 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
   const active = inFlight.tickets;
   const activeTotal = inFlight.totalTickets;
   const firstName = userData?.first_name || userData?.username || 'there';
-
-  function refreshAll() {
-    queryClient.invalidateQueries({ queryKey: ['tickets'] });
-    queryClient.invalidateQueries({ queryKey: ['analytics'] });
-  }
 
   return (
     <div className="p-4 sm:p-6 space-y-5">
@@ -185,7 +178,7 @@ const UserDashboard = ({ onNavigate, onTicketSelect }: UserDashboardProps) => {
           initialRating={rating.stars}
           open
           onClose={() => setRating(null)}
-          onSuccess={() => { setRating(null); refreshAll(); }}
+          onSuccess={() => setRating(null)}
         />
       )}
     </div>

@@ -85,10 +85,20 @@ def _register(api, email, campus, password="Str0ngPassphrase!"):
     )
 
 
+def test_registering_creates_the_account_without_signing_in(api, nrb, db):
+    """The person signs in next, with the address they just gave."""
+    response = _register(api, "new.starter@ksg.ac.ke", nrb)
+
+    assert response.status_code == 201
+    assert response.json()["email"] == "new.starter@ksg.ac.ke"
+    assert "accessToken" not in response.json()
+    assert "resolver_refresh" not in response.cookies
+
+
 def test_a_registered_user_can_sign_in_with_their_email(api, nrb, db):
     """What you register with is what you log in with, without ever being told
     a username."""
-    assert _register(api, "log.inagain@ksg.ac.ke", nrb).status_code in (200, 201)
+    assert _register(api, "log.inagain@ksg.ac.ke", nrb).status_code == 201
     response = api.post(
         LOGIN,
         {"email": "log.inagain@ksg.ac.ke", "password": "Str0ngPassphrase!"},

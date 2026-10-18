@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS, API } from './helpers';
+import { API, bearer, login, USERS } from './helpers';
 
 // The manager reads the whole organisation: the admin's sections, read-only,
 // without the configuration screens. The ticket table lists every campus;
@@ -36,7 +36,7 @@ test('the manager lists every campus’s tickets but cannot open one', async ({ 
   // The list the table reads holds tickets from every campus. Asked per campus,
   // because the first page is newest-first and other specs keep adding Nairobi
   // tickets to it.
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const token = await bearer(page);
   const headers = { Authorization: `Bearer ${token}` };
   const campusList = await (await page.request.get(`${API}/campuses/`, { headers })).json();
   const campuses: { id: number; code: string }[] = campusList.results ?? campusList;
@@ -75,7 +75,7 @@ test('the manager reports lead with the period against the one before, then camp
 
 test('the server refuses the manager a ticket that is not their own', async ({ page }) => {
   await login(page, USERS.manager);
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const token = await bearer(page);
   const headers = { Authorization: `Bearer ${token}` };
 
   const list = await page.request.get(`${API}/tickets/`, { headers });

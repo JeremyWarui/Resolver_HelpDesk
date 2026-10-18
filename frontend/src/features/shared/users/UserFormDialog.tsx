@@ -14,6 +14,7 @@ import type { User, UserRole, CreateUserPayload } from '@/types';
 import { ROLE_LABELS, ROLES_REQUIRING_CAMPUS } from '@/constants/roles';
 import { RoleScopeSelectFields } from './RoleScopeSelectFields';
 import { CampusSelect } from '@/components/shared/forms/CampusSelect';
+import { useRefreshPeople } from '@/hooks/useRefreshPeople';
 
 interface UserFormData {
   email: string;
@@ -55,6 +56,7 @@ export function UserFormDialog({
     home_campus_id: editing?.home_campus_id != null ? String(editing.home_campus_id) : preset ? String(preset.campusId) : '',
   }));
   const [saving, setSaving] = useState(false);
+  const refreshPeople = useRefreshPeople();
 
   const set = (key: keyof UserFormData, val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -66,7 +68,7 @@ export function UserFormDialog({
     getRoleAssignments(editing.id)
       .then(([assignment]) => {
         if (active && assignment) {
-          setForm(f => ({ ...f, trade_ids: assignment.trade_ids ?? [] }));
+          setForm(f => (f.trade_ids.length ? f : { ...f, trade_ids: assignment.trade_ids ?? [] }));
         }
       })
       .catch(() => { /* the dialog still opens; the admin re-picks */ });
@@ -139,11 +141,13 @@ export function UserFormDialog({
         handleDRFError(roleError, {
           fallbackMessage: 'The account was saved, but the role did not stick — reopen this dialog to retry.',
         });
+        refreshPeople();
         onSuccess();
         return;
       }
 
       toast.success(editing ? 'Saved' : `New ${noun} created`);
+      refreshPeople();
       onSuccess();
     } catch (error) {
       handleDRFError(error, { fallbackMessage: 'Failed to save the account' });

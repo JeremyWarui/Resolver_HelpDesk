@@ -24,3 +24,9 @@ export function deriveIdentity(email: string): DerivedIdentity | null {
     name: parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' '),
   };
 }
+
+/** Up to two initials from a full name, as an avatar shows them: "Jane Wanjiru Doe" → "JW". */
+export function initials(name: string | null | undefined): string {
+  const letters = (name ?? '').split(' ').map((part) => part[0]).filter(Boolean).slice(0, 2).join('');
+  return letters.toUpperCase() || '?';
+}

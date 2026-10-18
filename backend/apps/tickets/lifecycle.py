@@ -45,6 +45,7 @@ class AlreadyRated(TransitionError):
     """The ticket carries a rating for its current resolution."""
 
 
+@transaction.atomic
 def transition_status(
     ticket,
     new_status,
@@ -279,6 +280,7 @@ def rate_ticket(ticket, actor, rating, comment=""):
     return ticket
 
 
+@transaction.atomic
 def assign_ticket(ticket, assignee, actor, priority=None, note=""):
     """Hand a ticket to `technician`, optionally setting its real priority.
 

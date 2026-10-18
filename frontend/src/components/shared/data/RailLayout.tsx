@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { ChevronRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**
@@ -17,11 +16,7 @@ interface RailEntry {
   key: string;
   icon: ReactNode;
   label: string;
-  /** Shown as a monospace chip beside the label — a trade code, say. */
-  code?: string;
   count: number;
-  /** Amber icon and label, for a bucket whose emptiness is the problem. */
-  warn?: boolean;
   /** Replaces the count line, for an entry that is a view rather than a bucket. */
   sub?: string;
   /** A red tint, for a view that is reporting a problem. */
@@ -126,7 +121,7 @@ function RailItem({
    *  the latter would misreport the register to anyone typing. */
   searching: boolean;
 }) {
-  const { icon, label, code, count, warn = false, sub, alert = false } = entry;
+  const { icon, label, count, sub, alert = false } = entry;
   const emptyAndIdle = count === 0 && !searching;
   const tint = alert
     ? 'bg-red-50 border border-red-200 hover:bg-red-100/70'
@@ -138,7 +133,7 @@ function RailItem({
       onClick={onClick}
       className={`w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-center gap-2 group/item ${tint}`}
     >
-      <span className={alert ? 'text-red-700' : active ? 'text-primary' : warn ? 'text-amber-500' : 'text-gray-400'}>
+      <span className={alert ? 'text-red-700' : active ? 'text-primary' : 'text-gray-400'}>
         {icon}
       </span>
       <div className="flex-1 min-w-0">
@@ -146,14 +141,6 @@ function RailItem({
           <span className={`text-sm font-medium truncate ${tone}`}>
             {label}
           </span>
-          {code && (
-            <Badge
-              variant="outline"
-              className={`text-[10px] font-mono ml-auto shrink-0 ${active ? 'border-primary/40 text-primary' : ''}`}
-            >
-              {code}
-            </Badge>
-          )}
         </div>
         <p className={`text-xs mt-0.5 ${alert ? 'text-red-700' : warnWhenEmpty && emptyAndIdle ? 'text-amber-600' : 'text-gray-400'}`}>
           {sub ?? (count === 0

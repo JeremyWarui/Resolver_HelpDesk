@@ -5,11 +5,13 @@ import { FilterPills } from '@/components/shared/data/FilterPills';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import { RatingModal } from './RatingModal';
 import TicketStatsCards from '@/components/shared/data/TicketStatsCards';
-import { useTickets } from '@/hooks/tickets/useTickets';
+import { useTicketTable } from '@/hooks/tickets/useTicketTable';
 import { ALL_TICKET_STATUSES, statusPills } from '@/constants/tickets';
-import type { Ticket } from '@/types';
+import type { Ticket, TicketsParams } from '@/types';
 
 const STATUS_PILLS = statusPills(ALL_TICKET_STATUSES);
+// Only tickets the caller raised, whatever their role.
+const MINE: Partial<TicketsParams> = { mine: 1 };
 
 interface MyTicketsPageProps {
   onNavigate?: (section: 'dashboard' | 'userTickets' | 'submitTicket') => void;
@@ -17,24 +19,11 @@ interface MyTicketsPageProps {
 }
 
 const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [ratingTicket, setRatingTicket] = useState<Ticket | null>(null);
 
-  // Server-side filtered ticket fetch — mine:1 scopes to tickets raised_by == self
-  const { tickets, totalTickets, loading, refetch } = useTickets({
-    status: activeFilter !== 'all' ? activeFilter : undefined,
-    mine: 1,
-    page: pageIndex + 1,
-    page_size: pageSize,
-  });
-
-  function handleFilterChange(key: string) {
-    setActiveFilter(key);
-    setPageIndex(0);
-  }
+  const table = useTicketTable({ defaultPageSize: 20, fixedParams: MINE });
+  const { tickets, loading, statusFilter: activeFilter, setStatusFilter: handleFilterChange } = table;
 
   function handleRowClick(ticket: Ticket) {
     setSelectedTicketId(ticket.id);
@@ -45,9 +34,9 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
     setRatingTicket(ticket);
   }
 
+  // RatingModal refreshes the ticket lists itself.
   function handleRatingSuccess() {
     setRatingTicket(null);
-    refetch();
   }
 
   return (
@@ -83,7 +72,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
 
       {/* Table area */}
       <div className="flex-1 overflow-auto px-4 py-3">
-        {!loading && tickets.length === 0 && activeFilter === 'all' ? (
+        {!loading && tickets.length === 0 && activeFilter === 'all' && !table.search ? (
           /* Empty state — first-time user */
           <div className="flex flex-col items-center justify-center h-full min-h-[320px] text-center">
             <div className="rounded-full bg-muted p-5 mb-4">
@@ -107,13 +96,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
             onRowClick={handleRowClick}
             onRate={handleRate}
             selectedRowId={selectedTicketId}
-            pagination={{
-              total: totalTickets,
-              pageIndex,
-              pageSize,
-              onPageChange: (idx) => setPageIndex(idx),
-              onPageSizeChange: (size) => { setPageSize(size); setPageIndex(0); },
-            }}
+            pagination={table.pagination}
             emptyMessage={`No ${activeFilter === 'all' ? '' : activeFilter.replace('_', ' ')} tickets`}
             emptyDescription={
               activeFilter === 'all'

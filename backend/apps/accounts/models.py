@@ -8,22 +8,21 @@ Posts point into `org`, never the other way round.
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 
-# Each role, its label, and the one scope column it carries. A None scope means
-# the role has no campus of its own: an admin and a manager see every campus,
-# and a plain user is reached through the tickets they raised, not through a
-# post. This is the only place the six roles are listed.
-ROLES = {
-    "user": ("User", None),
-    "technician": ("Technician", "campus"),
-    "hos": ("HOS", "campus"),
-    "hod": ("HOD", "campus"),
-    "manager": ("Manager", None),
-    "admin": ("Admin", None),
-}
+# The six roles. This is the only place they are listed.
+ROLE_CHOICES = [
+    ("user", "User"),
+    ("technician", "Technician"),
+    ("hos", "HOS"),
+    ("hod", "HOD"),
+    ("manager", "Manager"),
+    ("admin", "Admin"),
+]
 
-ROLE_CHOICES = [(role, label) for role, (label, _) in ROLES.items()]
-SCOPE_FIELD_BY_ROLE = {role: field for role, (_, field) in ROLES.items()}
+# The roles that carry one campus. An admin and a manager see every campus, and
+# a plain user is reached through the tickets they raised, not through a post.
+CAMPUS_ROLES = ("technician", "hos", "hod")
 
 
 class CustomUser(AbstractUser):
@@ -45,6 +44,14 @@ class CustomUser(AbstractUser):
     class Meta:
         app_label = "accounts"
         ordering = ["username"]
+        constraints = [
+            # Case-insensitive, like sign-in. Blank is allowed more than once.
+            models.UniqueConstraint(
+                Lower("email"),
+                condition=~models.Q(email=""),
+                name="unique_user_email_ci",
+            ),
+        ]
 
     def __str__(self):
         return self.username
@@ -109,6 +116,19 @@ class RoleAssignment(models.Model):
 
     class Meta:
         app_label = "accounts"
+        # `posts.SINGLE_HOLDER_ROLES`: one HOS and one HOD per campus, one manager.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role", "campus"],
+                condition=models.Q(role__in=["hos", "hod"]),
+                name="one_holder_per_campus_post",
+            ),
+            models.UniqueConstraint(
+                fields=["role"],
+                condition=models.Q(role="manager"),
+                name="one_manager",
+            ),
+        ]
 
     def clean(self):
         """Reject a scope that does not match the role.
@@ -116,11 +136,11 @@ class RoleAssignment(models.Model):
         A campus-scoped role must name one; every other role must not, or an
         admin would appear to belong to a single campus.
         """
-        if self.role not in SCOPE_FIELD_BY_ROLE:
+        if self.role not in dict(ROLE_CHOICES):
             # clean_fields() already recorded the choices error.
             return
 
-        needs_campus = SCOPE_FIELD_BY_ROLE[self.role] == "campus"
+        needs_campus = self.role in CAMPUS_ROLES
         if needs_campus and not self.campus_id:
             raise ValidationError(
                 {"campus": f"A {self.role} assignment requires a campus."}
@@ -132,8 +152,9 @@ class RoleAssignment(models.Model):
 
     def save(self, *args, **kwargs):
         """Validate on every write, whatever the caller."""
-        # The OneToOne on `user` already enforces one role per user.
-        self.full_clean(validate_unique=False)
+        # Uniqueness and the one-holder constraints are the database's to enforce,
+        # so a lost race arrives as an IntegrityError the caller can handle.
+        self.full_clean(validate_unique=False, validate_constraints=False)
         super().save(*args, **kwargs)
 
     def __str__(self):

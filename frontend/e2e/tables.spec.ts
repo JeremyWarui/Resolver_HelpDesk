@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, loginAsAdmin, USERS } from './helpers';
+import { apiGet, login, loginAsAdmin, USERS } from './helpers';
 
 // Two things `tsc` and `npm run build` are both happy with, because neither is
 // a type error: a list that silently stops short, and a string built from the
@@ -36,9 +36,8 @@ test('the register holds every facility, not just the first server page', async 
   expect(campusCount).toBeLessThan(claimed);
 });
 
-// The hidden `searchField` must include what the Title column renders
-// (`service_item.name`), or a service name plainly visible in the table matches
-// no row. The term is read off a visible row so this does not depend on which
+// The search must match what the Title column renders (`service_item.name`),
+// or a service name plainly visible in the table matches no row. The term is read off a visible row so this does not depend on which
 // items the seed dealt out.
 test('searching a service name shown in the table finds its row', async ({ page }) => {
   await login(page, USERS.technician);
@@ -87,4 +86,32 @@ test('the rail filters the list, it never restructures the card', async ({ page 
   await page.getByRole('button', { name: /^Embu/ }).first().click();
   await expect(page.getByRole('listitem').first()).toBeVisible();
   expect((await row('Daniel Kiptoo')).trim()).toBe(techAtAll);
+});
+
+// The tickets table is paged by the server. Sorting or searching only the rows
+// the browser holds would hide every ticket past page 1, so both go to the API.
+test('search and sort on the tickets table reach past the first page', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/dashboard/tickets');
+  const rows = page.locator('tbody tr');
+  await expect(rows.first()).toBeVisible({ timeout: 20_000 });
+
+  // The oldest ticket, which the default newest-first order puts on a late page.
+  const oldest = (await apiGet(page, '/tickets/?ordering=created_at&page_size=1')).results[0].ticket_no;
+  const lowest = (await apiGet(page, '/tickets/?ordering=ticket_no&page_size=1')).results[0].ticket_no;
+
+  // From page 2, a search lands on page 1 of its own results.
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText(/^Page 2 of/)).toBeVisible();
+
+  await page.getByPlaceholder(/Search/i).first().fill(oldest);
+  await expect(rows).toHaveCount(1, { timeout: 20_000 });
+  await expect(rows.first().locator('td').first()).toHaveText(oldest);
+  await expect(page.getByText('Page 1 of 1')).toBeVisible();
+
+  await page.getByPlaceholder(/Search/i).first().fill('');
+  await expect(async () => expect(await rows.count()).toBeGreaterThan(1)).toPass({ timeout: 20_000 });
+
+  await page.locator('th').filter({ hasText: 'ID' }).getByRole('button').click();
+  await expect(rows.first().locator('td').first()).toHaveText(lowest, { timeout: 20_000 });
 });

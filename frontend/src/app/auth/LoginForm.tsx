@@ -54,7 +54,6 @@ export function LoginForm() {
       const result = await login({
         email: values.email.trim(),
         password: values.password,
-        remember_me: false
       });
 
       toast.success('Welcome back!');

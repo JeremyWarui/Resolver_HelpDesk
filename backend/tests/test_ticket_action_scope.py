@@ -119,32 +119,12 @@ def test_hos_cannot_assign_a_ticket_to_the_wrong_trade(
     assert "assigned_to" in response.json()
 
 
-def test_hos_can_assign_a_ticket_to_the_right_trade(
-    api,
-    nrb_hos,
-    nrb_electrician,
-    target,
+@pytest.mark.parametrize("supervisor", ["nrb_hos", "nrb_hod"])
+def test_a_supervisor_assigns_a_ticket_at_their_campus_to_the_right_trade(
+    api, request, supervisor, nrb_electrician, target
 ):
-    api.force_authenticate(nrb_hos)
-    response = api.post(
-        reverse("ticket-assign", args=[target.pk]),
-        {"assigned_to": nrb_electrician.pk},
-        format="json",
-    )
-    assert response.status_code == 200
-    target.refresh_from_db()
-    assert target.assigned_to_id == nrb_electrician.pk
-
-
-def test_hod_can_assign_a_ticket_in_their_own_campus(
-    api,
-    nrb_hod,
-    nrb_electrician,
-    target,
-):
-    """The HOD may assign as well as the HOS. Every other assign test drives
-    it as an HOS, so this is the one that proves the second half."""
-    api.force_authenticate(nrb_hod)
+    """Every other assign test drives it as an HOS; the HOD may assign too."""
+    api.force_authenticate(request.getfixturevalue(supervisor))
     response = api.post(
         reverse("ticket-assign", args=[target.pk]),
         {"assigned_to": nrb_electrician.pk},

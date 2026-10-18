@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, loginAsAdmin, USERS, API } from './helpers';
+import { apiGet, login, loginAsAdmin, USERS } from './helpers';
 
 // Every Reports page (admin, manager, HOD and HOS) leads with the same six
 // cards from /analytics/overview/, each against the period before.
@@ -7,10 +7,7 @@ import { login, loginAsAdmin, USERS, API } from './helpers';
 interface Figures { total: number; settled: number; resolution_sla_pct: number | null; rating_avg: number | null; rating_count: number }
 
 async function figures(page: Page, path: string): Promise<{ now: Figures; before: { total: number; settled: number }; held: number }> {
-  const body = await page.evaluate(async (url) => {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` } });
-    return r.json();
-  }, `${API}${path}?days=30`);
+  const body = await apiGet(page, `${path}?days=30`);
   const held = (body.bottlenecks as { total: number }[]).reduce((sum, row) => sum + row.total, 0);
   return { now: body.current, before: body.previous, held };
 }

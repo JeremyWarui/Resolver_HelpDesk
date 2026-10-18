@@ -11,10 +11,9 @@ import {
   getTrades,
   getFacilityTypes,
   type CatalogTrade,
-  type FacilityTypeRow,
 } from '@/lib/api/catalogue';
 import { rows } from '@/lib/api/client';
-import type { Facility, Trade } from '@/types';
+import type { CodeRef, Facility, Trade } from '@/types';
 
 /** Every active trade, with its service items nested.
  *
@@ -65,7 +64,7 @@ export function useTrades() {
  *  Fixed reference data — cached for the session. The codes themselves are
  *  enumerated in `constants/catalogue.ts`; these are the database rows. */
 export function useFacilityTypes() {
-  const { data, isLoading } = useQuery<FacilityTypeRow[]>({
+  const { data, isLoading } = useQuery<CodeRef[]>({
     queryKey: ['facility-types'],
     queryFn: getFacilityTypes,
     staleTime: Infinity,

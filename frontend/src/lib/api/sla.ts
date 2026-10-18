@@ -1,10 +1,10 @@
-import apiClient from './client';
+import apiClient, { rows } from './client';
 import type { Priority } from '@/types';
 
 /** The four priority levels and their SLA targets. Read by anyone signed in. */
 export async function getPriorities(): Promise<Priority[]> {
   const { data } = await apiClient.get('/priorities/');
-  return Array.isArray(data) ? data : (data.results ?? []);
+  return rows<Priority>(data);
 }
 
 /** Edit one priority's targets or name. Admin only; the set of levels is fixed. */

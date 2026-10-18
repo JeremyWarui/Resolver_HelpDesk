@@ -109,8 +109,17 @@ class NotificationMarkReadView(APIView):
 
 
 class NotificationMarkAllReadView(APIView):
+    """POST /notifications/read-all/ — `{up_to: <id>}` marks only what the reader
+    had on screen, so a message that arrived since is still unread."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        Notification.objects.filter(user=request.user, read=False).update(read=True)
+        unread = Notification.objects.filter(user=request.user, read=False)
+        up_to = request.data.get("up_to") if isinstance(request.data, dict) else None
+        if up_to is not None:
+            if not isinstance(up_to, int) or isinstance(up_to, bool):
+                return Response({"up_to": ["A notification id."]}, status=400)
+            unread = unread.filter(pk__lte=up_to)
+        unread.update(read=True)
         return Response(status=204)

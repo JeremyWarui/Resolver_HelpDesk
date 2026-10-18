@@ -131,8 +131,6 @@ def test_manager_opens_no_ticket_but_reports_on_every_campus(
 def test_a_technician_reports_on_their_own_jobs_not_their_whole_trade(
     nrb, electrical, nrb_electrician, requester, priorities
 ):
-    from tests import factories
-
     colleague = factories.make_technician("elec_two", nrb, [electrical])
     mine = factories.make_ticket(requester, nrb, electrical, assigned_to=nrb_electrician)
     theirs = factories.make_ticket(requester, nrb, electrical, assigned_to=colleague)
@@ -188,8 +186,6 @@ def test_unknown_role_sees_nothing(role, requester, nrb_electrical_ticket):
 
 
 def _listed(api, user, **params):
-    from django.urls import reverse
-
     api.force_authenticate(user)
     response = api.get(reverse("ticket-list"), params)
     assert response.status_code == 200, response.json()
@@ -242,7 +238,6 @@ def test_filter_options_offer_only_trades_the_caller_can_see(
 ):
     """The dropdown is built from the caller's own rows, so it cannot advertise
     a trade whose tickets they would then be refused."""
-    from django.urls import reverse
 
     api.force_authenticate(nrb_electrician)
     options = api.get(reverse("ticket-filter-options")).json()
@@ -253,7 +248,6 @@ def test_status_active_lists_live_work_only_and_still_narrows(
     api, requester, nrb, electrical, priorities, nrb_hos
 ):
     from apps.tickets.models import Ticket
-    from tests import factories
 
     by_status = {}
     for status in ("open", "assigned", "in_progress", "pending", "resolved", "closed"):
@@ -268,8 +262,6 @@ def test_status_active_lists_live_work_only_and_still_narrows(
 
 
 def test_status_active_never_widens_past_scope(api, msa_hos, requester, nrb, electrical, priorities):
-    from tests import factories
-
     factories.make_ticket(requester, nrb, electrical)
     factories.make_ticket(factories.make_user("msa_requester_two", campus=msa_hos.campus), msa_hos.campus, electrical)
     api.force_authenticate(msa_hos)
@@ -284,7 +276,6 @@ def test_a_list_row_says_when_its_hold_began(api, requester, nrb, electrical, pr
     from django.utils import timezone
 
     from apps.tickets.models import Ticket
-    from tests import factories
 
     held = factories.make_ticket(requester, nrb, electrical)
     when = timezone.now()

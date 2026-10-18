@@ -9,7 +9,7 @@ import { PriorityBadge } from "@/components/shared/ticket/PriorityBadge";
 import { SLACountdown } from "@/components/shared/ticket/SLACountdown";
 import type { Ticket } from "@/types";
 import { sortableHeader } from './sortableHeader';
-import { relativeTime } from '@/utils/date';
+import { timeAgo } from '@/utils/date';
 
 // Utility function to truncate text — guards against undefined/null values
 const truncateText = (text: string | undefined | null, maxLength: number) => {
@@ -148,12 +148,7 @@ export const slaCountdownColumn = (header: string = "SLA"): ColumnDef<Ticket> =>
       return <span className="text-xs text-muted-foreground">—</span>;
     }
     return (
-      <SLACountdown
-        dueDate={ticket.resolution_due_at}
-        createdAt={ticket.created_at}
-        isPaused={false}
-        compact
-      />
+      <SLACountdown dueDate={ticket.resolution_due_at} startedAt={ticket.clock_started_at} compact />
     );
   },
   enableSorting: false,
@@ -166,7 +161,7 @@ export const createdAtColumn = (header: string = "Created"): ColumnDef<Ticket> =
   cell: ({ row }) => {
     const createdAt = row.getValue("created_at") as string;
     const date = new Date(createdAt);
-    return <div title={date.toLocaleString()}>{relativeTime(createdAt)}</div>;
+    return <div title={date.toLocaleString()}>{timeAgo(createdAt)}</div>;
   },
 });
 
@@ -177,7 +172,7 @@ export const updatedAtColumn = (header: string = "Updated"): ColumnDef<Ticket> =
     const updatedAt = row.getValue("updated_at") as string;
     if (!updatedAt) return <div>N/A</div>;
     const date = new Date(updatedAt);
-    return <div title={date.toLocaleString()}>{relativeTime(updatedAt)}</div>;
+    return <div title={date.toLocaleString()}>{timeAgo(updatedAt)}</div>;
   },
 });
 
@@ -287,13 +282,6 @@ export function resumeActionColumn(options: {
     enableSorting: false,
   };
 }
-
-// Always hidden. It exists only so DataTable's search box has a column to
-// filter on — `TicketTable` builds the value it matches against.
-export const searchFieldColumn = (): ColumnDef<Ticket> => ({
-  accessorKey: "searchField",
-  enableHiding: true,
-});
 
 // Actions column — only for user my-tickets variant.
 // Shows "Rate & close" for resolved unrated tickets; "Rated" badge once feedback exists;

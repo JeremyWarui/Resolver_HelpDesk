@@ -8,6 +8,8 @@ import { useTechnicians } from '@/hooks/useTechnicians';
 import { useAnalytics, useCover } from '@/hooks/useAnalytics';
 import { UserFormDialog } from '@/features/shared/users/UserFormDialog';
 import { UnifiedDetailsSheet } from '@/components/shared/ticket/UnifiedDetailsSheet';
+import { useRefreshPeople } from '@/hooks/useRefreshPeople';
+import { Initials } from '@/components/shared/data/Initials';
 import CoverByTrade from './CoverByTrade';
 import type { Technician } from '@/types';
 
@@ -31,8 +33,9 @@ const COVER = 'cover';
 const campusKey = (id: number) => `campus:${id}`;
 
 export default function TechniciansPage({ manage = true }: TechniciansPageProps = {}) {
-  const { technicians, loading, refetch } = useTechnicians();
-  const { cover, loading: coverLoading, refetch: refetchCover } = useCover();
+  const { technicians, loading } = useTechnicians();
+  const { cover, loading: coverLoading } = useCover();
+  const refreshPeople = useRefreshPeople();
   // Open load per technician, as context beside the roster. A failure leaves
   // the badges off rather than blanking the page.
   const { data: load } = useAnalytics({ days: 30, group_by: 'technician' });
@@ -211,7 +214,7 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
           lockRole="technician"
           preset={gap ?? undefined}
           onClose={() => { setFormOpen(false); setEditing(null); setGap(null); }}
-          onSuccess={() => { setFormOpen(false); setEditing(null); setGap(null); refetch(); refetchCover(); }}
+          onSuccess={() => { setFormOpen(false); setEditing(null); setGap(null); }}
         />
       )}
 
@@ -221,7 +224,7 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
         entity={viewing}
         entityType="technician"
         canEdit={manage}
-        onUpdated={manage ? () => { refetch(); refetchCover(); } : undefined}
+        onUpdated={manage ? refreshPeople : undefined}
       />
     </RailLayout>
   );
@@ -237,16 +240,13 @@ function TechnicianRow({
   /** Omitted for read-only viewers — the Edit button is not rendered at all. */
   onEdit?: () => void;
 }) {
-  const initials = name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const trades = tech.trade_names ?? [];
 
   // Fixed widths, so the columns line up down the list whatever the name
   // lengths. Narrow screens drop the rightmost columns.
   return (
     <li className="flex items-center gap-3 p-3 bg-white border rounded-lg hover:border-gray-300 transition-colors">
-      <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
-        {initials || '?'}
-      </div>
+      <Initials name={name} />
 
       <button onClick={onView} className="w-48 shrink-0 text-left text-sm font-medium text-gray-900 truncate">
         {name}

@@ -28,7 +28,7 @@ export const DETAILS_SHEET_CONFIG: Record<string, DetailSheetConfig> = {
     titleField: 'first_name', // special handling for first_name + last_name
     descriptionText: 'Technician profile and assignments',
     viewFields: [
-      { name: 'name', label: 'Name', type: 'readonly' },
+      { name: 'full_name', label: 'Name', type: 'readonly' },
       { name: 'username', label: 'Username', type: 'readonly' },
       { name: 'email', label: 'Email', type: 'readonly' },
       { name: 'primary_campus_name', label: 'Campus', type: 'readonly' },

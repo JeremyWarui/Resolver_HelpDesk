@@ -48,9 +48,6 @@
   --status-approval-bg:     #fef3c7;   /* amber-100   */
   --status-approval-text:   #92400e;   /* amber-800   */
   --status-approval-border: #fde68a;   /* amber-200   */
-  --status-approved-bg:     #d1fae5;   /* emerald-100 */
-  --status-approved-text:   #065f46;   /* emerald-800 */
-  --status-approved-border: #a7f3d0;   /* emerald-200 */
 
   /* ── Priority badge colours ───────────────────────────────────────────────── */
 
@@ -93,12 +90,6 @@
   --sla-warning: oklch(0.60 0.18 75);
   --sla-breach:  oklch(0.50 0.24 27);
 
-  /* Chart colours: the palette in constants/colors.ts. */
-  --chart-1: #0078d4;  /* Blue (Primary) */
-  --chart-2: #107c10;  /* Green (Success) */
-  --chart-3: #ffaa44;  /* Orange (Warning) */
-  --chart-4: #d13438;  /* Red (Danger) */
-  --chart-5: #5c2d91;  /* Purple (Secondary) */
 
   /* Toast semantic colours */
   --toast-success-bg:     oklch(0.50 0.18 148 / 0.08);
@@ -193,11 +184,6 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

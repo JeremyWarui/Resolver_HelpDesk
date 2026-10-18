@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,7 +19,6 @@ interface WaitingListProps {
  */
 export default function WaitingList({ waiting, onTicketSelect, onSeeAll }: WaitingListProps) {
   const [assigning, setAssigning] = useState<WaitingTicket | null>(null);
-  const queryClient = useQueryClient();
   const rows = waiting?.rows ?? null;
   const more = waiting ? waiting.count - waiting.rows.length : 0;
 
@@ -83,10 +81,7 @@ export default function WaitingList({ waiting, onTicketSelect, onSeeAll }: Waiti
           ticket={assigning}
           open
           onClose={() => setAssigning(null)}
-          onSuccess={() => {
-            setAssigning(null);
-            queryClient.invalidateQueries({ queryKey: ['analytics'] });
-          }}
+          onSuccess={() => setAssigning(null)}
         />
       )}
     </Card>

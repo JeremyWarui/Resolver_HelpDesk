@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import { initials } from '@/utils/identity';
 import { useAuthStore } from '@/stores/authStore';
 import { Card } from '@/components/ui/card';
 import { RoleLayout } from '@/components/layout/RoleLayout';
@@ -12,7 +13,7 @@ export function ProfilePage() {
   if (!user) return null;
 
   const fullName = user.full_name;
-  const initials = (user.first_name?.[0] ?? '') + (user.last_name?.[0] ?? '') || user.username[0];
+  const letters = initials(fullName);
 
   const details: { label: string; value: string }[] = [
     { label: 'First name', value: user.first_name || '—' },
@@ -35,7 +36,7 @@ export function ProfilePage() {
               aria-hidden
               className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-lg sm:text-xl font-semibold text-gray-700 uppercase"
             >
-              {initials}
+              {letters}
             </div>
             <div className="min-w-0">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">{fullName}</h2>

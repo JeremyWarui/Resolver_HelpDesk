@@ -1,7 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getNotificationPage,
-  getNotifications,
   markAllRead as markAllReadApi,
   markRead as markReadApi,
   type NotificationFeed,
@@ -24,7 +23,7 @@ export function useNotifications() {
 
   const query = useQuery<NotificationFeed>({
     queryKey: KEY,
-    queryFn: getNotifications,
+    queryFn: () => getNotificationPage({}),
     refetchInterval: POLL_MS,
     refetchOnWindowFocus: true,
     // No polling while the tab is hidden; focusing it again refetches.
@@ -57,7 +56,10 @@ export function useNotifications() {
   });
 
   const markAllRead = useMutation({
-    mutationFn: markAllReadApi,
+    mutationFn: () => {
+      const shown = query.data?.results ?? [];
+      return markAllReadApi(shown.length ? Math.max(...shown.map((n) => n.id)) : undefined);
+    },
     onMutate: async () => {
       // Exact: a prefix match would also cancel a Load more in flight.
       await queryClient.cancelQueries({ queryKey: KEY, exact: true });

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '@/lib/api/client';
+import { getTechnicians } from '@/lib/api/users';
 import type { Technician } from '@/types';
 
 /**
@@ -24,12 +24,7 @@ export function useTechnicians(
 
   const query = useQuery<Technician[]>({
     queryKey: ['technicians', campus ?? null, trade ?? null],
-    queryFn: async () => {
-      const { data } = await apiClient.get('/technicians/', {
-        params: { campus, trade },
-      });
-      return Array.isArray(data) ? data : (data.results ?? []);
-    },
+    queryFn: () => getTechnicians({ campus, trade }),
     enabled: options?.enabled ?? true,
     staleTime: 2 * 60 * 1000,
   });

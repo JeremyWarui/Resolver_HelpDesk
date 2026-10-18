@@ -49,8 +49,8 @@ def _summary(wb):
     return {row[0]: row[1] for row in wb["Summary"].iter_rows(values_only=True) if row and row[0]}
 
 
-def _tickets(wb):
-    rows = list(wb["Tickets"].iter_rows(values_only=True))
+def _sheet(wb, name):
+    rows = list(wb[name].iter_rows(values_only=True))
     return [dict(zip(rows[0], row)) for row in rows[1:]]
 
 
@@ -74,15 +74,10 @@ def test_the_manager_hod_hos_and_technician_download_the_pdf(api, request, worke
     assert response["Content-Disposition"].endswith('.pdf"')
 
 
-@pytest.mark.parametrize("role", ["requester"])
-def test_no_one_else_downloads_the_pdf(api, request, worked, role):
-    api.force_authenticate(request.getfixturevalue(role))
-    assert api.get(reverse(PDF)).status_code == 403
-
-
-def test_a_requester_downloads_no_workbook(api, requester, worked):
+def test_a_requester_downloads_neither_file(api, requester, worked):
     api.force_authenticate(requester)
     assert api.get(reverse(XLSX)).status_code == 403
+    assert api.get(reverse(PDF)).status_code == 403
 
 
 def test_the_downloads_need_a_login(api):
@@ -93,23 +88,28 @@ def test_the_downloads_need_a_login(api):
 # ─── What each workbook holds ───────────────────────────────────────────────
 
 
-def test_the_manager_workbook_is_their_reports_page_over_every_campus(api, manager, worked):
-    wb = _workbook(api, manager)
-    assert wb.sheetnames == [
-        "Summary", "Tickets raised", "Facility Health", "Campuses", "Trades", "Trades by campus",
-        "Holds", "Tickets",
-    ]
-    assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi", "Mombasa"}
-    assert _summary(wb)["Covers"] == "Every campus"
+EVERY_CAMPUS_SHEETS = [
+    "Summary", "Tickets raised", "Facility Health", "Campuses", "Trades", "Trades by campus",
+    "Holds", "Tickets",
+]
+ONE_CAMPUS_SHEETS = ["Summary", "Tickets raised", "Facility Health", "Technicians", "Trades", "Holds", "Tickets"]
 
 
-def test_an_hos_workbook_is_their_reports_page_over_their_campus(api, nrb_hos, worked):
-    wb = _workbook(api, nrb_hos)
-    assert wb.sheetnames == [
-        "Summary", "Tickets raised", "Facility Health", "Technicians", "Trades", "Holds", "Tickets",
-    ]
-    assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi"}
-    assert _summary(wb)["Covers"] == "Nairobi campus"
+@pytest.mark.parametrize(
+    "role, sheets, campuses, covers",
+    [
+        ("manager", EVERY_CAMPUS_SHEETS, {"Nairobi", "Mombasa"}, "Every campus"),
+        ("admin_user", EVERY_CAMPUS_SHEETS, {"Nairobi", "Mombasa"}, "Every campus"),
+        ("nrb_hos", ONE_CAMPUS_SHEETS, {"Nairobi"}, "Nairobi campus"),
+    ],
+)
+def test_a_workbook_is_its_reports_page_over_the_roles_campuses(
+    api, request, worked, role, sheets, campuses, covers
+):
+    wb = _workbook(api, request.getfixturevalue(role))
+    assert wb.sheetnames == sheets
+    assert {t["Campus"] for t in _sheet(wb, "Tickets")} == campuses
+    assert _summary(wb)["Covers"] == covers
 
 
 def test_a_technician_workbook_is_their_own_jobs_without_colleagues(
@@ -120,7 +120,7 @@ def test_a_technician_workbook_is_their_own_jobs_without_colleagues(
 
     wb = _workbook(api, nrb_electrician)
     assert "By technician" not in wb.sheetnames and "By campus" not in wb.sheetnames
-    assert {t["Assigned to"] for t in _tickets(wb)} == {
+    assert {t["Assigned to"] for t in _sheet(wb, "Tickets")} == {
         f"{nrb_electrician.first_name} {nrb_electrician.last_name}".strip()
         or nrb_electrician.username
     }
@@ -131,36 +131,22 @@ def _pct(value):
     return None if value is None else pytest.approx(value / 100)
 
 
-@pytest.mark.parametrize("role", ["nrb_electrician"])
-def test_the_workbook_says_what_the_reports_page_says(api, request, worked, role):
-    """Same role, same period, same numbers, for each kind of scope."""
-    user = request.getfixturevalue(role)
-    api.force_authenticate(user)
+def test_the_workbook_says_what_the_reports_page_says(api, nrb_electrician, worked):
+    """A technician's workbook and their reports page: same period, same numbers."""
+    api.force_authenticate(nrb_electrician)
     page = api.get(reverse("analytics:analytics"), {"days": 30, "group_by": "trade"}).json()
     totals = page["totals"]
-    wb = _workbook(api, user, days=30)
+    wb = _workbook(api, nrb_electrician, days=30)
     summary = _summary(wb)
 
-    # A technician's headline names the same figures in their own words.
-    label = (
-        {"total": "Jobs assigned to me", "backlog": "Active now", "overdue": "Overdue now",
-         "sla": "Resolved on time", "resolution": "Time to resolve"}
-        if role == "nrb_electrician" else
-        {"total": "Tickets raised", "backlog": "Open backlog (now)", "overdue": "Overdue (now)",
-         "sla": "Resolved on time", "resolution": "Time to resolve"}
-    )
-    assert summary[label["total"]] == totals["total"]
-    assert summary[label["backlog"]] == totals["open_backlog"]
-    assert summary[label["overdue"]] == totals["overdue"]
-    assert summary[label["sla"]] == _pct(totals["resolution_sla_pct"])
+    assert summary["Jobs assigned to me"] == totals["total"]
+    assert summary["Active now"] == totals["open_backlog"]
+    assert summary["Overdue now"] == totals["overdue"]
+    assert summary["Resolved on time"] == _pct(totals["resolution_sla_pct"])
     assert summary["Average rating (of 5)"] == totals["rating_avg"]
-    if role != "nrb_electrician":
-        assert summary["Completion rate"] == _pct(totals["completion_pct"])
-        assert summary["Closed tickets rated"] == _pct(totals["rated_pct"])
-    else:
-        assert summary["Jobs finished"] == totals["settled"]
+    assert summary["Jobs finished"] == totals["settled"]
     if totals["resolution_seconds_avg"] is not None:
-        assert summary[label["resolution"]] == timedelta(
+        assert summary["Time to resolve"] == timedelta(
             seconds=totals["resolution_seconds_avg"]
         )
 
@@ -175,7 +161,7 @@ def test_the_workbook_says_what_the_reports_page_says(api, request, worked, role
 
 def test_the_tickets_sheet_carries_the_rating_and_sla_outcome(api, manager, worked):
     nrb_job, _, _ = worked
-    rows = {t["Ticket"]: t for t in _tickets(_workbook(api, manager))}
+    rows = {t["Ticket"]: t for t in _sheet(_workbook(api, manager), "Tickets")}
 
     row = rows[nrb_job.ticket_no]
     assert (row["Status"], row["Rating"], row["Rating comment"]) == ("Closed", 4, "Good")
@@ -184,15 +170,15 @@ def test_the_tickets_sheet_carries_the_rating_and_sla_outcome(api, manager, work
 
 def test_the_period_narrows_the_workbook(api, manager, worked):
     old = factories.age_ticket(worked[2], days=60)
-    numbers = {t["Ticket"] for t in _tickets(_workbook(api, manager, days=30))}
+    numbers = {t["Ticket"] for t in _sheet(_workbook(api, manager, days=30), "Tickets")}
     assert old.ticket_no not in numbers
-    numbers = {t["Ticket"] for t in _tickets(_workbook(api, manager, days=90))}
+    numbers = {t["Ticket"] for t in _sheet(_workbook(api, manager, days=90), "Tickets")}
     assert old.ticket_no in numbers
 
 
 def test_an_empty_period_still_builds_both_formats(api, manager, nrb_hos):
     wb = _workbook(api, manager)
-    assert _tickets(wb) == []
+    assert _sheet(wb, "Tickets") == []
     api.force_authenticate(nrb_hos)
     assert api.get(reverse(PDF)).content.startswith(b"%PDF")
 
@@ -229,7 +215,7 @@ def test_control_characters_do_not_break_the_download(api, manager, worked):
     type(nrb_job).objects.filter(pk=nrb_job.pk).update(
         location_detail="Room\x0b 4\x1b", rating_comment="ok\x07 thanks"
     )
-    rows = {t["Ticket"]: t for t in _tickets(_workbook(api, manager))}
+    rows = {t["Ticket"]: t for t in _sheet(_workbook(api, manager), "Tickets")}
     assert rows[nrb_job.ticket_no]["Where"] == "Room 4"
     assert rows[nrb_job.ticket_no]["Rating comment"] == "ok thanks"
 
@@ -268,13 +254,11 @@ def test_the_sla_column_uses_the_one_definition_of_late(api, manager, worked):
     """A settled ticket with no target is unmeasured, as in every percentage."""
     nrb_job, _, _ = worked
     type(nrb_job).objects.filter(pk=nrb_job.pk).update(resolution_due_at=None)
-    rows = {t["Ticket"]: t for t in _tickets(_workbook(api, manager))}
+    rows = {t["Ticket"]: t for t in _sheet(_workbook(api, manager), "Tickets")}
     assert rows[nrb_job.ticket_no]["SLA"] is None
 
 
 def test_sla_outcome_matches_the_query_definitions(nrb_electrical_ticket):
-    from django.utils import timezone
-
     from apps.tickets.sla import sla_outcome
 
     t = nrb_electrical_ticket
@@ -341,17 +325,13 @@ def test_a_technicians_headline_is_about_their_own_work(api, nrb_electrician, wo
         assert supervisors_only not in summary
 
 
-def _sheet(wb, name):
-    rows = list(wb[name].iter_rows(values_only=True))
-    return [dict(zip(rows[0], row)) for row in rows[1:]]
-
-
-def test_the_manager_workbook_says_what_their_reports_page_says(api, manager, worked):
+@pytest.mark.parametrize("narrowed", [False, True], ids=["every-campus", "one-campus"])
+def test_the_manager_workbook_says_what_their_reports_page_says(api, manager, worked, nrb, narrowed):
+    query = {"days": 30, **({"campus": nrb.pk} if narrowed else {})}
     api.force_authenticate(manager)
-    page = api.get(reverse("analytics:overview"), {"days": 30}).json()
-    wb = _workbook(api, manager, days=30)
+    page = api.get(reverse("analytics:overview"), query).json()
 
-    _assert_workbook_matches(wb, page)
+    _assert_workbook_matches(_workbook(api, manager, **query), page)
 
 
 def _busy_campus(requester, nrb, electrical, nrb_electrician):
@@ -397,14 +377,16 @@ def test_a_supervisors_pdf_prints_the_pages_technician_figures(
         row = words[start + 5 * n:start + 5 * (n + 1)]
         assert row == [
             str(t["total"]), str(t["open_now"]), _cell_text(t["resolution_sla_pct"]),
-            _hours_text(t["resolution_seconds_avg"]), _rating_text(t["rating_avg"]),
+            _duration_text(t["resolution_seconds_avg"]), _rating_text(t["rating_avg"]),
         ]
 
 
-def _hours_text(seconds):
-    from decimal import ROUND_HALF_UP, Decimal
-
-    return "—" if seconds is None else f"{Decimal(seconds / 3600).quantize(Decimal('0.1'), ROUND_HALF_UP)}h"
+def _duration_text(seconds):
+    """formatSeconds in src/utils/date.ts."""
+    if seconds is None:
+        return "—"
+    hours, rest = divmod(int(seconds), 3600)
+    return f"{hours}h {rest // 60}m" if hours else f"{rest // 60}m"
 
 
 def _rating_text(value):
@@ -489,12 +471,6 @@ def _sheet_from(wb, name, heading):
     return out
 
 
-def test_a_campus_narrowed_workbook_says_what_the_narrowed_page_says(api, manager, worked, nrb):
-    api.force_authenticate(manager)
-    page = api.get(reverse("analytics:overview"), {"days": 30, "campus": nrb.pk}).json()
-    _assert_workbook_matches(_workbook(api, manager, days=30, campus=nrb.pk), page)
-
-
 def test_the_managers_pdf_prints_the_pages_campus_figures(api, monkeypatch, manager, worked):
     api.force_authenticate(manager)
     page = api.get(reverse("analytics:overview"), {"days": 30}).json()
@@ -512,12 +488,14 @@ def _cell_text(pct):
     return "—" if pct is None else f"{pct:g}%"
 
 
-def test_the_pdf_rounds_hours_and_percentages_as_the_page_does():
+def test_the_pdf_writes_durations_and_percentages_as_the_page_does():
     from apps.analytics.export import _cell
 
-    # The page writes (8100 / 3600).toFixed(1) as 2.3, and 100.0 as 100.
-    assert (_cell(8100, "hours"), _cell(4500, "hours"), _cell(900, "hours")) == ("2.3h", "1.3h", "0.3h")
-    assert (_cell(100.0, "page_pct"), _cell(72.3, "page_pct")) == ("100%", "72.3%")
+    # formatSeconds and formatPct in src/utils.
+    assert (_cell(8100, "duration"), _cell(101_760, "duration"), _cell(900, "duration")) == (
+        "2h 15m", "28h 16m", "15m",
+    )
+    assert (_cell(100.0, "pct"), _cell(72.3, "pct")) == ("100%", "72.3%")
 
 
 def test_the_manager_workbook_lists_facility_health_and_attention(
@@ -542,7 +520,7 @@ def test_a_campus_narrows_the_managers_downloads(api, manager, worked, nrb):
     wb = _workbook(api, manager, campus=nrb.pk)
 
     assert _summary(wb)["Covers"] == "Nairobi campus"
-    assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi"}
+    assert {t["Campus"] for t in _sheet(wb, "Tickets")} == {"Nairobi"}
     assert [r["Campus"] for r in _sheet(wb, "Campuses")] == ["Nairobi"]
     api.force_authenticate(manager)
     response = api.get(reverse(PDF), {"campus": nrb.pk})
@@ -562,23 +540,30 @@ def test_only_an_every_campus_report_takes_a_campus(api, request, worked, msa, r
     assert api.get(reverse(XLSX), {"campus": msa.pk}).status_code == 400
 
 
-def test_the_admin_workbook_is_the_managers_and_narrows_to_a_campus(api, admin_user, manager, worked, msa):
-    assert _workbook(api, admin_user).sheetnames == _workbook(api, manager).sheetnames
+EVERY_CAMPUS_PDF = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Campuses",
+                    "Trades", "Trades by campus", "On hold now, by reason"]
+CAMPUS_TABLE_COLUMNS = {"Raised", "Resolved", "Resolved on time", "With HOD", "Jobs each"}
+ONE_CAMPUS_PDF = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Technicians",
+                  "Trades", "On hold now, by reason"]
 
-    wb = _workbook(api, admin_user, campus=msa.pk)
 
-    assert {t["Campus"] for t in _tickets(wb)} == {"Mombasa"}
+@pytest.mark.parametrize(
+    "role, sections, words_present, absent",
+    [
+        ("manager", EVERY_CAMPUS_PDF, CAMPUS_TABLE_COLUMNS, ("Trade performance",)),
+        ("admin_user", EVERY_CAMPUS_PDF, CAMPUS_TABLE_COLUMNS, ("Trade performance",)),
+        ("nrb_hos", ONE_CAMPUS_PDF, set(), ("Campuses", "Trades by campus", "Trade performance", "Where my jobs stand")),
+        ("nrb_hod", ONE_CAMPUS_PDF, set(), ("Campuses", "Trades by campus", "Trade performance", "Where my jobs stand")),
+    ],
+)
+def test_a_pdf_follows_its_reports_page(api, monkeypatch, request, worked, role, sections, words_present, absent):
+    words = _pdf_words(api, request.getfixturevalue(role), monkeypatch)
 
-
-def test_the_managers_pdf_follows_their_reports_page(api, monkeypatch, manager, worked):
-    words = _pdf_words(api, manager, monkeypatch)
-
-    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Campuses",
-             "Trades", "Trades by campus", "On hold now, by reason"]
-    positions = [words.index(title) for title in order]
+    positions = [words.index(title) for title in sections]
     assert positions == sorted(positions)
-    assert {"Raised", "Resolved", "Resolved on time", "With HOD", "Jobs each"} <= set(words)
-    assert "Trade performance" not in words
+    assert words_present <= set(words)
+    for title in absent:
+        assert title not in words
 
 
 def _pdf_words(api, user, monkeypatch, **params):
@@ -635,24 +620,3 @@ def test_a_two_trade_technicians_pdf_keeps_its_trade_sections(
     assert {"Where my jobs stand", "Trade", "Trade performance", "Finished"} <= set(words)
     # Response time is how fast work is assigned, which is the HOS's figure.
     assert "Avg resp." not in words
-
-
-@pytest.mark.parametrize("role", ["nrb_hos", "nrb_hod"])
-def test_a_supervisors_pdf_follows_their_reports_page(api, monkeypatch, request, worked, role):
-    words = _pdf_words(api, request.getfixturevalue(role), monkeypatch)
-
-    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Technicians",
-             "Trades", "On hold now, by reason"]
-    positions = [words.index(title) for title in order]
-    assert positions == sorted(positions)
-    for absent in ("Campuses", "Trades by campus", "Trade performance", "Where my jobs stand"):
-        assert absent not in words
-
-
-def test_the_admins_pdf_follows_the_managers_reports_page(api, monkeypatch, admin_user, worked):
-    words = _pdf_words(api, admin_user, monkeypatch)
-
-    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Campuses",
-             "Trades", "Trades by campus", "On hold now, by reason"]
-    positions = [words.index(title) for title in order]
-    assert positions == sorted(positions)

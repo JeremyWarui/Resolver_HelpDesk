@@ -1,5 +1,7 @@
 import type { FilterOption } from "../DataTable";
 import type { TicketFilterOption } from "@/lib/api/tickets";
+import { STATUS_LABELS } from "@/constants/tickets";
+import type { Ticket } from "@/types";
 
 // Every list here comes from `/tickets/filter-options/` as {id, name}:
 // `TicketFilterOption`.
@@ -8,23 +10,18 @@ export const createStatusFilter = (
   statusFilter: string,
   setStatusFilter: (value: string) => void,
   allStatuses: string[],
-  setPageIndex?: (index: number) => void
 ): FilterOption => ({
   label: "Filter by status",
-  defaultValue: statusFilter,
   value: statusFilter,
   options: [
     { label: "All Statuses", value: "all" },
     { label: "Active", value: "active" },
     ...allStatuses.map((status) => ({
-      label: status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' '),
+      label: STATUS_LABELS[status as Ticket['status']] ?? status,
       value: status,
     })),
   ],
-  onFilterChange: (value: string) => {
-    setStatusFilter(value);
-    if (setPageIndex) setPageIndex(0);
-  },
+  onFilterChange: setStatusFilter,
 });
 
 /** "All X" plus one option per row, for a filter driven by an id. */
@@ -34,19 +31,14 @@ const idFilter = (
   current: string,
   onPick: (value: string) => void,
   rows: TicketFilterOption[],
-  setPageIndex?: (index: number) => void
 ): FilterOption => ({
   label,
-  defaultValue: current,
   value: current,
   options: [
     { label: allLabel, value: "all" },
     ...rows.map((row) => ({ label: row.name, value: String(row.id) })),
   ],
-  onFilterChange: (value: string) => {
-    onPick(value);
-    if (setPageIndex) setPageIndex(0);
-  },
+  onFilterChange: onPick,
 });
 
 /**
@@ -59,7 +51,6 @@ export const createTradeFilter = (
   tradeFilter: string | number,
   setTradeFilter: (value: number | null) => void,
   allTrades: TicketFilterOption[],
-  setPageIndex?: (index: number) => void
 ): FilterOption =>
   idFilter(
     "Filter by trade",
@@ -67,14 +58,12 @@ export const createTradeFilter = (
     String(tradeFilter),
     (value) => setTradeFilter(value === "all" ? null : Number(value)),
     allTrades,
-    setPageIndex
   );
 
 export const createTechnicianFilter = (
   technicianFilter: string,
   setTechnicianFilter: (value: string) => void,
   allTechnicians: TicketFilterOption[],
-  setPageIndex?: (index: number) => void
 ): FilterOption =>
   idFilter(
     "Filter by technician",
@@ -82,14 +71,12 @@ export const createTechnicianFilter = (
     technicianFilter,
     setTechnicianFilter,
     allTechnicians,
-    setPageIndex
   );
 
 export const createUserFilter = (
   userFilter: string,
   setUserFilter: (value: string) => void,
   allUsers: TicketFilterOption[],
-  setPageIndex?: (index: number) => void
 ): FilterOption =>
   idFilter(
     "Filter by user",
@@ -97,5 +84,4 @@ export const createUserFilter = (
     userFilter,
     setUserFilter,
     allUsers,
-    setPageIndex
   );

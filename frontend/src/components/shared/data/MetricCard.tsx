@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { getBadgeStyle } from '@/components/shared/ticket/StatusBadge';
-import type { BadgeColor } from '@/constants/colors';
 
 /** One card's worth of figures, for the row below. */
 export interface StatConfig {
@@ -12,7 +10,13 @@ export interface StatConfig {
   description?: string;
   icon: ReactNode;
   iconBgColor: string;
-  badge?: { value: string; color: BadgeColor };
+  badge?: MetricBadge;
+}
+
+/** A short note beside the figure, red when it is bad news and green when not. */
+export interface MetricBadge {
+  value: string;
+  alert: boolean;
 }
 
 interface MetricCardProps {
@@ -21,7 +25,7 @@ interface MetricCardProps {
   value: ReactNode;
   icon?: ReactNode;
   iconBgColor?: string;
-  badge?: { value: string; color: BadgeColor };
+  badge?: MetricBadge;
   description?: string;
   className?: string;
   isLoading?: boolean;
@@ -83,7 +87,10 @@ const MetricCard = ({
             {badge && (
               <span
                 className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap"
-                style={getBadgeStyle(badge.color)}
+                style={{
+                  backgroundColor: `var(${badge.alert ? '--status-escalated' : '--status-resolved'}-bg)`,
+                  color: `var(${badge.alert ? '--status-escalated' : '--status-resolved'}-text)`,
+                }}
               >
                 {badge.value}
               </span>
@@ -111,16 +118,14 @@ const gridClass = (count: number) =>
 export const MetricCardRow = ({
   stats,
   loading,
-  gridClassName,
   wrapDescriptions = false,
 }: {
   stats: StatConfig[];
   loading: boolean;
-  gridClassName?: string;
   /** Let every card's title and description wrap, for a row too narrow to fit them on one line. */
   wrapDescriptions?: boolean;
 }) => (
-  <div className={`grid ${gridClassName || gridClass(stats.length)} gap-3 mb-2`}>
+  <div className={`grid ${gridClass(stats.length)} gap-3 mb-2`}>
     {stats.map((s, i) => (
       <MetricCard
         key={s.id || i}

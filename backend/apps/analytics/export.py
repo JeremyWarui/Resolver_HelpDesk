@@ -11,7 +11,6 @@ shown in Kenyan time.
 import io
 import re
 from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
 from xml.sax.saxutils import escape
 
 from django.utils import timezone
@@ -31,8 +30,8 @@ KSG_BROWN = "7F622C"
 KSG_BROWN_DEEP = "3E2C12"
 
 # Who may download which format.
-XLSX_ROLES = ("admin", "manager", "hod", "hos", "technician")
-PDF_ROLES = ("admin", "manager", "hod", "hos", "technician")
+# Every role with reports gets both files.
+REPORT_ROLES = ("admin", "manager", "hod", "hos", "technician")
 
 # "On hold", as the app says it, rather than the model's "Pending".
 STATUS_LABELS = {**dict(STATUSES), "pending": "On hold"}
@@ -90,18 +89,6 @@ def cell_text(value):
 def local(dt):
     """A naive Kenyan-time datetime for a cell, or None."""
     return timezone.localtime(dt, REPORT_TZ).replace(tzinfo=None) if dt else None
-
-
-def duration_text(seconds):
-    """3h 07m, or 2d 4h for anything a day or longer."""
-    if seconds is None:
-        return "—"
-    minutes = int(seconds // 60)
-    days, rem = divmod(minutes, 24 * 60)
-    hours, mins = divmod(rem, 60)
-    if days:
-        return f"{days}d {hours}h"
-    return f"{hours}h {mins:02d}m"
 
 
 def _facility_rows(qs, window):
@@ -185,14 +172,13 @@ def report_data(user, role, window, campus=None, campus_ids=None):
             "overview": overview.build(qs, window, role, campus_ids),
             "tickets": _ticket_rows(qs, window),
         }
+    # The technician's report on their own jobs.
     by_status = {row["key"]: row["total"] for row in group(qs, window, ["status"])}
     return {
         **heading,
         "totals": totals(qs, window),
         "by_status": {code: by_status.get(code, 0) for code, _ in STATUSES},
-        "by_campus": group(qs, window, ["campus"]) if role in overview.EVERY_CAMPUS_ROLES else None,
         "by_trade": group(qs, window, ["trade"]),
-        "by_technician": None if role == "technician" else group(qs, window, ["technician"]),
         "by_facility": _facility_rows(qs, window),
         "holds": bottlenecks(qs),
         "trend": trend(qs, window, window["bucket"]),
@@ -201,53 +187,30 @@ def report_data(user, role, window, campus=None, campus_ids=None):
 
 
 def summary_rows(data):
-    """The headline figures as (label, value, kind), kind naming the format.
+    """A technician's headline figures as (label, value, kind), kind naming the format.
 
-    A technician's are about their own work: how many jobs, how fast, how many
-    on time, and how they were rated. The rest are for whoever runs a section.
+    About their own work: how many jobs, how fast, how many on time, and how
+    they were rated.
     """
     t = data["totals"]
     s = data["by_status"]
-    if data["role"] == "technician":
-        return [
-            ("Jobs assigned to me", t["total"], "count"),
-            ("Active now", t["open_backlog"], "count"),
-            ("Overdue now", t["overdue"], "count"),
-            ("Jobs finished", t["settled"], "count"),
-            ("Resolved on time", t["resolution_sla_pct"], "pct"),
-            ("Missed deadlines", t["missed"], "count"),
-            ("Time to resolve", t["resolution_seconds_avg"], "duration"),
-            ("Assigned", s["assigned"], "count"),
-            ("In progress", s["in_progress"], "count"),
-            ("On hold", s["pending"], "count"),
-            ("Resolved", s["resolved"], "count"),
-            ("Closed", s["closed"], "count"),
-            ("Escalated, now with the HOS", t["escalated_hos"], "count"),
-            ("Escalated, now with the HOD", t["escalated_hod"], "count"),
-            ("Average rating (of 5)", t["rating_avg"], "number"),
-            ("Ratings given", t["rating_count"], "count"),
-        ]
     return [
-        ("Tickets raised", t["total"], "count"),
-        ("Open (not yet assigned)", s["open"], "count"),
+        ("Jobs assigned to me", t["total"], "count"),
+        ("Active now", t["open_backlog"], "count"),
+        ("Overdue now", t["overdue"], "count"),
+        ("Jobs finished", t["settled"], "count"),
+        ("Resolved on time", t["resolution_sla_pct"], "pct"),
+        ("Missed deadlines", t["missed"], "count"),
+        ("Time to resolve", t["resolution_seconds_avg"], "duration"),
         ("Assigned", s["assigned"], "count"),
         ("In progress", s["in_progress"], "count"),
         ("On hold", s["pending"], "count"),
         ("Resolved", s["resolved"], "count"),
         ("Closed", s["closed"], "count"),
-        ("Completion rate", t["completion_pct"], "pct"),
-        ("Open backlog (now)", t["open_backlog"], "count"),
-        ("Overdue (now)", t["overdue"], "count"),
-        ("Time to respond", t["response_seconds_avg"], "duration"),
-        ("Time to resolve", t["resolution_seconds_avg"], "duration"),
-        ("Resolved on time", t["resolution_sla_pct"], "pct"),
-        ("Responded on time", t["response_sla_pct"], "pct"),
-        ("Missed deadlines", t["missed"], "count"),
         ("Escalated, now with the HOS", t["escalated_hos"], "count"),
         ("Escalated, now with the HOD", t["escalated_hod"], "count"),
         ("Average rating (of 5)", t["rating_avg"], "number"),
         ("Ratings given", t["rating_count"], "count"),
-        ("Closed tickets rated", t["rated_pct"], "pct"),
     ]
 
 
@@ -282,7 +245,7 @@ INSIGHT_TONES = {
 PLAIN_TONE = ("#374151", "#F9FAFB")
 
 
-def facility_trades(row):
+def trades_text(row):
     """A Facility Health row's trades in words: Plumbing 5 · Carpentry 1."""
     return " · ".join(f"{t['label']} {t['total']}" for t in row["trades"])
 
@@ -396,11 +359,6 @@ def _cover(ws, data):
     _append(ws, [])
 
 
-def trades_text(row):
-    """A hold row's trades as one line: "Plumbing 2 · Electrical 1"."""
-    return " · ".join(f"{t['label']} {t['total']}" for t in row["trades"])
-
-
 def _holds_sheet(wb, holds):
     ws = wb.create_sheet("Holds")
     _header(ws, ["Reason", "On hold now", "By trade", "Oldest hold since"])
@@ -430,7 +388,7 @@ def _saved(wb) -> bytes:
 
 
 def build_workbook(data) -> bytes:
-    """The workbook: a summary sheet, one sheet per breakdown, and every ticket."""
+    """The workbook: a summary sheet, the breakdowns, and every ticket."""
     if "overview" in data:
         return _overview_workbook(data)
     from openpyxl import Workbook
@@ -448,21 +406,14 @@ def build_workbook(data) -> bytes:
                  "resolution is raised to resolved, with time on hold left out."])
     _widths(ws)
 
-    def breakdown_sheet(title, rows, first_heading):
-        sheet = wb.create_sheet(title)
-        _header(sheet, [first_heading] + [h for _, h in BREAKDOWN_COLUMNS])
-        for row in rows:
-            _append(sheet, [row["label"]])
-            r = sheet.max_row
-            for i, (key, _) in enumerate(BREAKDOWN_COLUMNS, start=2):
-                _put(sheet.cell(row=r, column=i), row.get(key), KINDS.get(key, "number"))
-        _widths(sheet)
-
-    if data["by_campus"] is not None:
-        breakdown_sheet("By campus", data["by_campus"], "Campus")
-    breakdown_sheet("By trade", data["by_trade"], "Trade")
-    if data["by_technician"] is not None:
-        breakdown_sheet("By technician", data["by_technician"], "Technician")
+    ws = wb.create_sheet("By trade")
+    _header(ws, ["Trade"] + [h for _, h in BREAKDOWN_COLUMNS])
+    for row in data["by_trade"]:
+        _append(ws, [row["label"]])
+        r = ws.max_row
+        for i, (key, _) in enumerate(BREAKDOWN_COLUMNS, start=2):
+            _put(ws.cell(row=r, column=i), row.get(key), KINDS.get(key, "number"))
+    _widths(ws)
 
     ws = wb.create_sheet("By facility")
     _header(ws, ["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"])
@@ -511,7 +462,7 @@ def _overview_workbook(data) -> bytes:
     ws = wb.create_sheet("Facility Health")
     _header(ws, ["Building", "Campus", "Type", "Faults", "By trade", "Keeps coming back", "Suggests", "Open now"])
     for row in ov["facilities"]:
-        _append(ws, [row["label"], row["campus"], row["type"], row["total"], facility_trades(row),
+        _append(ws, [row["label"], row["campus"], row["type"], row["total"], trades_text(row),
                      facility_pattern(row), row["suggestion"], row["open_now"]])
     _widths(ws)
 
@@ -564,17 +515,11 @@ def _overview_workbook(data) -> bytes:
 def _cell(value, kind):
     if value is None:
         return "—"
+    # Both as the web pages write them: "72.3%", "100%"; "28h 16m".
     if kind == "pct":
-        return f"{value:.1f}%"
-    if kind == "duration":
-        return duration_text(value)
-    if kind == "hm":
-        return hours_minutes(value)
-    if kind == "hours":
-        # Rounded as the page's `toFixed(1)` rounds: half away from zero, on the exact value.
-        return f"{Decimal(value / 3600).quantize(Decimal('0.1'), ROUND_HALF_UP)}h"
-    if kind == "page_pct":
         return f"{value:g}%"
+    if kind == "duration":
+        return hours_minutes(value)
     if kind == "number":
         return f"{value:.2f}".rstrip("0").rstrip(".")
     return str(value)
@@ -657,10 +602,6 @@ def build_pdf(data) -> bytes:
         d.add(legend)
         return d
 
-    # A technician's report is about their own jobs, and says so in its own words.
-    mine = data["role"] == "technician"
-    finished = "Finished" if mine else "Settled"
-
     def holds_block(holds):
         rows = [
             [row["label"], str(row["total"]), trades_text(row),
@@ -673,7 +614,7 @@ def build_pdf(data) -> bytes:
                   [page_width * w for w in (0.38, 0.12, 0.32, 0.18)], text_columns=(0, 2)),
         ])
 
-    def bars(points):
+    def bars(points, settled_word):
         # Room under the axis for the slanted date labels, inside the drawing.
         d = Drawing(page_width, 62 * mm)
         if not points:
@@ -697,28 +638,26 @@ def build_pdf(data) -> bytes:
         legend = Legend()
         legend.x, legend.y = page_width - 70, 62 * mm
         legend.fontSize = 7
-        legend.colorNamePairs = [(raised_blue, "Raised"), (settled_green, finished)]
+        legend.colorNamePairs = [(raised_blue, "Raised"), (settled_green, settled_word)]
         d.add(legend)
         return d
 
-    def breakdown(title, rows, first_heading, limit=None):
+    def trade_breakdown(rows):
         columns = [
             ("total", "Raised", "count"), ("open", "Open", "count"),
             ("completion_pct", "Done", "pct"),
-        ] + ([] if mine else [("response_seconds_avg", "Avg resp.", "duration")]) + [
             ("resolution_seconds_avg", "Avg resol.", "duration"),
             ("resolution_sla_pct", "SLA", "pct"), ("escalated", "Escal.", "count"),
             ("rating_avg", "Rating", "number"),
         ]
-        rows = rows[:limit] if limit else rows
         body_rows = [
             [row["label"]] + [_cell(row.get(key), kind) for key, _, kind in columns]
             for row in rows
         ]
         widths_ = [page_width * 0.28] + [page_width * 0.09] * len(columns)
         return KeepTogether([
-            Paragraph(title, h2),
-            table([first_heading] + [h for _, h, _ in columns], body_rows or [["No tickets"] + [""] * len(columns)], widths_),
+            Paragraph("Trade performance", h2),
+            table(["Trade"] + [h for _, h, _ in columns], body_rows or [["No tickets"] + [""] * len(columns)], widths_),
             Spacer(1, 4 * mm),
         ])
 
@@ -728,8 +667,6 @@ def build_pdf(data) -> bytes:
         story = cover() + [Paragraph("Headline figures", h2)]
         cards = []
         for label, value, before, kind, note in report_headline(ov):
-            kind = "hm" if kind == "duration" else kind
-            kind = "page_pct" if kind == "pct" else kind
             shown = f"{_cell(value, kind)} / 5" if label == "Rating" and value is not None else _cell(value, kind)
             beside = f"{_cell(before, kind)} the period before" if before is not None else note
             cards.append([label, shown, beside])
@@ -760,10 +697,10 @@ def build_pdf(data) -> bytes:
         else:
             story.append(Paragraph("Nothing is below target this period.", body))
 
-        story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"])])]
+        story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"], "Settled")])]
 
         health = [
-            [f"{row['label']} ({row['campus']} · {row['type']})", str(row["total"]), facility_trades(row),
+            [f"{row['label']} ({row['campus']} · {row['type']})", str(row["total"]), trades_text(row),
              facility_pattern(row), row["suggestion"], str(row["open_now"])]
             for row in ov["facilities"]
         ]
@@ -779,7 +716,7 @@ def build_pdf(data) -> bytes:
         if "campuses" in ov:
             campuses = [
                 [row["label"], str(row["total"]), str(row["open_now"]), str(row["overdue"]), str(row["at_hod"]),
-                 _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
+                 _cell(row["resolution_sla_pct"], "pct"), _cell(row["resolution_seconds_avg"], "duration"),
                  _cell(row["rating_avg"], "number"), str(row["technicians"]), _cell(row["jobs_each"], "number")]
                 for row in ov["campuses"]
             ]
@@ -795,7 +732,7 @@ def build_pdf(data) -> bytes:
         if "technicians" in ov:
             people = [
                 [row["label"], str(row["total"]), str(row["open_now"]),
-                 _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["resolution_seconds_avg"], "hours"),
+                 _cell(row["resolution_sla_pct"], "pct"), _cell(row["resolution_seconds_avg"], "duration"),
                  _cell(row["rating_avg"], "number")]
                 for row in ov["technicians"]
             ]
@@ -808,7 +745,7 @@ def build_pdf(data) -> bytes:
             ])]
 
         trades = [
-            [row["label"], str(row["total"]), _cell(row["resolution_sla_pct"], "page_pct"), _cell(row["rating_avg"], "number")]
+            [row["label"], str(row["total"]), _cell(row["resolution_sla_pct"], "pct"), _cell(row["rating_avg"], "number")]
             for row in ov["trades"]
         ]
         story += [Spacer(1, 4 * mm), KeepTogether([
@@ -847,7 +784,7 @@ def build_pdf(data) -> bytes:
         ]
 
     def section_story():
-        """Every other role's summary: headline, facilities, charts, then the tables."""
+        """The technician's report: headline, facilities, charts, then the tables."""
         story = cover() + [Paragraph("Headline figures", h2)]
 
         figures = summary_rows(data)
@@ -861,17 +798,12 @@ def build_pdf(data) -> bytes:
         headline = table(["Figure", "Value", "Figure", "Value"], pairs,
                          [page_width * 0.32, page_width * 0.18] * 2, text_columns=(0, 2))
         story += [headline, Spacer(1, 2 * mm), Paragraph(
-            (
-                "Counts are of your jobs raised in the period, except active and overdue, which "
-                "are as of now. Time to resolve leaves out time on hold. Resolved on time is the share of "
-                "finished jobs done by their deadline."
-                if mine else
-                "Counts are of tickets raised in the period, except backlog and overdue, which are "
-                "as of now. Time to resolve leaves out time on hold. Resolved on time is the share of settled "
-                "tickets finished by their deadline."
-            ), small), Spacer(1, 4 * mm)]
+            "Counts are of your jobs raised in the period, except active and overdue, which "
+            "are as of now. Time to resolve leaves out time on hold. Resolved on time is the share of "
+            "finished jobs done by their deadline.",
+            small), Spacer(1, 4 * mm)]
         # A trade with no jobs in the period is no slice, so this counts trades worked, not held.
-        several_trades = not mine or len(data["by_trade"]) > 1
+        several_trades = len(data["by_trade"]) > 1
 
         # Where the work is, straight after how much of it there is.
         hotspots = [
@@ -880,7 +812,7 @@ def build_pdf(data) -> bytes:
             for row in data["by_facility"][:10]
         ]
         story.append(KeepTogether([
-            Paragraph("Where your jobs were (top 10)" if mine else "Facility hotspots (top 10)", h2),
+            Paragraph("Where your jobs were (top 10)", h2),
             table(["Facility", "Campus", "Raised", "Open", "Escalated", "Most frequent trade"],
                   hotspots or [["No tickets", "", "", "", "", ""]],
                   [page_width * w for w in (0.28, 0.16, 0.1, 0.1, 0.12, 0.24)],
@@ -890,15 +822,15 @@ def build_pdf(data) -> bytes:
         story += [
             Spacer(1, 4 * mm),
             KeepTogether([
-                Paragraph("Jobs raised and finished" if mine else "Tickets raised and settled", h2),
-                bars(data["trend"]),
+                Paragraph("Jobs raised and finished", h2),
+                bars(data["trend"], "Finished"),
             ]),
             Spacer(1, 4 * mm),
         ]
         status_items = [(STATUS_LABELS[code], n) for code, n in data["by_status"].items()]
         trade_items = [(row["label"], row["total"]) for row in data["by_trade"]]
         if several_trades:
-            pies = Table([[Paragraph("Where my jobs stand" if mine else "Status", body),
+            pies = Table([[Paragraph("Where my jobs stand", body),
                            Paragraph("Trade", body)],
                           [pie(status_items), pie(trade_items)]],
                          colWidths=[page_width / 2] * 2)
@@ -907,12 +839,8 @@ def build_pdf(data) -> bytes:
                          colWidths=[page_width])
         story += [KeepTogether([pies]), Spacer(1, 4 * mm)]
 
-        if data["by_campus"] is not None:
-            story.append(breakdown("Campus comparison", data["by_campus"], "Campus"))
         if several_trades:
-            story.append(breakdown("Trade performance", data["by_trade"], "Trade"))
-        if data["by_technician"] is not None:
-            story.append(breakdown("Technician performance", data["by_technician"], "Technician"))
+            story.append(trade_breakdown(data["by_trade"]))
 
         story.append(holds_block(data["holds"]))
         return story

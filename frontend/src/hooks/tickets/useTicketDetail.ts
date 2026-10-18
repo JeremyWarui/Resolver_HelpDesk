@@ -69,11 +69,12 @@ export function useTicketInvalidate() {
   const queryClient = useQueryClient();
   return (ticketId?: number) => {
     if (ticketId) {
+      // A prefix: the ticket, its timeline and its attachments.
       queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticketId, 'timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', ticketId, 'attachments'] });
       queryClient.invalidateQueries({ queryKey: ['ticket-comments', ticketId] });
     }
+    // Every list, the sidebar counts with them, and the figures.
     queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    queryClient.invalidateQueries({ queryKey: ['analytics'] });
   };
 }

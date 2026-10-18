@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, USERS, API } from './helpers';
+import { API, bearer, login, USERS } from './helpers';
 
 // A technician's report and feedback cover the jobs assigned to them, not
 // their whole trade.
@@ -42,7 +42,7 @@ test('My Reports covers the technician’s own jobs', async ({ page }) => {
 
 test('My Feedback lists only ratings on jobs assigned to the technician', async ({ page }) => {
   await login(page, USERS.technicianOtherTrade);
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const token = await bearer(page);
   const headers = { Authorization: `Bearer ${token}` };
   const me = await (await page.request.get(`${API}/auth/me/`, { headers })).json();
 

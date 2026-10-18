@@ -4,6 +4,7 @@
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ROLE_LABELS } from '@/constants/roles';
+import { STATUS_LABELS } from '@/constants/tickets';
 import type { TicketEventType, TicketTimelineEvent, UserRole } from '@/types';
 import {
   Plus, UserPlus, ArrowRightLeft, ArrowRight,
@@ -16,7 +17,6 @@ interface TicketTimelineProps {
   events: TicketTimelineEvent[];
   loading?: boolean;
   className?: string;
-  hideHeader?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,8 +63,8 @@ const EVENT_CONFIG: Record<TicketEventType, EventConfig> = {
   priority_changed: { Icon: Flag,           colorVar: '--status-progress',  label: 'Priority changed' },
 };
 
-function humanStatus(s: string) {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+function statusLabel(code: string) {
+  return STATUS_LABELS[code as keyof typeof STATUS_LABELS] ?? code;
 }
 
 function buildSubtext(event: TicketTimelineEvent): string {
@@ -85,7 +85,7 @@ function buildSubtext(event: TicketTimelineEvent): string {
       const from = data?.from as string | undefined;
       const to   = data?.to   as string | undefined;
       return from && to
-        ? `${humanStatus(from)} → ${humanStatus(to)} · by ${name}`
+        ? `${statusLabel(from)} → ${statusLabel(to)} · by ${name}`
         : `by ${name}`;
     }
     case 'resolved':
@@ -135,7 +135,7 @@ function EventRow({
   const cfg: EventConfig = EVENT_CONFIG[event.event_type as TicketEventType] ?? {
     Icon: Activity,
     colorVar: '--status-closed',
-    label: humanStatus(event.event_type),
+    label: event.event_type,
   };
   const { Icon, colorVar, label } = cfg;
   const subtext = buildSubtext(event);
@@ -179,7 +179,6 @@ export function TicketTimeline({
   events,
   loading = false,
   className,
-  hideHeader = false,
 }: TicketTimelineProps) {
   // No role filtering here. The server already decides what each caller may
   // read: a requester's log feed omits the comment events.
@@ -187,7 +186,6 @@ export function TicketTimeline({
   if (loading) {
     return (
       <div className={cn('space-y-3', className)}>
-        {!hideHeader && <h3 className="text-sm font-semibold">Activity</h3>}
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex gap-3 items-center">
             <Skeleton className="w-7 h-7 rounded-full shrink-0" />
@@ -221,14 +219,6 @@ export function TicketTimeline({
   });
 
   return (
-    <div className={className}>
-      {!hideHeader && (
-        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Activity className="h-4 w-4 text-muted-foreground" />
-          Activity
-        </h3>
-      )}
-      <div>{items}</div>
-    </div>
+    <div className={className}>{items}</div>
   );
 }

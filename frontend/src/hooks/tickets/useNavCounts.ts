@@ -14,8 +14,8 @@ interface NavCounts {
   pending: number;
 }
 
-/** Long enough that navigating between pages does not refetch on every click,
- *  short enough that a resumed or escalated job shows up without a reload. */
+/** Long enough that navigating between pages does not refetch on every click.
+ *  The poll picks up what changes server-side, like a scheduled escalation. */
 const STALE_MS = 60_000;
 
 const ESCALATED_PARAMS = { escalated: '1' as const, page_size: 1 };
@@ -23,16 +23,18 @@ const PENDING_PARAMS = { status: 'pending' as const, page_size: 1 };
 
 export function useNavCounts(enabled = true): NavCounts {
   const escalated = useQuery({
-    queryKey: ['nav-count', 'escalated', ESCALATED_PARAMS],
+    queryKey: ['tickets', 'nav-count', 'escalated'],
     queryFn: () => getTickets(ESCALATED_PARAMS),
     enabled,
     staleTime: STALE_MS,
+    refetchInterval: STALE_MS,
   });
   const pending = useQuery({
-    queryKey: ['nav-count', 'pending', PENDING_PARAMS],
+    queryKey: ['tickets', 'nav-count', 'pending'],
     queryFn: () => getTickets(PENDING_PARAMS),
     enabled,
     staleTime: STALE_MS,
+    refetchInterval: STALE_MS,
   });
 
   return {

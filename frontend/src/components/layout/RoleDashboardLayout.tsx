@@ -1,5 +1,4 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { RoleLayout } from '@/components/layout/RoleLayout';
 import { TicketDetailPage } from '@/app/dashboard/TicketDetailPage';
@@ -45,7 +44,6 @@ const PageLoading = () => (
  * only what each one renders.
  */
 export function RoleDashboardLayout({ role, sections }: RoleDashboardLayoutProps) {
-  const queryClient = useQueryClient();
   const nav = ROLE_NAV[role];
   const base = ROLE_BASE[role];
   const location = useLocation();
@@ -130,11 +128,6 @@ export function RoleDashboardLayout({ role, sections }: RoleDashboardLayoutProps
           setWizardOpen(open);
           // Cleared on close so the next plain "New Ticket" opens at step 1.
           if (!open) setQuickStart(undefined);
-        }}
-        onSuccess={() => {
-          // A new ticket belongs in every list and every figure on screen.
-          queryClient.invalidateQueries({ queryKey: ['tickets'] });
-          queryClient.invalidateQueries({ queryKey: ['analytics'] });
         }}
       />
     </RoleLayout>

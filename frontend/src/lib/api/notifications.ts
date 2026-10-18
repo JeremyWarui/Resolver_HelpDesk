@@ -20,11 +20,6 @@ export interface NotificationQuery {
 /** The 50 most recent notifications for the caller, newest first.
  *
  *  The server counts the unread ones, so the badge does not stop at the page. */
-export async function getNotifications(): Promise<NotificationFeed> {
-  const { data } = await apiClient.get<NotificationFeed>('/notifications/');
-  return { results: data.results ?? [], unread_count: data.unread_count ?? 0 };
-}
-
 /** One page of the feed, filtered server-side. The full Notifications page reads this. */
 export async function getNotificationPage(query: NotificationQuery): Promise<NotificationFeed> {
   const params: Record<string, string> = {};
@@ -42,7 +37,9 @@ export async function markRead(id: number): Promise<void> {
   await apiClient.patch(`/notifications/${id}/read/`);
 }
 
-export async function markAllRead(): Promise<void> {
-  await apiClient.post('/notifications/read-all/');
+/** Marks read every notification up to `upTo`, the newest one on screen; a
+ *  message that arrived since stays unread. */
+export async function markAllRead(upTo?: number): Promise<void> {
+  await apiClient.post('/notifications/read-all/', upTo == null ? {} : { up_to: upTo });
 }
 

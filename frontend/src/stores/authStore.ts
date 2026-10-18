@@ -23,10 +23,6 @@ function readStoredUser(): User | null {
   }
 }
 
-// Removes the stale 'auth-store' key, so authToken and currentUser are the only
-// stored session state.
-localStorage.removeItem('auth-store');
-
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -36,10 +32,9 @@ interface AuthState {
   /** Update only the access token (silent JWT refresh) — user is unchanged. */
   setToken: (token: string) => void;
   clearUser: () => void;
-  getToken: () => string | null;
 }
 
-export const useAuthStore = create<AuthState>()((set, get) => ({
+export const useAuthStore = create<AuthState>()((set) => ({
   user: readStoredUser(),
   token: localStorage.getItem(TOKEN_KEY),
   isAuthenticated: !!localStorage.getItem(TOKEN_KEY),
@@ -61,7 +56,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     set({ user: null, token: null, isAuthenticated: false });
   },
 
-  getToken: () => get().token,
 }));
 
 // Cross-tab sync: the storage event only fires in OTHER tabs, so logging out

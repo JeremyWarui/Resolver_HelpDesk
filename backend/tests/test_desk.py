@@ -37,7 +37,7 @@ def test_the_desk_needs_a_login(api):
 
 
 def test_the_escalation_card_says_the_schedule_state_and_what_is_due(api, admin_user, nrb_hos, nrb_electrical_ticket):
-    factories.age_ticket(nrb_electrical_ticket, minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1)
+    factories.age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
 
     before = _get(api, admin_user)["escalation"]
     assert (before["state"], before["last_finished_at"], before["due_hos"], before["due_hod"]) == ("never", None, 1, 0)

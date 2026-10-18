@@ -16,13 +16,5 @@ export const RANGES: Record<RangeKey, { label: string; days: number; bucket: Buc
 
 export const RANGE_KEYS = Object.keys(RANGES) as RangeKey[];
 
-/** The report files each role may download. Mirrors `XLSX_ROLES` and
- *  `PDF_ROLES` in `analytics/export.py`. */
-export const REPORT_DOWNLOADS: Record<UserRole, ('xlsx' | 'pdf')[]> = {
-  admin: ['xlsx', 'pdf'],
-  manager: ['xlsx', 'pdf'],
-  hod: ['xlsx', 'pdf'],
-  hos: ['xlsx', 'pdf'],
-  technician: ['xlsx', 'pdf'],
-  user: [],
-};
+/** The roles that download both report files. Mirrors `REPORT_ROLES` in `analytics/export.py`. */
+export const REPORT_ROLES: UserRole[] = ['admin', 'manager', 'hod', 'hos', 'technician'];

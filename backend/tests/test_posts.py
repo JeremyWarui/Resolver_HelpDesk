@@ -8,7 +8,7 @@ into `posts`.
 import pytest
 
 from apps.accounts.identity import display_name
-from apps.accounts.models import SCOPE_FIELD_BY_ROLE, RoleAssignment, TechnicianTrade
+from apps.accounts.models import CAMPUS_ROLES, RoleAssignment, TechnicianTrade
 from apps.accounts.posts import assign_role
 from apps.accounts.scope import post_holder, visible_campuses
 from apps.tickets.scope import reporting_ticket_qs, scoped_ticket_qs
@@ -22,7 +22,7 @@ SUPERVISOR_ROLES = ("hos", "hod", "manager")
 
 def _scope(role, campus):
     """What a supervisor role is scoped to: a campus, or nothing for a manager."""
-    return {"campus": campus} if SCOPE_FIELD_BY_ROLE[role] == "campus" else {}
+    return {"campus": campus} if role in CAMPUS_ROLES else {}
 
 
 def _holder(role, campus):
@@ -134,19 +134,6 @@ def test_the_campus_roster_names_its_head(api, admin_user, nrb_hos, nrb):
     # Fixture users carry no first or last name, so display_name falls back to the
     # username.
     assert row["hos_name"] == display_name(nrb_hos)
-
-
-def test_a_campus_with_no_head_renders_null(api, admin_user, nrb):
-    """A vacant post is a missing row, not a null column, so the read path has
-    to answer for one that was never there."""
-    from django.urls import reverse
-
-    api.force_authenticate(admin_user)
-    rows = api.get(reverse("campus-roster")).json()["results"]
-
-    row = next(r for r in rows if r["id"] == nrb.pk)
-    assert row["hos"] is None
-    assert row["hos_name"] is None
 
 
 def test_a_newly_created_campus_appears_on_the_roster_unstaffed(api, admin_user):

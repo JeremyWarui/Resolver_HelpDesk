@@ -34,15 +34,17 @@ const SLA_COLOR: Record<SLAState, string> = {
 
 interface SLACountdownProps {
   dueDate: string | null | undefined;
-  createdAt?: string;
+  /** `clock_started_at`: the bar measures the time spent since. */
+  startedAt: string;
   /** A held ticket's clock is frozen, so the countdown stops with it. Callers
-   *  pass `!!ticket.paused_at`, which is the same fact the server pauses on. */
+   *  pass `!!ticket.paused_at`, which is the same fact the server pauses on.
+   *  The table never draws a held ticket's countdown, so `compact` has no paused form. */
   isPaused?: boolean;
   compact?: boolean;
   className?: string;
 }
 
-export function SLACountdown({ dueDate, createdAt, isPaused = false, compact = false, className }: SLACountdownProps) {
+export function SLACountdown({ dueDate, startedAt, isPaused = false, compact = false, className }: SLACountdownProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -56,13 +58,6 @@ export function SLACountdown({ dueDate, createdAt, isPaused = false, compact = f
   }
 
   if (isPaused) {
-    if (compact) {
-      return (
-        <div className={cn('flex items-center gap-1.5', className)}>
-          <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap">Paused</span>
-        </div>
-      );
-    }
     return (
       <div className={cn('space-y-1', className)}>
         <div className="flex items-center justify-between gap-2">
@@ -74,7 +69,7 @@ export function SLACountdown({ dueDate, createdAt, isPaused = false, compact = f
   }
 
   const dueMs = new Date(dueDate).getTime();
-  const startMs = createdAt ? new Date(createdAt).getTime() : dueMs - 86_400_000;
+  const startMs = new Date(startedAt).getTime();
   const totalMs = Math.max(dueMs - startMs, 1);
   const remainingMs = dueMs - now;
   const consumed = Math.min(Math.max(((now - startMs) / totalMs) * 100, 0), 100);

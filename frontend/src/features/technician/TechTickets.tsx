@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTicketTable } from '@/hooks/tickets/useTicketTable';
 import { useTicketTableFilters } from '@/components/shared/data/DataTable/utils/TicketTableFilters';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
@@ -15,8 +15,6 @@ type TechTicketsProps = {
 
 /** Every job assigned to the technician, as a table: the All My Jobs tab. */
 function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) {
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-
   // Pin the page to the technician's OWN tickets: without assigned_to the
   // fetch returns their full section scope, which belongs to Section Tickets.
   const fixedParams = useMemo(
@@ -26,7 +24,6 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
 
   const table = useTicketTable({
     currentUserId: currentTechnicianId,
-    defaultStatusFilter: statusFilter,
     defaultPageSize: 20,
     skipUntilUserId: true,
     fixedParams,
@@ -34,18 +31,12 @@ function TechTickets({ currentTechnicianId, onTicketSelect }: TechTicketsProps) 
 
   const filters = useTicketTableFilters(table, { includeTrade: false });
 
-  const handleFilterChange = (filter: string) => {
-    setStatusFilter(filter);
-    table.setStatusFilter(filter);
-    table.setPageIndex(0);
-  };
-
   return (
     <div className="p-4 sm:p-5 space-y-4">
       <FilterPills
         pills={TECH_PILLS}
-        active={statusFilter}
-        onChange={handleFilterChange}
+        active={table.statusFilter}
+        onChange={table.setStatusFilter}
         loading={table.loading}
         className="justify-end"
       />

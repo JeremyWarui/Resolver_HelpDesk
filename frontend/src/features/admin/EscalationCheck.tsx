@@ -8,17 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DialogActions } from '@/components/shared/forms/DialogActions';
 import { useEscalationStatus, useRunEscalations } from '@/hooks/useEscalations';
 import { previewEscalations } from '@/lib/api/tickets';
-import { ESCALATION_LEVEL } from '@/constants/roles';
+import { ESCALATION_LEVEL, ESCALATION_SCHEDULE } from '@/constants/roles';
 import type { EscalationRun, EscalationStatus } from '@/types';
-import { formatDateTimeLocal, relativeTime } from '@/utils/date';
+import { formatDateTime, timeAgo } from '@/utils/date';
 import { cn } from '@/lib/utils';
 
-const STATE = {
-  never: { label: 'Not scheduled', pill: 'bg-red-50 text-red-800', border: 'border-red-200' },
-  failing: { label: 'Failing', pill: 'bg-red-50 text-red-800', border: 'border-red-200' },
-  stale: { label: 'Stopped', pill: 'bg-red-50 text-red-800', border: 'border-red-200' },
-  running: { label: 'Running', pill: 'bg-emerald-50 text-emerald-800', border: 'border-emerald-200' },
-} as const;
 
 /** How a run that has not finished reads in its Took column. */
 const OUTCOME = {
@@ -52,14 +46,14 @@ export default function EscalationCheck() {
   }
   if (loading || !status) return <Skeleton className="h-48 w-full rounded-xl" />;
 
-  const look = STATE[status.state];
+  const look = ESCALATION_SCHEDULE[status.state];
   return (
-    <Card aria-label="Escalation check" className={cn('space-y-4 p-6', look.border)}>
+    <Card aria-label="Escalation check" className={cn('space-y-4 p-6', look.alert ? 'border-red-200' : 'border-emerald-200')}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-3xl space-y-1">
           <div className="flex items-center gap-2.5">
             <h2 className="text-base font-semibold">Escalation check</h2>
-            <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', look.pill)}>{look.label}</span>
+            <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', look.alert ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800')}>{look.label}</span>
           </div>
           <p className="text-sm text-muted-foreground">{summary(status)}</p>
         </div>
@@ -72,7 +66,7 @@ export default function EscalationCheck() {
       <dl className="grid grid-cols-2 overflow-hidden rounded-lg border lg:grid-cols-4">
         <Fact label="Last scheduled run" tone={status.state === 'running' ? undefined : 'bad'}>
           {status.last_run?.finished_at
-            ? `${clock(status.last_run.finished_at)} · ${relativeTime(status.last_run.finished_at)}`
+            ? `${clock(status.last_run.finished_at)} · ${timeAgo(status.last_run.finished_at)}`
             : status.state === 'running' ? 'In progress'
               : status.state === 'never' ? 'Never' : 'None finished'}
         </Fact>
@@ -156,7 +150,7 @@ function RecentRuns({ runs, staleAfter }: { runs: EscalationRun[]; staleAfter: n
           <tbody>
             {runs.map((r) => (
               <tr key={r.id} className="border-t">
-                <td className="p-2">{formatDateTimeLocal(r.started_at)}</td>
+                <td className="p-2">{formatDateTime(r.started_at)}</td>
                 <td className="p-2">{r.scheduled ? 'Schedule' : (r.started_by ?? 'Command line')}</td>
                 <td className="p-2 text-right">{r.to_hos}</td>
                 <td className="p-2 text-right">{r.to_hod}</td>

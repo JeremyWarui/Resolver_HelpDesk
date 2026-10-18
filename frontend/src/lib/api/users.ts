@@ -1,10 +1,11 @@
-import apiClient, { fetchAll } from './client';
+import apiClient, { fetchAll, rows } from './client';
 import type {
   User,
   CreateUserPayload,
   UpdateUserPayload,
   RoleAssignment,
   CreateRoleAssignmentPayload,
+  Technician,
 } from '@/types';
 
 /** Every account. The admin table filters and sorts the whole list in the page. */
@@ -49,3 +50,8 @@ export async function createRoleAssignment(
   return data;
 }
 
+/** The technicians in the caller's scope, idle ones included; `campus` and `trade` only narrow it. */
+export async function getTechnicians(params: { campus?: number; trade?: number }): Promise<Technician[]> {
+  const { data } = await apiClient.get('/technicians/', { params });
+  return rows<Technician>(data);
+}

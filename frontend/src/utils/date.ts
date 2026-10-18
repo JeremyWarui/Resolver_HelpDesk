@@ -9,55 +9,25 @@ export function formatDate(dateString: string): string {
   });
 }
 
-/** "Jan 15, 2025, 3:45 PM". */
-export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-/** "15 Jan 2025, 14:30" — the 24-hour form the audit log and feedback list read in. */
-export function formatDateTimeLocal(iso: string): string {
+/** "15 Jan 2025, 14:30": the 24-hour form every date and time is shown in. */
+export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-KE', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }
 
-/** "5m ago" — the terse form a mobile row and a notification have space for. */
+/** "5m ago", "3h ago", "2d ago", then the date once it is a week old. */
 export function timeAgo(dateString: string): string {
-  const mins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
+  const date = new Date(dateString);
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-/**
- * "12 minutes ago", then a date past a day old — the long form a table cell has
- * room for, beside `timeAgo`'s terse "12m ago" for a mobile row or a
- * notification.
- */
-export function relativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const diffMs = Date.now() - date.getTime();
-  const hours = diffMs / 3_600_000;
-
-  if (hours < 24) {
-    if (hours < 1) {
-      const mins = Math.floor(diffMs / 60_000);
-      if (mins < 1) return 'Just now';
-      return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
-    }
-    const hrs = Math.floor(hours);
-    return `${hrs} ${hrs === 1 ? 'hour' : 'hours'} ago`;
-  }
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** A duration as "2h 15m". Analytics reports every duration in seconds. */

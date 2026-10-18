@@ -41,14 +41,6 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     }
   },
-  server: {
-    proxy: {
-      "/data.json": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-      },
-    },
-  },
   // preview proxy — forwards the API and uploaded files to local Django so
   // phone/LAN testing works. Origin is pinned to localhost:4173 so Django's
   // CORS_ALLOWED_ORIGINS matches whichever LAN IP the phone used. The e2e
@@ -69,26 +61,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // Any path with "react" in it comes first, which takes in
+        // react-router, react-table, react-hook-form and lucide-react too.
         manualChunks: (id: string) => {
-          // Vendor chunk for React and core libraries
-          if (id.includes('react') || id.includes('react-router')) {
-            return 'react-vendor';
-          }
-          // UI library chunk
-          if (id.includes('@tanstack/react-table') || id.includes('sonner') || 
-              id.includes('react-hook-form') || id.includes('@hookform') || 
-              id.includes('zod')) {
-            return 'ui-vendor';
-          }
-          // Chart/visualization libraries
-          if (id.includes('recharts')) {
-            return 'charts-vendor';
-          }
-          // Utilities and icons chunk
-          if (id.includes('clsx') || id.includes('tailwind-merge') || 
-              id.includes('lucide-react') || id.includes('axios')) {
-            return 'utils-vendor';
-          }
+          if (id.includes('react')) return 'react-vendor';
+          if (id.includes('sonner') || id.includes('@hookform') || id.includes('zod')) return 'ui-vendor';
+          if (id.includes('recharts')) return 'charts-vendor';
+          if (id.includes('clsx') || id.includes('tailwind-merge') || id.includes('axios')) return 'utils-vendor';
         }
       }
     },

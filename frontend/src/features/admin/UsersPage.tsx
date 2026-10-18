@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Archive, ArchiveRestore, Pencil, Plus, UserRound, UserX, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { USERS_KEY, useRefreshPeople } from '@/hooks/useRefreshPeople';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,8 +15,8 @@ import type { User, UserRole } from '@/types';
 import { ROLE_BADGE_STYLES, ROLE_LABELS, ROLE_ORDER } from '@/constants/roles';
 import { UserFormDialog } from '@/features/shared/users/UserFormDialog';
 import { cn } from '@/lib/utils';
+import { Initials } from '@/components/shared/data/Initials';
 
-const USERS_KEY = ['admin', 'users'] as const;
 const ALL = 'all';
 const FIX = 'fix';
 const INACTIVE = 'inactive';
@@ -45,13 +46,9 @@ function formatJoined(iso?: string): string {
  * one their role covers: a plain requester's role carries no campus at all.
  */
 const UsersPage = () => {
-  const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: USERS_KEY, queryFn: getUsers });
   const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: USERS_KEY });
-    queryClient.invalidateQueries({ queryKey: ['analytics'] });
-  };
+  const refresh = useRefreshPeople();
 
   useEffect(() => {
     if (usersQuery.error) toast.error('Failed to load users');
@@ -238,7 +235,7 @@ const UsersPage = () => {
       {formState && (
         <UserFormDialog
           editing={formState.editing}
-          onSuccess={() => { setFormState(null); refresh(); }}
+          onSuccess={() => setFormState(null)}
           onClose={() => setFormState(null)}
         />
       )}
@@ -296,15 +293,6 @@ function FixRow({ user, onFix }: { user: User; onFix: () => void }) {
         {FIX_LABEL[problems[0].code]}
       </Button>
     </li>
-  );
-}
-
-function Initials({ name }: { name: string }) {
-  const initials = name.split(' ').map(p => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-  return (
-    <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
-      {initials || '?'}
-    </div>
   );
 }
 

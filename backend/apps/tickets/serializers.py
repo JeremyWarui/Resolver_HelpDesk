@@ -6,6 +6,7 @@ description, while campus, trade and priority are derived here.
 """
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -113,6 +114,8 @@ class TicketReadSerializer(serializers.ModelSerializer):
             "status",
             # An HOS's job includes seeing what escalated.
             "current_level",
+            # When the clock last started: raised, or reopened. The SLA bar measures from here.
+            "clock_started_at",
             "resolution_due_at",
             # When the current hold began: the held lists say how long.
             "paused_at",
@@ -153,11 +156,8 @@ class TicketDetailReadSerializer(TicketReadSerializer):
             "sla_outcome",
             "contact_phone",
             "location",
-            "response_due_at",
-            "accumulated_pause",
             "pending_reason",
             "pending_reason_note",
-            "closed_at",
         ]
         read_only_fields = fields
 
@@ -216,41 +216,26 @@ class TicketCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(str(exc)) from exc
 
     def validate(self, attrs):
-        """Derive everything the requester did not supply: campus, trade, priority."""
-        request = self.context["request"]
-        user = request.user
-
+        """The ticket is raised at the requester's home campus, so the facility must be on it."""
         # Their *home* campus: a client-supplied one would be client-supplied routing.
-        try:
-            campus = user.campus
-        except Exception:
-            campus = None
-        if campus is None:
+        campus_id = self.context["request"].user.campus_id
+        if campus_id is None:
             raise serializers.ValidationError("User has no campus assigned.")
-
-        service_item = attrs["service_item"]
-
-        priority = Priority.default()
-
-        if attrs["location"]["facility"].campus_id != campus.id:
+        if attrs["location"]["facility"].campus_id != campus_id:
             raise serializers.ValidationError(
                 {"location": "The facility is not on the requester's campus."}
             )
-
-        # Underscored so DRF leaves them alone; create() pops each one.
-        attrs["_trade"] = service_item.trade
-        attrs["_priority"] = priority
-        attrs["_requester_campus"] = campus
-
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
-        """Write the ticket and its `created` log row."""
-        request = self.context["request"]
+        """Write the ticket and its `created` log row, together.
 
-        trade = validated_data.pop("_trade")
-        priority = validated_data.pop("_priority")
-        requester_campus = validated_data.pop("_requester_campus")
+        Campus, trade and priority are derived: the requester's home campus,
+        the service item's trade, and the lowest priority until the HOS sets one.
+        """
+        request = self.context["request"]
+        priority = Priority.default()
         location = validated_data["location"]
 
         # The clock starts at creation: time spent unassigned is what the SLA measures.
@@ -259,9 +244,9 @@ class TicketCreateSerializer(serializers.Serializer):
 
         ticket = Ticket.objects.create(
             raised_by=request.user,
-            requester_campus=requester_campus,
+            requester_campus_id=request.user.campus_id,
             service_item=validated_data["service_item"],
-            trade=trade,
+            trade=validated_data["service_item"].trade,
             priority=priority,
             facility=location["facility"],
             location_detail=location["detail"],

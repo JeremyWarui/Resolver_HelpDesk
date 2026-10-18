@@ -61,10 +61,19 @@ export const ESCALATION_LEVEL: Record<string, { short: string; full: string }> =
   hod:        { short: 'HOD',  full: 'the head of department' },
 };
 
-/** The roles whose scope is one campus. Mirrors `ROLES` in
+/** The roles whose scope is one campus. Mirrors `CAMPUS_ROLES` in
  *  `backend/apps/accounts/models.py`, which refuses a campus on any other role
  *  and refuses an assignment without one on these. */
 export const ROLES_REQUIRING_CAMPUS: UserRole[] = ['technician', 'hos', 'hod'];
+
+/** Whether the scheduled escalation check is alive (`schedule_state` from the
+ *  server). `alert` is every state but running. */
+export const ESCALATION_SCHEDULE: Record<'never' | 'failing' | 'stale' | 'running', { label: string; alert: boolean }> = {
+  never:   { label: 'Not scheduled', alert: true },
+  failing: { label: 'Failing',       alert: true },
+  stale:   { label: 'Stopped',       alert: true },
+  running: { label: 'Running',       alert: false },
+};
 
 /** The roles whose reports cover every campus: they read the campus sections
  *  and may narrow to one campus. Mirrors `EVERY_CAMPUS_ROLES` in

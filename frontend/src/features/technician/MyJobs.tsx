@@ -1,7 +1,5 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { Hand, Wrench } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -10,7 +8,7 @@ import { StatusUpdateModal } from './StatusUpdateModal';
 import { JobCard, type JobAction } from './JobCard';
 import { useTickets } from '@/hooks/tickets/useTickets';
 import { useAuthStore } from '@/stores/authStore';
-import { claimTicket, startWork } from '@/lib/api/tickets';
+import { oneTapAction, useJobActions } from '@/hooks/tickets/useJobActions';
 import { ROLE_BASE } from '@/constants/roles';
 import { ESCALATED_LEVELS, HELD_STATUSES, WORKING_STATUSES } from '@/constants/tickets';
 import type { Ticket } from '@/types';
@@ -33,12 +31,10 @@ function byUrgency(a: Ticket, b: Ticket): number {
   return due(a) - due(b);
 }
 
-/** The button a card offers, by where the job stands and whose it is. */
-function actionFor(ticket: Ticket, mine: boolean): JobAction | null {
-  if (!mine) return ticket.status === 'open' ? 'claim' : null;
-  if (ticket.status === 'assigned') return 'start';
-  if (ticket.status === 'in_progress') return 'update';
-  return null;
+/** The button a card offers: claim or start, or an update on a job under way. */
+function actionFor(ticket: Ticket, userId: number | undefined): JobAction | null {
+  if (ticket.status === 'in_progress' && ticket.assigned_to?.id === userId) return 'update';
+  return oneTapAction(ticket, userId);
 }
 
 interface MyJobsProps {
@@ -55,7 +51,7 @@ interface MyJobsProps {
  */
 export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+  const jobs = useJobActions();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
 
@@ -79,44 +75,16 @@ export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
   ).length;
   const overdue = active.filter((t) => t.is_breaching).length;
 
-  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const [updating, setUpdating] = useState<Ticket | null>(null);
-
-  function refresh() {
-    queryClient.invalidateQueries({ queryKey: ['tickets'] });
-    queryClient.invalidateQueries({ queryKey: ['nav-count'] });
-  }
 
   async function act(ticket: Ticket, action: JobAction) {
     if (action === 'update') {
       setUpdating(ticket);
       return;
     }
-    setBusy((ids) => new Set(ids).add(ticket.id));
-    try {
-      if (action === 'claim') {
-        await claimTicket(ticket.id);
-        toast.success(`${ticket.ticket_no} is yours, and in progress.`);
-        // The card leaves this list; keep focus in the panel, not on the page.
-        document.getElementById('my-jobs-panel')?.focus();
-      } else {
-        await startWork(ticket.id);
-        toast.success(`Started ${ticket.ticket_no}.`);
-      }
-    } catch {
-      toast.error(
-        action === 'claim'
-          ? 'Could not claim it. Someone may have taken it first.'
-          : 'Could not start this job. Please try again.',
-      );
-    } finally {
-      setBusy((ids) => {
-        const next = new Set(ids);
-        next.delete(ticket.id);
-        return next;
-      });
-      refresh();
-    }
+    const moved = await jobs.run(ticket, action);
+    // A claimed card leaves this list; keep focus in the panel, not on the page.
+    if (moved && action === 'claim') document.getElementById('my-jobs-panel')?.focus();
   }
 
   const tabs = [
@@ -127,7 +95,7 @@ export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
     { key: 'assigned' as const, label: 'All My Jobs' },
   ];
 
-  const cards = (list: Ticket[], mineList: boolean, loading: boolean, empty: ReactNode) =>
+  const cards = (list: Ticket[], loading: boolean, empty: ReactNode) =>
     loading ? (
       <div className="grid gap-3 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-3">
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
@@ -137,13 +105,13 @@ export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
     ) : (
       <div className="grid gap-3 p-4 sm:p-5 md:grid-cols-2 xl:grid-cols-3">
         {list.map((t) => {
-          const action = actionFor(t, mineList);
+          const action = actionFor(t, userId);
           return (
             <JobCard
               key={t.id}
               ticket={t}
               action={action}
-              busy={busy.has(t.id)}
+              busy={jobs.busy.has(t.id)}
               onOpen={() => onTicketSelect?.(t.id)}
               onAction={action ? () => act(t, action) : undefined}
             />
@@ -178,14 +146,14 @@ export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
           aria-labelledby={`my-jobs-panel-tab-${tab}`}
           className="focus:outline-none"
         >
-          {tab === 'active' && cards(active, true, mine.loading, (
+          {tab === 'active' && cards(active, mine.loading, (
             <Empty
               icon={<Wrench className="h-8 w-8" />}
               title="No active jobs"
               hint={claimable.length ? 'There are jobs available to claim.' : 'New jobs assigned to you will appear here.'}
             />
           ))}
-          {tab === 'available' && cards(claimable, false, available.loading, (
+          {tab === 'available' && cards(claimable, available.loading, (
             <Empty
               icon={<Hand className="h-8 w-8" />}
               title="Nothing to claim"
@@ -211,7 +179,7 @@ export default function MyJobs({ tab, onTicketSelect, panel }: MyJobsProps) {
           ticket={updating}
           open
           onClose={() => setUpdating(null)}
-          onSuccess={() => { setUpdating(null); refresh(); }}
+          onSuccess={() => setUpdating(null)}
         />
       )}
     </div>

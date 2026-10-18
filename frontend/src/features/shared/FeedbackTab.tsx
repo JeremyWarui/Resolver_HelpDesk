@@ -9,7 +9,7 @@ import { useFeedback, useFeedbackSummary } from '@/hooks/tickets/useTickets';
 import type { FeedbackWindow, TicketFeedbackRow } from '@/lib/api/tickets';
 import { RANGES, type RangeKey } from '@/constants/analytics';
 import type { UserRole } from '@/types';
-import { formatDateTimeLocal } from '@/utils/date';
+import { formatDateTime } from '@/utils/date';
 import { cn } from '@/lib/utils';
 
 const SUBTITLES: Partial<Record<UserRole, string>> = {
@@ -203,7 +203,7 @@ function FeedbackItem({ row, role }: { row: TicketFeedbackRow; role: UserRole })
             {row.ticket_no} · {row.service_item}
           </p>
           <p className="text-xs text-gray-500 mt-0.5">
-            {who} · rated {formatDateTimeLocal(row.created_at)}
+            {who} · rated {formatDateTime(row.created_at)}
           </p>
         </div>
         <RatingStars rating={row.rating} className="shrink-0" />

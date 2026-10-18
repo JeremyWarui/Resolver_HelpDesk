@@ -29,8 +29,6 @@ def test_raising_a_ticket_tells_the_supervisors(
     priorities,
     somewhere,
 ):
-    from tests import factories
-
     item = factories.make_service_item(electrical, "Dead socket")
     api.force_authenticate(requester)
     response = api.post(
@@ -211,10 +209,7 @@ def test_an_escalation_tells_the_post_it_reached_and_the_assignee(
     nrb_electrical_ticket.assigned_to = nrb_electrician
     nrb_electrical_ticket.status = "in_progress"
     nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
-    factories.age_ticket(
-        nrb_electrical_ticket,
-        minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1,
-    )
+    factories.age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
 
     assert factories.escalate(nrb_electrical_ticket, timezone.now()) is True
 
@@ -423,3 +418,39 @@ def test_paging_from_another_users_row_returns_nothing(api, requester, nrb_hos):
     body = api.get(reverse("notifications-list"), {"before": theirs.pk}).json()
 
     assert body["results"] == []
+
+
+def test_mark_all_read_stops_at_what_the_reader_had_on_screen(api, requester):
+    """A message that arrived after the page last polled stays unread."""
+    seen = [_note(requester) for _ in range(3)]
+    arrived_since = _note(requester)
+    api.force_authenticate(requester)
+
+    response = api.post(
+        reverse("notifications-read-all"), {"up_to": seen[-1].pk}, format="json"
+    )
+
+    assert response.status_code == 204
+    assert not Notification.objects.filter(pk__in=[n.pk for n in seen], read=False).exists()
+    assert Notification.objects.get(pk=arrived_since.pk).read is False
+
+
+def test_mark_all_read_without_a_bound_reads_everything(api, requester):
+    for _ in range(2):
+        _note(requester)
+    api.force_authenticate(requester)
+
+    api.post(reverse("notifications-read-all"))
+
+    assert not Notification.objects.filter(user=requester, read=False).exists()
+
+
+@pytest.mark.parametrize("up_to", ["7", 1.5, True, [1]])
+def test_mark_all_read_with_a_bound_that_is_not_an_id_is_a_400(api, requester, up_to):
+    note = _note(requester)
+    api.force_authenticate(requester)
+
+    response = api.post(reverse("notifications-read-all"), {"up_to": up_to}, format="json")
+
+    assert response.status_code == 400
+    assert Notification.objects.get(pk=note.pk).read is False

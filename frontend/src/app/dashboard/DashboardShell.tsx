@@ -1,9 +1,9 @@
 import { Outlet } from 'react-router-dom';
-import { useUserData } from '@/hooks/useAuth';
+import { useRoleCheck } from '@/hooks/useAuth';
 
-// The wrapper for every signed-in route. Re-validates the stored user against
-// the server through `useUserData`.
+// The wrapper for every signed-in route. Re-checks the stored role against
+// the server through `useRoleCheck`.
 export function DashboardShell() {
-  useUserData();
+  useRoleCheck();
   return <Outlet />;
 }

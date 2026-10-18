@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
 import { Toaster } from "./components/ui/sonner";
 import { HomeRedirect, ProtectedRoute } from "./app/auth/ProtectedRoute";
 import { LoginForm } from "./app/auth/LoginForm";
@@ -9,6 +9,8 @@ import { ResetPasswordForm } from "./app/auth/ResetPasswordForm";
 import { DashboardShell } from "./app/dashboard/DashboardShell";
 import { NotFoundPage } from "./app/NotFoundPage";
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { ROLE_BASE } from "./constants/roles";
+import type { UserRole } from "./types";
 
 // Lazy load main layout components for better code splitting
 const AdminLayout = lazy(() => import("./features/admin/AdminLayout"));
@@ -17,6 +19,16 @@ const TechnicianLayout = lazy(() => import("./features/technician/TechnicianLayo
 const SupervisorLayout = lazy(() => import("./features/shared/SupervisorLayout"));
 const ManagerLayout = lazy(() => import("./features/manager/ManagerLayout"));
 const ProfilePage = lazy(() => import("./features/shared/ProfilePage").then(m => ({ default: m.ProfilePage })));
+
+/** The layout each role's pages render in, under `ROLE_BASE[role]`. */
+const LAYOUT: Record<UserRole, ReactNode> = {
+  admin: <AdminLayout />,
+  user: <UserLayout />,
+  technician: <TechnicianLayout />,
+  hos: <SupervisorLayout role="hos" />,
+  hod: <SupervisorLayout role="hod" />,
+  manager: <ManagerLayout />,
+};
 
 const RouteLoading = () => (
   <div className="flex items-center justify-center h-screen">
@@ -41,54 +53,18 @@ const App = () => {
 
           {/* Protected Dashboard Routes */}
           <Route element={<DashboardShell />}>
-            <Route
-              path="/dashboard/*"
-              element={
-                <ProtectedRoute requiredRoles={['admin']}>
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/user/*"
-              element={
-                <ProtectedRoute requiredRoles={[]}>
-                  <UserLayout />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tech/*"
-              element={
-                <ProtectedRoute requiredRoles={['technician']}>
-                  <TechnicianLayout />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/hos/*"
-              element={
-                <ProtectedRoute requiredRoles={['hos']}>
-                  <SupervisorLayout role="hos" />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/hod/*"
-              element={
-                <ProtectedRoute requiredRoles={['hod']}>
-                  <SupervisorLayout role="hod" />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/director/*"
-              element={
-                <ProtectedRoute requiredRoles={['manager']}>
-                  <ManagerLayout />
-                </ProtectedRoute>
-              }
-            />
+            {(Object.keys(ROLE_BASE) as UserRole[]).map((role) => (
+              <Route
+                key={role}
+                path={`${ROLE_BASE[role]}/*`}
+                element={
+                  // Every role may raise tickets, so the requester's pages admit anyone signed in.
+                  <ProtectedRoute requiredRoles={role === 'user' ? [] : [role]}>
+                    {LAYOUT[role]}
+                  </ProtectedRoute>
+                }
+              />
+            ))}
             <Route
               path="/profile"
               element={

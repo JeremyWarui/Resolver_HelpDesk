@@ -12,7 +12,6 @@ from apps.tickets.views import (
     EscalationRunView,
     EscalationStatusView,
     TicketAssignView,
-    TicketAttachmentDetailView,
     TicketAttachmentView,
     TicketClaimView,
     TicketCommentListCreateView,
@@ -65,10 +64,5 @@ urlpatterns = [
         "tickets/<int:pk>/attachments/",
         TicketAttachmentView.as_view(),
         name="ticket-attachments",
-    ),
-    path(
-        "tickets/<int:pk>/attachments/<int:att_id>/",
-        TicketAttachmentDetailView.as_view(),
-        name="ticket-attachment-detail",
     ),
 ]

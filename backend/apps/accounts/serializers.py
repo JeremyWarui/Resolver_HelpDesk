@@ -1,12 +1,13 @@
 """Neither create nor update takes a name: the email is the identity."""
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from apps.accounts import health
 from apps.accounts.identity import display_name, identity_from_email
-from apps.accounts.models import ROLE_CHOICES, RoleAssignment, TechnicianTrade
-from apps.accounts.posts import PostRefused, assign_role, ensure_requester, scope_kwargs_from_ids
+from apps.accounts.models import CAMPUS_ROLES, ROLE_CHOICES, RoleAssignment, TechnicianTrade
+from apps.accounts.posts import PostRefused, assign_role, ensure_requester
 from apps.org.models import Campus, Trade
 from apps.org.serializers import CampusSerializer
 
@@ -97,9 +98,8 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 class RoleAssignmentWriteSerializer(serializers.Serializer):
     """Replaces a user's role. It does not merge with what they held.
 
-    Which roles carry a campus is not decided here: `posts.scope_kwargs_from_ids`
-    reads it from `SCOPE_FIELD_BY_ROLE`, so this cannot drift from the rule
-    `RoleAssignment.clean()` enforces on save.
+    Which roles carry a campus is `CAMPUS_ROLES`, the list `RoleAssignment.clean()`
+    enforces on save.
     """
 
     role = serializers.ChoiceField(choices=ROLE_CHOICES)
@@ -110,13 +110,15 @@ class RoleAssignmentWriteSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         role = attrs["role"]
-        try:
-            attrs["scope"] = scope_kwargs_from_ids(
-                role, campus_id=attrs.get("campus_id")
-            )
-        except LookupError as exc:
-            field, message = exc.args[0]
-            raise serializers.ValidationError({field: message}) from exc
+        attrs["scope"] = {}
+        if role in CAMPUS_ROLES:
+            campus_id = attrs.get("campus_id")
+            if not campus_id:
+                raise serializers.ValidationError({"campus_id": f"A {role} assignment requires a campus."})
+            campus = Campus.objects.filter(pk=campus_id).first()
+            if campus is None:
+                raise serializers.ValidationError({"campus_id": "Campus not found."})
+            attrs["scope"] = {"campus": campus}
 
         attrs["trades"] = self._validate_trades(role, attrs.get("trade_ids") or [])
         return attrs
@@ -254,17 +256,27 @@ class UserCreateSerializer(serializers.Serializer):
         one definition of what a new account is.
         """
         email = validated_data["email"]
-        username, first_name, last_name = identity_from_email(email)
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=validated_data["password"],
-            first_name=first_name,
-            last_name=last_name,
-            campus_id=validated_data["campus_id"],
-        )
-        ensure_requester(user)
-        return user
+        # Two sign-ups at once can derive the same username; the second tries again.
+        for _ in range(3):
+            username, first_name, last_name = identity_from_email(email)
+            try:
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        password=validated_data["password"],
+                        first_name=first_name,
+                        last_name=last_name,
+                        campus_id=validated_data["campus_id"],
+                    )
+                    ensure_requester(user)
+                return user
+            except IntegrityError:
+                if User.objects.filter(email__iexact=email).exists():
+                    raise serializers.ValidationError(
+                        {"email": ["A user with this email already exists."]}
+                    ) from None
+        raise serializers.ValidationError({"email": ["The account could not be created. Try again."]})
 
 
 class UserUpdateSerializer(serializers.Serializer):
@@ -281,7 +293,7 @@ class UserUpdateSerializer(serializers.Serializer):
         return _campus_must_exist(value)
 
     def update(self, instance, validated_data):
-        campus_id = validated_data.pop("campus_id", serializers.empty)
+        fields = []
         email = validated_data.get("email")
         if email and email.lower() != (instance.email or "").lower():
             instance.email = email
@@ -290,10 +302,16 @@ class UserUpdateSerializer(serializers.Serializer):
                 instance.first_name,
                 instance.last_name,
             ) = identity_from_email(email, exclude_pk=instance.pk)
-            instance.save(
-                update_fields=["email", "username", "first_name", "last_name"]
-            )
-        if campus_id is not serializers.empty:
-            instance.campus_id = campus_id
-            instance.save(update_fields=["campus"])
+            fields += ["email", "username", "first_name", "last_name"]
+        if "campus_id" in validated_data:
+            instance.campus_id = validated_data["campus_id"]
+            fields.append("campus")
+        if fields:
+            try:
+                with transaction.atomic():
+                    instance.save(update_fields=fields)
+            except IntegrityError:
+                raise serializers.ValidationError(
+                    {"email": ["A user with this email already exists."]}
+                ) from None
         return instance

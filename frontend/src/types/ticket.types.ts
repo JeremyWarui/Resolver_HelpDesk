@@ -11,13 +11,8 @@ export interface Priority {
 }
 
 /** The campus a ticket belongs to — the requester's own, never chosen. */
-export interface CampusRef {
-  id: number;
-  name: string;
-  code: string;
-}
-
-export interface TradeRef {
+/** A campus, a trade or a facility type, as another record refers to it. */
+export interface CodeRef {
   id: number;
   name: string;
   code: string;
@@ -54,25 +49,23 @@ export interface Ticket {
   priority?: Priority;
   current_level?: 'technician' | 'hos' | 'hod';
 
-  // Write-only IDs (sent on create/update)
-  assigned_to_id?: number | null;
 
   // Read-only nested objects
   /** The requester's campus. Derived server-side, never chosen. */
-  requester_campus: CampusRef;
+  requester_campus: CodeRef;
   /** The trade that owns the work — Plumbing, Electrical, and so on. Derived
    *  server-side from the chosen service item; together with `requester_campus`
    *  it is the pair a technician is scoped to. */
-  trade: TradeRef;
+  trade: CodeRef;
   raised_by: AssignedUser;
   assigned_to: AssignedUser | null;
 
   // SLA timestamps (server-owned; paused_at non-null means SLA frozen, and is
   // on list rows too, so a held list can say how long)
-  response_due_at?: string | null;
+  /** When the SLA clock last started: when the ticket was raised, or reopened. */
+  clock_started_at: string;
   resolution_due_at?: string | null;
   paused_at?: string | null;
-  accumulated_pause?: string;
 
   /** Detail shape only: the caller sees this ticket only as its requester,
    *  not as staff who also raised it. */
@@ -87,7 +80,6 @@ export interface Ticket {
   updated_at: string;
   /** When work finished. Settled SLA outcomes are judged against this, not the clock. */
   resolved_at?: string | null;
-  closed_at?: string | null;
 
   // Why the ticket is on hold. Set on the way into 'pending', cleared on the
   // way out, so a non-empty `pending_reason` and a running status cannot
@@ -119,15 +111,8 @@ export interface Ticket {
   service_item?: {
     id: number;
     name: string;
-    trade: TradeRef;
+    trade: CodeRef;
   } | null;
-}
-
-export interface TicketsResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: Ticket[];
 }
 
 // The create payload. The server derives the trade, the campus and the priority
@@ -147,17 +132,13 @@ export interface CreateTicketPayload {
 // Params for GET /tickets/ — role scoping enforced server-side from JWT.
 export interface TicketsParams {
   status?: string;
-  priority?: string;
   search?: string;
   page?: number;
   page_size?: number;
-  cursor?: string;
   mine?: 1;          // My Requests context: only tickets raised_by == self
   ordering?: string;
   // Server-side filters (narrow the role-scoped queryset; never widen scope)
-  campus?: number;
   trade?: number;   // trade — Plumbing, Electrical, …
-  current_level?: 'technician' | 'hos' | 'hod';
   /** '1' returns everything above the technician, in one request. */
   escalated?: '1';
   /** '1' returns live work past its resolution target — the same predicate as

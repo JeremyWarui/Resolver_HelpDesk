@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import { AlertCircle, PauseCircle } from 'lucide-react';
 import { useTickets } from '@/hooks/tickets/useTickets';
+import { CHART_COLORS } from '@/constants/colors';
 import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import ChartCard from '@/components/shared/data/ChartCard';
 import MetricCard from '@/components/shared/data/MetricCard';
@@ -46,7 +47,7 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
   const isTechnician = role === 'technician';
 
   // A technician's list waits for their id, so an unnarrowed request never fires.
-  const { tickets, loading, refetch } = useTickets(
+  const { tickets, loading } = useTickets(
     {
       status: 'pending',
       page_size: 100,
@@ -122,7 +123,7 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
                     className="h-full rounded-full"
                     style={{
                       width: `${(r.count / total) * 100}%`,
-                      backgroundColor: 'var(--chart-1)',
+                      backgroundColor: CHART_COLORS[0],
                     }}
                   />
                 </div>
@@ -172,10 +173,7 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
           mode={acting.mode}
           open
           onClose={() => setActing(null)}
-          onDone={() => {
-            setActing(null);
-            refetch();
-          }}
+          onDone={() => setActing(null)}
         />
       )}
     </>

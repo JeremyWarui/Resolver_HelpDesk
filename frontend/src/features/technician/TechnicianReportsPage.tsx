@@ -6,7 +6,6 @@ import BreakdownChart from '@/components/shared/data/BreakdownChart';
 import HoldsPanel from '@/components/shared/data/HoldsPanel';
 import RangeSelector from '@/components/shared/data/RangeSelector';
 import ReportDownloads from '@/components/shared/data/ReportDownloads';
-import LazyMount from '@/components/shared/LazyMount';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { RANGES, type RangeKey } from '@/constants/analytics';
 import { SCOPE_SUBTITLE } from '@/constants/roles';
@@ -48,7 +47,7 @@ export default function TechnicianReportsPage() {
       description: 'Live jobs on your bench',
       icon: <Wrench className="h-5 w-5 text-amber-700" />,
       iconBgColor: 'bg-amber-100',
-      ...(t?.overdue ? { badge: { value: `${t.overdue} late`, color: 'red' as const } } : {}),
+      ...(t?.overdue ? { badge: { value: `${t.overdue} late`, alert: true } } : {}),
     },
     {
       id: 'finished',
@@ -119,7 +118,6 @@ export default function TechnicianReportsPage() {
           />
           <BreakdownChart
             dimension="status"
-            kind="pie"
             title="Where my jobs stand"
             description="Your jobs from this period, by status"
             params={params}
@@ -128,7 +126,6 @@ export default function TechnicianReportsPage() {
           {severalTrades && (
             <BreakdownChart
               dimension="trade"
-              kind="pie"
               title="By trade"
               description="Which of your trades the work was in"
               params={params}
@@ -138,9 +135,7 @@ export default function TechnicianReportsPage() {
         </div>
       )}
 
-      <LazyMount minHeight={220}>
-        <HoldsPanel bottlenecks={data?.bottlenecks ?? null} loading={loading} />
-      </LazyMount>
+      <HoldsPanel bottlenecks={data?.bottlenecks ?? null} loading={loading} />
     </div>
   );
 }

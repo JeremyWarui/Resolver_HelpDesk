@@ -47,7 +47,6 @@ export function useTicketTableFilters(
         table.statusFilter,
         onStatusChange ?? table.setStatusFilter,
         table.allStatuses,
-        table.setPageIndex,
       ),
     );
   }
@@ -58,7 +57,6 @@ export function useTicketTableFilters(
         table.tradeFilter ?? 'all',
         table.setTradeFilter,
         table.trades,
-        table.setPageIndex,
       ),
     );
   }
@@ -69,7 +67,6 @@ export function useTicketTableFilters(
         String(table.technicianFilter ?? 'all'),
         (value) => table.setTechnicianFilter(value === 'all' ? null : Number(value)),
         technicians,
-        table.setPageIndex,
       ),
     );
   }
@@ -80,7 +77,6 @@ export function useTicketTableFilters(
         String(table.userFilter ?? 'all'),
         (value) => table.setUserFilter(value === 'all' ? null : Number(value)),
         requesters,
-        table.setPageIndex,
       ),
     );
   }

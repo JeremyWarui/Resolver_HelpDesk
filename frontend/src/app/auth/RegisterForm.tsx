@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from 'sonner';
 import { User, Mail, Lock, UserPlus, MapPin, CheckCircle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { getPublicCampuses, clearSession, type PublicCampus } from '@/lib/api/auth';
+import { getPublicCampuses } from '@/lib/api/auth';
+import type { CodeRef } from '@/types';
 import { deriveIdentity } from '@/utils/identity';
 import { AuthShell } from './AuthShell';
 
@@ -30,7 +31,7 @@ const registerSchema = z.object({
 export const RegisterForm: React.FC = () => {
   const navigate = useNavigate();
   const { register, isLoading } = useAuth();
-  const [campuses, setCampuses] = React.useState<PublicCampus[]>([]);
+  const [campuses, setCampuses] = React.useState<CodeRef[]>([]);
   const [registeredEmail, setRegisteredEmail] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -58,9 +59,6 @@ export const RegisterForm: React.FC = () => {
         campus_id: Number(values.campus_id)
       });
 
-      // Registration auto-logs the user in; we want them to land on /login and
-      // sign in with the email they just gave, so drop that session.
-      clearSession();
       setRegisteredEmail(values.email.trim());
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string; error?: string; errors?: Record<string, string> } } };

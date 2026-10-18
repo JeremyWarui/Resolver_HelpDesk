@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { MessageSquare, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,25 +9,19 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { addComment } from '@/lib/api/tickets';
-import { useTicketComments } from '@/hooks/tickets/useTicketDetail';
+import { useTicketComments, useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { formatDate } from '@/utils/date';
+import { initials } from '@/utils/identity';
 import { ticketCommentSchema, type TicketCommentFormValues } from '@/utils/validation';
 import type { Ticket } from '@/types';
 
 interface CommentThreadProps {
   ticket: Ticket;
-  hideHeader?: boolean;
-  onCommentAdded?: () => void;
   /** The viewer's role and id, for the assigned-technician gate. */
   viewerRole?: string;
   viewerId?: number;
   /** The requester's view: the comments without the box to post one. */
   readOnly?: boolean;
-}
-
-function initials(name?: string) {
-  if (!name) return 'U';
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 /**
@@ -37,14 +31,11 @@ function initials(name?: string) {
  */
 function CommentThread({
   ticket,
-  hideHeader = false,
-  onCommentAdded,
   viewerRole,
   viewerId,
   readOnly = false,
 }: CommentThreadProps) {
-  const queryClient = useQueryClient();
-  const key = ['ticket-comments', ticket.id];
+  const invalidate = useTicketInvalidate();
   const { comments, loading: isLoading } = useTicketComments(ticket.id);
 
   const post = useMutation({
@@ -52,8 +43,8 @@ function CommentThread({
     onSuccess: () => {
       toast.success('Comment added');
       form.reset();
-      queryClient.invalidateQueries({ queryKey: key });
-      onCommentAdded?.();
+      // The thread, and the timeline's comment event with it.
+      invalidate(ticket.id);
     },
     onError: () => toast.error('Failed to add comment'),
   });
@@ -77,8 +68,6 @@ function CommentThread({
 
   return (
     <div className="space-y-5">
-      {!hideHeader && <h3 className="text-sm font-semibold">Comments</h3>}
-
       <div className="space-y-3">
         {isLoading ? (
           [0, 1].map((i) => (

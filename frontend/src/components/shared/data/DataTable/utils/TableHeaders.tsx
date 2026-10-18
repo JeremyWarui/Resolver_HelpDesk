@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 interface TableHeaderProps {
   title?: string;
   subtitle?: string;
-  titleAction?: ReactNode;
   handleSearch: (value: string) => void;
   searchValue: string;
   searchPlaceholder: string;
@@ -16,7 +15,6 @@ interface TableHeaderProps {
 export const DefaultTableHeader = ({
   title,
   subtitle,
-  titleAction,
   handleSearch,
   searchValue,
   searchPlaceholder,
@@ -31,7 +29,6 @@ export const DefaultTableHeader = ({
             <CardTitle className="text-lg font-semibold">{title}</CardTitle>
             {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
           </div>
-          {titleAction}
         </CardHeader>
       )}
       <div className="flex flex-col gap-4 md:flex-row md:items-center py-2">

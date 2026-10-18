@@ -1,5 +1,5 @@
 /**
- * The three Recharts tooltip shapes, and the card they share.
+ * The two Recharts tooltip shapes, and the card they share.
  */
 
 interface TooltipEntry {
@@ -20,24 +20,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** One series, keyed by the axis label. "Jan 5 — Tickets: 12" */
-export function BarTooltip({ active, payload, label, unit = 'Tickets' }: ChartTooltipProps & { unit?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <Shell>
-      <p className="text-xs font-medium text-gray-800">{label}</p>
-      <p className="text-xs text-gray-600">{unit}: {payload[0].value}</p>
-    </Shell>
-  );
-}
-
 /** One slice, keyed by its own name — pie and donut charts carry no axis label. */
-export function PieTooltip({ active, payload, unit = 'Tickets' }: ChartTooltipProps & { unit?: string }) {
+export function PieTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <Shell>
       <p className="text-xs font-medium text-gray-800">{payload[0].name}</p>
-      <p className="text-xs text-gray-600">{unit}: {payload[0].value}</p>
+      <p className="text-xs text-gray-600">Tickets: {payload[0].value}</p>
     </Shell>
   );
 }

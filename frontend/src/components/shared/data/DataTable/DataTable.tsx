@@ -1,14 +1,14 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState } from "react";
 import {
   type ColumnDef,
   type SortingState,
-  type ColumnFiltersState,
   type VisibilityState,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  type Updater,
 } from "@tanstack/react-table";
 
 import { SlidersHorizontal } from "lucide-react";
@@ -35,8 +35,7 @@ import { RenderTableContent } from "./utils/TableContent";
 export interface FilterOption {
   label: string;
   options: { label: string; value: string }[];
-  defaultValue?: string;
-  value?: string;
+  value: string;
   onFilterChange: (value: string) => void;
 }
 
@@ -45,8 +44,6 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   title?: string;
   subtitle?: string;
-  /** Rendered at the right of the title row — a page's "Add" button. */
-  titleAction?: ReactNode;
   searchPlaceholder?: string;
   emptyStateMessage?: string;
   emptyStateDescription?: string;
@@ -57,9 +54,16 @@ interface DataTableProps<TData, TValue> {
   selectedRowId?: number | null;
   totalItems?: number;
   loading?: boolean;
+  /** The server pages, sorts and searches: the table shows `data` as given. */
   manualPagination?: boolean;
+  /** The page the server returned, with `manualPagination`. */
+  pageIndex?: number;
   onPageChange?: (pageIndex: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
+  onSearchChange?: (value: string) => void;
+  /** The text a row is found by when the table searches in the browser. */
+  searchText?: (row: TData) => string;
+  onSortingChange?: (sorting: SortingState) => void;
   rowClassName?: (row: TData) => string;
   /** What one row is, for the footer's count. */
   noun?: { one: string; many: string };
@@ -71,7 +75,6 @@ const DataTable = <TData, TValue>({
   // No default: `DefaultTableHeader` renders no header when the title is absent.
   title,
   subtitle,
-  titleAction,
   searchPlaceholder = "Search...",
   emptyStateMessage = "No data found",
   emptyStateDescription = "Try changing your filter or check back later",
@@ -84,8 +87,12 @@ const DataTable = <TData, TValue>({
   totalItems,
   loading = false,
   manualPagination = false,
+  pageIndex: serverPageIndex = 0,
   onPageChange,
   onPageSizeChange,
+  onSearchChange,
+  searchText,
+  onSortingChange,
   rowClassName,
 }: DataTableProps<TData, TValue>) => {
   // TanStack Table's useReactTable() returns an interior-mutable table instance whose
@@ -94,19 +101,21 @@ const DataTable = <TData, TValue>({
   'use no memo';
 
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-
-  // Initialize column visibility with searchField hidden by default
-  const defaultVisibility: VisibilityState = {
-    searchField: false,
-    ...initialColumnVisibility,
-  };
   const [columnVisibility, setColumnVisibility] =
-    useState<VisibilityState>(defaultVisibility);
-
+    useState<VisibilityState>(initialColumnVisibility);
   const [searchValue, setSearchValue] = useState("");
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [localPageIndex, setPageIndex] = useState(0);
+  const [localPageSize, setPageSize] = useState(defaultPageSize);
+  // With manualPagination the parent owns the page, so a filter that sends it
+  // back to page 1 moves the footer too.
+  const pageIndex = manualPagination ? serverPageIndex : localPageIndex;
+  const pageSize = manualPagination ? defaultPageSize : localPageSize;
+
+  const handleSortingChange = (updater: Updater<SortingState>) => {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    setSorting(next);
+    if (manualPagination) onSortingChange?.(next);
+  };
 
   const actualTotalItems = manualPagination ? totalItems || 0 : data.length;
 
@@ -115,19 +124,22 @@ const DataTable = <TData, TValue>({
     data,
     columns,
     manualPagination,
+    manualSorting: manualPagination,
+    manualFiltering: manualPagination,
     pageCount: manualPagination
       ? Math.ceil(actualTotalItems / pageSize)
       : undefined,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: handleSortingChange,
     onColumnVisibilityChange: setColumnVisibility,
+    globalFilterFn: (row, _columnId, value: string) =>
+      !searchText || searchText(row.original).toLowerCase().includes(value.toLowerCase()),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     state: {
       sorting,
-      columnFilters,
+      globalFilter: searchValue,
       columnVisibility,
       pagination: {
         pageIndex,
@@ -136,32 +148,29 @@ const DataTable = <TData, TValue>({
     },
   });
 
-  // Reset page index when search value changes
-  useEffect(() => {
-    setPageIndex(0);
-  }, [columnFilters]);
-
   const handleSearch = (value: string) => {
     setSearchValue(value);
-    if (table.getColumn("searchField")) {
-      table.getColumn("searchField")?.setFilterValue(value.toLowerCase());
+    if (manualPagination) {
+      onSearchChange?.(value);
+    } else {
+      setPageIndex(0);
     }
   };
 
   const handlePageChange = (newPageIndex: number) => {
-    setPageIndex(newPageIndex);
-
-    if (manualPagination && onPageChange) {
-      onPageChange(newPageIndex);
+    if (manualPagination) {
+      onPageChange?.(newPageIndex);
+    } else {
+      setPageIndex(newPageIndex);
     }
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
-    setPageSize(newPageSize);
-    setPageIndex(0); // Reset to first page on page size change
-
-    if (onPageSizeChange) {
-      onPageSizeChange(newPageSize);
+    if (manualPagination) {
+      onPageSizeChange?.(newPageSize);
+    } else {
+      setPageSize(newPageSize);
+      setPageIndex(0);
     }
   };
 
@@ -170,7 +179,7 @@ const DataTable = <TData, TValue>({
         <Select
           key={`filter-${index}-${filter.label}`}
           onValueChange={filter.onFilterChange}
-          value={filter.value || filter.defaultValue}
+          value={filter.value}
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder={filter.label} />
@@ -220,7 +229,6 @@ const DataTable = <TData, TValue>({
   const headerProps = {
     title,
     subtitle,
-    titleAction,
     handleSearch,
     searchValue,
     searchPlaceholder,

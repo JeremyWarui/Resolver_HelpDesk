@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, uniqueSuffix, API } from './helpers';
+import { API, bearer, loginAsAdmin, uniqueSuffix } from './helpers';
 
 // The admin "New Facility" dialog sends what FacilitySerializer accepts: a
 // name, a campus and the facility_type FK. tsc cannot see a payload that
@@ -65,7 +65,7 @@ test('a facility can actually be created', async ({ page }) => {
   // There is no delete affordance on this page, so clean up through the API
   // rather than leaving a row behind on every run.
   await page.keyboard.press('Escape');
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
+  const token = await bearer(page);
   const cleanup = await page.request.delete(
     `${API}/facilities/${body.id}/`,
     { headers: { Authorization: `Bearer ${token}` } },

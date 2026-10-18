@@ -35,8 +35,7 @@ def accounts_to_fix():
     )
     rows = []
     for user in users:
-        role = getattr(getattr(user, "role_assignment", None), "role", None)
-        codes = problems(user, role, len(user.technician_trades.all()))
+        codes = problems(user, user.role, len(user.technician_trades.all()))
         if codes:
             rows.append((user, codes))
     return rows

@@ -1,4 +1,4 @@
-import { FALLBACK_TRADE_THEME, TRADE_THEMES } from '@/constants/catalogue';
+import { tradeTheme } from '@/constants/catalogue';
 import type { OverviewFacility } from '@/types';
 import { formatSeconds } from '@/utils/date';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,7 @@ export default function FacilityPatternTable({ rows, detail = false }: { rows: O
               <td className="p-2">
                 <div className="flex h-3 overflow-hidden rounded" style={{ width: `${(row.total / most) * 100}%` }} aria-hidden>
                   {row.trades.map((t) => (
-                    <span key={t.label} style={{ width: `${(t.total / row.total) * 100}%`, background: (TRADE_THEMES[t.code ?? ''] ?? FALLBACK_TRADE_THEME).color }} />
+                    <span key={t.label} style={{ width: `${(t.total / row.total) * 100}%`, background: tradeTheme(t.code).color }} />
                   ))}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">

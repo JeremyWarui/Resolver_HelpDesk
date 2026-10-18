@@ -9,25 +9,19 @@ import {
   Legend,
 } from 'recharts';
 import { CHART_COLORS } from '@/constants/colors';
-import { BarTooltip, SeriesTooltip } from '@/components/shared/data/ChartTooltips';
+import { SeriesTooltip } from '@/components/shared/data/ChartTooltips';
 
 interface AppBarChartProps {
   data: Record<string, unknown>[];
-  height?: number;
-  /** One bar per entry, drawn in palette order unless a colour is given. The
-   *  legend appears only for more than one, where it is the only thing saying
-   *  which bar is which. */
-  series?: { key: string; name?: string; color?: string }[];
+  height: number;
+  /** One bar per entry, side by side, drawn in palette order. The legend says which is which. */
+  series: { key: string; name: string }[];
   /** Bar width in px. */
   barSize?: number;
 }
 
-const DEFAULT_SERIES = [{ key: 'tickets' }];
-
-/** The bar chart every report draws: one series or several, same axes. */
-export function AppBarChart({ data, height = 250, series = DEFAULT_SERIES, barSize = 20 }: AppBarChartProps) {
-  const multi = series.length > 1;
-
+/** Several series of bars on shared axes. */
+export function AppBarChart({ data, height, series, barSize = 20 }: AppBarChartProps) {
   return (
     <div style={{ height }} className="w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -39,14 +33,14 @@ export function AppBarChart({ data, height = 250, series = DEFAULT_SERIES, barSi
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edebe9" />
           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 13 }} dy={10} />
           <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13 }} width={30} allowDecimals={false} />
-          <Tooltip content={multi ? <SeriesTooltip /> : <BarTooltip />} />
-          {multi && <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />}
+          <Tooltip content={<SeriesTooltip />} />
+          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
           {series.map((s, i) => (
             <Bar
               key={s.key}
               dataKey={s.key}
               name={s.name}
-              fill={s.color ?? CHART_COLORS[i % CHART_COLORS.length]}
+              fill={CHART_COLORS[i % CHART_COLORS.length]}
               radius={[4, 4, 0, 0]}
               barSize={barSize}
             />

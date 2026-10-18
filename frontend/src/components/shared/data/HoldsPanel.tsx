@@ -1,7 +1,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import ChartCard from '@/components/shared/data/ChartCard';
-import { FALLBACK_TRADE_THEME, TRADE_THEMES } from '@/constants/catalogue';
+import { tradeTheme } from '@/constants/catalogue';
 import { timeAgo } from '@/utils/date';
 import type { Bottleneck } from '@/types';
 
@@ -44,7 +44,7 @@ export default function HoldsPanel({ bottlenecks, loading = false }: Props) {
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {row.trades.map((t) => (
                       <span key={t.label} className="inline-flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: (TRADE_THEMES[t.code ?? ''] ?? FALLBACK_TRADE_THEME).color }} aria-hidden />
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ background: tradeTheme(t.code).color }} aria-hidden />
                         {t.label} {t.total}
                       </span>
                     ))}

@@ -1,6 +1,11 @@
 """Test settings — extends base settings, switches DATABASES to SQLite in-memory."""
 
-from .settings import *  # noqa: F401, F403
+import os
+
+# Replaced below; set so the base settings load without a real database.
+os.environ.setdefault("DATABASE_URL", "sqlite://:memory:")
+
+from .settings import *  # noqa: E402, F401, F403
 
 ALLOWED_HOSTS = ["*"]
 

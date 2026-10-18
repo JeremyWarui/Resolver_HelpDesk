@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator as tokens
 from django.core.mail import EmailMessage, get_connection
+from django.db import transaction
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
@@ -107,18 +108,23 @@ def reset_password(uid, token, password):
     if not all(isinstance(v, str) for v in (uid, token, password)):
         raise ResetRefused
     try:
-        user = User.objects.get(pk=force_str(urlsafe_base64_decode(uid)), is_active=True)
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        pk = int(force_str(urlsafe_base64_decode(uid)))
+    except (TypeError, ValueError, OverflowError):
         raise ResetRefused from None
-    if not tokens.check_token(user, token):
-        raise ResetRefused
 
-    validate_password(password, user)
-    user.set_password(password)
-    user.save(update_fields=["password"])
-    # Access tokens die with the old password hash (CHECK_REVOKE_TOKEN); refresh
-    # tokens are blacklisted, so no session outlives the reset.
-    for outstanding in OutstandingToken.objects.filter(user=user):
-        BlacklistedToken.objects.get_or_create(token=outstanding)
+    # The lock makes a second use of the same link wait, then see the new
+    # password hash, which the token no longer matches.
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(pk=pk, is_active=True).first()
+        if user is None or not tokens.check_token(user, token):
+            raise ResetRefused
+
+        validate_password(password, user)
+        user.set_password(password)
+        user.save(update_fields=["password"])
+        # Access tokens die with the old password hash (CHECK_REVOKE_TOKEN); refresh
+        # tokens are blacklisted, so no session outlives the reset.
+        for outstanding in OutstandingToken.objects.filter(user=user):
+            BlacklistedToken.objects.get_or_create(token=outstanding)
     logger.info("Password reset for user %s", user.pk)
     return user

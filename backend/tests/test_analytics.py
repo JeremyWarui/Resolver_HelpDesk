@@ -277,7 +277,6 @@ def test_a_reopened_ticket_is_timed_on_its_latest_attempt(
 ):
     """Raised two days ago, resolved, reopened, and fixed again within the
     hour: the figure is that hour, not the two days, as its SLA outcome is."""
-    from apps.tickets.models import Ticket
 
     ticket = factories.age_ticket(nrb_electrical_ticket, days=2)
     claim_ticket(ticket, nrb_electrician)

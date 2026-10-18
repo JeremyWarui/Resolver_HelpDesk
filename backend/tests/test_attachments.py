@@ -152,33 +152,3 @@ def test_every_other_type_is_refused(
     assert resp.status_code == 400
     assert "not permitted" in resp.data["detail"]
     assert not TicketAttachment.objects.exists()
-
-
-@pytest.mark.django_db
-def test_a_requester_cannot_delete_someone_elses_attachment(
-    api,
-    requester,
-    nrb_hos,
-    nrb_electrical_ticket,
-    media,
-):
-    """Deletion is uploader-or-supervisor. The requester raised the ticket but
-    did not upload this file."""
-    api.force_authenticate(nrb_hos)
-    created = api.post(
-        reverse("ticket-attachments", args=[nrb_electrical_ticket.pk]),
-        {"files": an_image()},
-        format="multipart",
-    ).data[0]
-
-    url = reverse(
-        "ticket-attachment-detail", args=[nrb_electrical_ticket.pk, created["id"]]
-    )
-
-    api.force_authenticate(requester)
-    assert api.delete(url).status_code == 403
-    assert TicketAttachment.objects.filter(pk=created["id"]).exists()
-
-    api.force_authenticate(nrb_hos)
-    assert api.delete(url).status_code == 204
-    assert not TicketAttachment.objects.filter(pk=created["id"]).exists()

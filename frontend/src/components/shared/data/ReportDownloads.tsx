@@ -3,7 +3,7 @@ import { FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { downloadReport, type ReportFormat } from '@/lib/api/analytics';
-import { REPORT_DOWNLOADS } from '@/constants/analytics';
+import { REPORT_ROLES } from '@/constants/analytics';
 import type { ReportParams, UserRole } from '@/types';
 
 const LABELS: Record<ReportFormat, { text: string; Icon: typeof FileText }> = {
@@ -14,8 +14,7 @@ const LABELS: Record<ReportFormat, { text: string; Icon: typeof FileText }> = {
 /** The report's download buttons, for the period and campus the page is showing. */
 export default function ReportDownloads({ role, params }: { role: UserRole; params: ReportParams }) {
   const [busy, setBusy] = useState<ReportFormat | null>(null);
-  const formats = REPORT_DOWNLOADS[role] ?? [];
-  if (formats.length === 0) return null;
+  if (!REPORT_ROLES.includes(role)) return null;
 
   async function download(format: ReportFormat) {
     setBusy(format);
@@ -30,7 +29,7 @@ export default function ReportDownloads({ role, params }: { role: UserRole; para
 
   return (
     <div className="flex items-center gap-2">
-      {formats.map((format) => {
+      {(['xlsx', 'pdf'] as const).map((format) => {
         const { text, Icon } = LABELS[format];
         return (
           <Button

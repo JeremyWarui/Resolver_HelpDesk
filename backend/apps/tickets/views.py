@@ -7,13 +7,13 @@ client-supplied and scope is not.
 """
 
 from rest_framework import generics, serializers as drf_serializers, status
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import get_object_or_404
 
-import os
 from collections import Counter
 
 from django.conf import settings
@@ -76,14 +76,22 @@ from apps.accounts.identity import display_name, display_name_parts
 
 
 def get_ticket_for_request_or_403(
-    request, pk, *, allow_requester=True, supervisor_only=False, qs=None
+    request, pk, *, allow_requester=True, supervisor_only=False, qs=None, lock=False
 ):
     """Fetch a ticket, or 403. The IDOR guard every action view goes through.
 
     Your own ticket, or one inside your role's scope; `supervisor_only` narrows
     that to the roles that may direct a ticket. Fails closed.
+
+    `lock` holds the row until the caller's transaction ends, so a write starts
+    from the row as it is now and a second writer waits its turn. It needs an
+    open `transaction.atomic()`.
     """
-    ticket = get_object_or_404(qs if qs is not None else Ticket, pk=pk)
+    qs = qs if qs is not None else Ticket.objects.all()
+    if lock:
+        # `of`: PostgreSQL refuses FOR UPDATE on the nullable side of a join.
+        qs = qs.select_for_update(of=("self",))
+    ticket = get_object_or_404(qs, pk=pk)
 
     if allow_requester and ticket.raised_by_id == request.user.pk:
         return ticket
@@ -120,10 +128,13 @@ class TicketStatusView(APIView):
 
     def post(self, request, pk):
         """Apply the transition, or 403 if this caller may not make it."""
-        ticket = get_ticket_for_request_or_403(request, pk)
-        serializer = TicketStatusUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            ticket = get_ticket_for_request_or_403(request, pk, lock=True)
+            serializer = TicketStatusUpdateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            return self._apply(request, ticket, serializer.validated_data)
 
+    def _apply(self, request, ticket, data):
         role = resolve_role(request)
         is_assigned_tech = (
             role == "technician" and ticket.assigned_to_id == request.user.pk
@@ -133,7 +144,7 @@ class TicketStatusView(APIView):
         if not (is_supervisor or is_assigned_tech):
             if not (
                 is_requester
-                and serializer.validated_data["status"] in self.REQUESTER_TARGETS
+                and data["status"] in self.REQUESTER_TARGETS
             ):
                 raise PermissionDenied(
                     "You do not have permission to change this ticket's status."
@@ -142,13 +153,11 @@ class TicketStatusView(APIView):
         try:
             transition_status(
                 ticket,
-                serializer.validated_data["status"],
+                data["status"],
                 actor=request.user,
-                reason=serializer.validated_data.get("reason", ""),
-                pending_reason=serializer.validated_data.get("pending_reason", ""),
-                pending_reason_note=serializer.validated_data.get(
-                    "pending_reason_note", ""
-                ),
+                reason=data.get("reason", ""),
+                pending_reason=data.get("pending_reason", ""),
+                pending_reason_note=data.get("pending_reason_note", ""),
             )
         except TransitionError as e:
             return Response({"detail": str(e)}, status=400)
@@ -167,12 +176,17 @@ class TicketAssignView(APIView):
 
     def post(self, request, pk):
         """Assign or reassign, optionally with the real priority."""
+        with transaction.atomic():
+            return self._assign(request, pk)
+
+    def _assign(self, request, pk):
         ticket = get_ticket_for_request_or_403(
             request,
             pk,
             allow_requester=False,
             supervisor_only=True,
             qs=Ticket.objects.select_related("service_item", "assigned_to", "priority"),
+            lock=True,
         )
         serializer = TicketAssignSerializer(
             data=request.data, context={"ticket": ticket}
@@ -216,10 +230,7 @@ class TicketClaimView(APIView):
         try:
             with transaction.atomic():
                 ticket = get_ticket_for_request_or_403(
-                    request,
-                    pk,
-                    allow_requester=False,
-                    qs=Ticket.objects.select_for_update(),
+                    request, pk, allow_requester=False, lock=True
                 )
                 claim_ticket(ticket, request.user)
         except TransitionError as e:
@@ -260,9 +271,10 @@ class TicketCommentListCreateView(generics.ListCreateAPIView):
             )
         return TicketComment.objects.filter(ticket=ticket).order_by("-created_at")
 
+    @transaction.atomic
     def perform_create(self, serializer):
         """Post a comment, if the ticket is open to comments and this caller may."""
-        ticket = get_ticket_for_request_or_403(self.request, self.kwargs["pk"])
+        ticket = get_ticket_for_request_or_403(self.request, self.kwargs["pk"], lock=True)
         if views_as_requester(self.request, ticket):
             raise PermissionDenied("The requester cannot post comments.")
 
@@ -300,9 +312,7 @@ class TicketFeedbackView(APIView):
     def post(self, request, pk):
         """Rate and close. Requester only, once per resolution."""
         with transaction.atomic():
-            ticket = get_ticket_for_request_or_403(
-                request, pk, qs=Ticket.objects.select_for_update()
-            )
+            ticket = get_ticket_for_request_or_403(request, pk, lock=True)
             if ticket.raised_by_id != request.user.pk:
                 raise PermissionDenied("Only the requester can submit feedback.")
 
@@ -363,14 +373,26 @@ class TicketLogListView(generics.ListAPIView):
         }
 
 
+class TicketOrdering(OrderingFilter):
+    """`?ordering=`, with the id last so tied rows keep one order across pages."""
+
+    def get_ordering(self, request, queryset, view):
+        return [*super().get_ordering(request, queryset, view), "-id"]
+
+
 class TicketListCreateView(generics.ListCreateAPIView):
     """GET and POST /tickets/ — the role-scoped list, and raising a new one.
 
     `?mine=1` asks a different question from role scope, and is open to
     everyone: someone with no role at all still gets their own tickets.
+    `?search=` and `?ordering=` work over every page of the scoped list.
     """
 
     permission_classes = [IsAuthenticated]
+    filter_backends = [SearchFilter, TicketOrdering]
+    search_fields = ["ticket_no", "service_item__name", "description"]
+    ordering_fields = ["ticket_no", "trade__name", "status", "created_at", "updated_at"]
+    ordering = ["-updated_at"]
 
     def get_serializer_class(self):
         """The write shape for a create, the read shape for a list."""
@@ -405,8 +427,6 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(status__in=ACTIVE_STATUSES)
         elif params.get("status"):
             qs = qs.filter(status=params["status"])
-        if params.get("priority"):
-            qs = qs.filter(priority_id=params["priority"])
         if params.get("campus"):
             qs = qs.filter(requester_campus_id=params["campus"])
         if params.get("trade"):
@@ -415,8 +435,6 @@ class TicketListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(assigned_to_id=params["assigned_to"])
         if params.get("raised_by"):
             qs = qs.filter(raised_by_id=params["raised_by"])
-        if params.get("current_level"):
-            qs = qs.filter(current_level=params["current_level"])
         # Active only: `current_level` survives resolution, so a closed job keeps it.
         if params.get("escalated") == "1":
             qs = qs.filter(
@@ -476,19 +494,6 @@ class TicketFilterOptionsView(APIView):
         role = resolve_role(request)
         scoped = listed_ticket_qs(request.user, role)
 
-        campus_rows = (
-            scoped.values("requester_campus_id", "requester_campus__name")
-            .order_by()
-            .distinct()
-        )
-        campuses = sorted(
-            (
-                {"id": r["requester_campus_id"], "name": r["requester_campus__name"]}
-                for r in campus_rows
-            ),
-            key=lambda c: c["name"].lower(),
-        )
-
         trade_rows = (
             scoped.exclude(trade__isnull=True)
             .values("trade_id", "trade__name")
@@ -505,7 +510,6 @@ class TicketFilterOptionsView(APIView):
 
         return Response(
             {
-                "campuses": campuses,
                 "trades": trades,
                 "technicians": technicians,
                 "requesters": requesters,
@@ -545,7 +549,6 @@ class TicketAttachmentView(APIView):
     """GET and POST /tickets/{pk}/attachments/ — the files on one ticket.
 
     Reachable means readable; acting on the ticket means you may add one.
-    Deleting is narrower and lives on its own route.
     """
 
     permission_classes = [IsAuthenticated]
@@ -560,87 +563,67 @@ class TicketAttachmentView(APIView):
         return Response(serializer.data)
 
     def post(self, request, pk):
-        """Upload one or more files, compressing each before it is stored."""
-        ticket = get_ticket_for_request_or_403(request, pk)
+        """Upload files into the ticket's free slots, compressing each first.
 
-        current_count = ticket.attachments.count()
-        if current_count >= MAX_ATTACHMENTS_PER_TICKET:
-            return Response(
-                {
-                    "detail": f"Maximum {MAX_ATTACHMENTS_PER_TICKET} attachments per ticket."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        files = request.FILES.getlist("files") or (
-            [request.FILES["file"]] if "file" in request.FILES else []
-        )
+        All or nothing: every file is checked before any is stored, and the
+        count is read under the row lock, so two uploads cannot both take the
+        last slot.
+        """
+        files = request.FILES.getlist("files")
         if not files:
             return Response(
-                {"detail": "No file(s) provided. Use 'files' or 'file' field."},
+                {"detail": "No files provided. Send them as 'files'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        slots_left = MAX_ATTACHMENTS_PER_TICKET - current_count
-        if len(files) > slots_left:
-            return Response(
-                {"detail": f"Only {slots_left} attachment slot(s) remaining."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        created = []
-        for f in files:
-            content_type = f.content_type or "application/octet-stream"
-            try:
-                processed_bytes, final_mime = process_upload(f, content_type)
-            except DjangoValidationError as exc:
+        with transaction.atomic():
+            ticket = get_ticket_for_request_or_403(request, pk, lock=True)
+            slots_left = MAX_ATTACHMENTS_PER_TICKET - ticket.attachments.count()
+            if slots_left <= 0:
                 return Response(
-                    {"detail": str(exc.message)},
+                    {"detail": f"Maximum {MAX_ATTACHMENTS_PER_TICKET} attachments per ticket."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(files) > slots_left:
+                return Response(
+                    {"detail": f"Only {slots_left} attachment slot(s) remaining."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            ext = MIME_TO_EXT.get(final_mime, os.path.splitext(f.name)[1].lower())
-            base_name = os.path.splitext(f.name)[0]
-            stored_name = f"{base_name}{ext}"
+            processed = []
+            for f in files:
+                try:
+                    processed.append((f, *process_upload(f, f.content_type or "application/octet-stream")))
+                except DjangoValidationError as exc:
+                    return Response(
+                        {"detail": str(exc.message)},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-            attachment = TicketAttachment(
-                ticket=ticket,
-                original_name=f.name,
-                mime_type=final_mime,
-                stored_size=len(processed_bytes),
-                uploaded_by=request.user,
-            )
-            attachment.file.save(stored_name, ContentFile(processed_bytes), save=False)
-            attachment.save()
-            created.append(attachment)
+            created = []
+            try:
+                for f, data, mime in processed:
+                    attachment = TicketAttachment(
+                        ticket=ticket,
+                        original_name=f.name,
+                        mime_type=mime,
+                        stored_size=len(data),
+                        uploaded_by=request.user,
+                    )
+                    # The stored path is random; only this name's extension is kept.
+                    attachment.file.save(f"upload{MIME_TO_EXT[mime]}", ContentFile(data), save=False)
+                    created.append(attachment)
+                    attachment.save()
+            except Exception:
+                # The rows roll back with the transaction; the files on disk do not.
+                for attachment in created:
+                    attachment.file.delete(save=False)
+                raise
 
         serializer = TicketAttachmentSerializer(
             created, many=True, context={"request": request}
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-class TicketAttachmentDetailView(APIView):
-    """DELETE /tickets/{pk}/attachments/{att_id}/ — remove one file.
-
-    Its own view because the two routes carry different URL kwargs.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request, pk, att_id):
-        """Delete one attachment. Uploader or supervisor only."""
-        ticket = get_ticket_for_request_or_403(request, pk)
-        attachment = get_object_or_404(TicketAttachment, pk=att_id, ticket=ticket)
-
-        is_uploader = attachment.uploaded_by_id == request.user.pk
-        is_supervisor = resolve_role(request) in TICKET_SUPERVISOR_ROLES
-        if not (is_uploader or is_supervisor):
-            raise PermissionDenied("You can only delete your own attachments.")
-
-        attachment.file.delete(save=False)
-        attachment.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 FEEDBACK_ROLES = ("admin", "manager", "hod", "hos", "technician")

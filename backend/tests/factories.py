@@ -9,7 +9,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.accounts.models import SCOPE_FIELD_BY_ROLE, TechnicianTrade
+from apps.accounts.models import CAMPUS_ROLES, TechnicianTrade
 from apps.accounts.posts import assign_role
 from apps.facilities.models import Facility, FacilityType
 from apps.org.models import Campus, ServiceItem, Trade
@@ -66,7 +66,7 @@ def make_user(username, campus=None, role=None, trades=()):
         campus=campus,
     )
     if role is not None:
-        scope = {"campus": campus} if SCOPE_FIELD_BY_ROLE.get(role) == "campus" else {}
+        scope = {"campus": campus} if role in CAMPUS_ROLES else {}
         assign_role(user, role, trades=list(trades), **scope)
     return user
 
@@ -154,6 +154,15 @@ def rate_ticket(ticket, rating, comment=""):
     ticket.rated_at = timezone.now()
     ticket.save(update_fields=["rating", "rating_comment", "rated_at"])
     return ticket
+
+
+def age_past(ticket, threshold):
+    """Backdate a ticket to just past one of its own priority's thresholds.
+
+    The minutes are read off the priority, so retuning the SLA policy cannot
+    quietly stop a test from testing escalation.
+    """
+    return age_ticket(ticket, minutes=getattr(ticket.priority, threshold) + 1)
 
 
 def age_ticket(ticket, **delta):

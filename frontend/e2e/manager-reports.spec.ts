@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS, API } from './helpers';
+import { apiGet, login, USERS } from './helpers';
 
 // The manager's report reads one overview: every section agrees with
 // /analytics/overview/, and picking a campus narrows all of them. Read-only.
@@ -13,10 +13,7 @@ interface Overview {
 }
 
 async function overview(page: Page, query: string): Promise<Overview> {
-  return page.evaluate(async (url) => {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` } });
-    return r.json();
-  }, `${API}/analytics/overview/${query}`);
+  return apiGet<Overview>(page, `/analytics/overview/${query}`);
 }
 
 async function openReports(page: Page) {

@@ -4,6 +4,7 @@
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { STATUS_TOKEN } from '@/constants/tickets';
 import type { FilterPill } from '@/types';
 
 interface FilterPillsProps {
@@ -14,20 +15,11 @@ interface FilterPillsProps {
   className?: string;
 }
 
-// Maps each variant to its CSS variable base name (without -bg/-text/-border suffix).
-// 'default' is handled separately below (uses --primary with color-mix).
-const VARIANT_CSS_BASE: Record<NonNullable<FilterPill['variant']>, string | null> = {
-  default:     null,
-  danger:      '--status-escalated',
-  warning:     '--status-progress',
-  success:     '--status-resolved',
-  open:        '--status-open',
-  assigned:    '--status-assigned',
-  in_progress: '--status-progress',
-  pending:     '--status-pending',
-  resolved:    '--status-resolved',
-  closed:      '--status-closed',
-};
+/** The CSS token base (without -bg/-text) a pill is tinted with; none for a plain pill. */
+function tokenFor(variant: FilterPill['variant']): string | null {
+  if (!variant) return null;
+  return variant === 'danger' ? '--status-escalated' : STATUS_TOKEN[variant];
+}
 
 export function FilterPills({ pills, active, onChange, loading = false, className }: FilterPillsProps) {
   if (loading) {
@@ -44,8 +36,7 @@ export function FilterPills({ pills, active, onChange, loading = false, classNam
     <div className={cn('flex items-center gap-2 flex-wrap', className)}>
       {pills.map((pill) => {
         const isActive = active === pill.key;
-        const variant = pill.variant ?? 'default';
-        const cssBase = VARIANT_CSS_BASE[variant];
+        const cssBase = tokenFor(pill.variant);
 
         // A status pill is always tinted, so the row reads as a legend even
         // before anything is picked; being active only adds the border.

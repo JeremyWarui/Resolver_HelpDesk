@@ -186,3 +186,31 @@ def test_retiring_a_trade_takes_its_items_with_it(
     )
     assert response.status_code == 400
     assert not Ticket.objects.exists()
+
+
+def test_deleting_a_service_item_tickets_use_is_a_409_not_an_error(
+    api, admin_user, requester, nrb, electrical, socket, priorities
+):
+    factories.make_ticket(requester, nrb, electrical, service_item=socket)
+    api.force_authenticate(admin_user)
+
+    response = api.delete(reverse("serviceitem-detail", args=[socket.pk]))
+
+    assert response.status_code == 409
+    assert "Retire it" in response.json()["detail"]
+
+
+def test_deleting_a_trade_whose_items_tickets_use_is_a_409(
+    api, admin_user, requester, nrb, electrical, socket, priorities
+):
+    factories.make_ticket(requester, nrb, electrical, service_item=socket)
+    api.force_authenticate(admin_user)
+
+    assert api.delete(reverse("trade-detail", args=[electrical.pk])).status_code == 409
+
+
+def test_an_unused_service_item_deletes(api, admin_user, electrical):
+    unused = factories.make_service_item(electrical, "Never asked for")
+    api.force_authenticate(admin_user)
+
+    assert api.delete(reverse("serviceitem-detail", args=[unused.pk])).status_code == 204

@@ -20,20 +20,12 @@ pytestmark = pytest.mark.django_db
 STATUS, PREVIEW, RUN = "escalation-status", "escalation-preview", "escalation-run"
 
 
-def _due_for_hos(ticket):
-    return factories.age_ticket(ticket, minutes=ticket.priority.escalate_to_hos_minutes + 1)
-
-
-def _due_for_hod(ticket):
-    return factories.age_ticket(ticket, minutes=ticket.priority.escalate_to_hod_minutes + 1)
-
-
 @pytest.fixture
 def two_due(nrb_electrical_ticket, nrb_plumbing_ticket, nrb_hos, nrb_hod):
     """One ticket due to climb to the HOS, one already with the HOS and due for the HOD."""
-    _due_for_hos(nrb_electrical_ticket)
+    factories.age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
     Ticket.objects.filter(pk=nrb_plumbing_ticket.pk).update(current_level="hos")
-    _due_for_hod(nrb_plumbing_ticket)
+    factories.age_past(nrb_plumbing_ticket, "escalate_to_hod_minutes")
     return nrb_electrical_ticket, nrb_plumbing_ticket
 
 
@@ -104,7 +96,7 @@ def test_a_run_overlapping_another_leaves_a_ticket_it_moved_to_the_next_run(
 ):
     # Past both thresholds: one run takes it to the HOS. A second run that read
     # its candidates before the first moved it must not take it on to the HOD.
-    factories.age_ticket(nrb_electrical_ticket, minutes=nrb_electrical_ticket.priority.escalate_to_hod_minutes + 1)
+    factories.age_past(nrb_electrical_ticket, "escalate_to_hod_minutes")
     now = timezone.now()
     read_early = escalation._candidates()
 
@@ -248,71 +240,40 @@ def test_the_dry_run_command_writes_nothing_and_names_the_tickets(capsys, two_du
 # ─── Whether the schedule is alive ──────────────────────────────────────────
 
 
-def test_a_check_that_has_never_run_says_so(db):
-    assert escalation.schedule_state() == ("never", None)
+# Each run is (started, finished, error): minutes ago, None for a run that
+# never finished. The answer is the state and which run it names, by position.
+SCHEDULES = {
+    "never ran": ([], ("never", None)),
+    "first run still going": ([(0, None, "")], ("running", None)),
+    "ran within four intervals": ([(59, 59, "")], ("running", 0)),
+    "nothing for four intervals": ([(61, 61, "")], ("stale", 0)),
+    "latest run failed": ([(30, 0, ""), (0, None, "RuntimeError: boom")], ("failing", 0)),
+    "a success after a failure": ([(30, None, "RuntimeError: boom"), (0, 0, "")], ("running", 1)),
+    # The hung run was stopped at four intervals; the one after it is going now.
+    "a run killed at its time limit": ([(120, 120, ""), (70, None, ""), (5, None, "")], ("failing", 0)),
+    "a finished run skipped a ticket": ([(0, 0, "ticket 7: RuntimeError: x")], ("failing", 0)),
+    "an old killed run, then good runs": ([(4320, None, ""), (10, 10, ""), (1, None, "")], ("running", 1)),
+    "failed, then stopped": ([(4320, 4320, "ticket 1: X")], ("stale", 0)),
+    "stopped before any run finished": ([(180, None, "RuntimeError: x")], ("stale", None)),
+}
 
 
 @override_settings(ESCALATION_INTERVAL_MINUTES=15)
-def test_the_schedule_is_running_until_four_intervals_pass_without_a_run(db):
-    when = timezone.now() - timedelta(minutes=59)
-    run = EscalationRun.objects.create(scheduled=True, started_at=when, finished_at=when)
-    assert escalation.schedule_state() == ("running", run)
-
-    when = timezone.now() - timedelta(minutes=61)
-    EscalationRun.objects.filter(pk=run.pk).update(started_at=when, finished_at=when)
-    assert escalation.schedule_state()[0] == "stale"
-
-
-def test_a_schedule_whose_latest_run_failed_is_failing_not_stopped(db):
-    ok = EscalationRun.objects.create(scheduled=True, started_at=timezone.now() - timedelta(minutes=30), finished_at=timezone.now())
-    EscalationRun.objects.create(scheduled=True, error="RuntimeError: boom")
-
-    assert escalation.schedule_state() == ("failing", ok)
-
-
-def test_a_success_after_a_failure_brings_the_schedule_back(db):
-    EscalationRun.objects.create(scheduled=True, started_at=timezone.now() - timedelta(minutes=30), error="RuntimeError: boom")
-    ok = EscalationRun.objects.create(scheduled=True, finished_at=timezone.now())
-
-    assert escalation.schedule_state() == ("running", ok)
-
-
-@override_settings(ESCALATION_INTERVAL_MINUTES=15)
-def test_a_run_killed_at_its_time_limit_makes_the_schedule_failing(db):
-    # IgnoreNew holds the next start until the hung run is stopped at four
-    # intervals; the run after it is in progress when the admin looks.
+@pytest.mark.parametrize("runs, expected", SCHEDULES.values(), ids=SCHEDULES.keys())
+def test_the_schedule_state_reads_the_scheduled_runs(db, runs, expected):
     now = timezone.now()
-    ok = EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(hours=2), finished_at=now - timedelta(hours=2))
-    EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(minutes=70))
-    EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(minutes=5))
+    made = [
+        EscalationRun.objects.create(
+            scheduled=True,
+            started_at=now - timedelta(minutes=started),
+            finished_at=None if finished is None else now - timedelta(minutes=finished),
+            error=error,
+        )
+        for started, finished, error in runs
+    ]
+    state, index = expected
 
-    assert escalation.schedule_state() == ("failing", ok)
-
-
-def test_a_finished_run_that_skipped_a_ticket_makes_the_schedule_failing(db):
-    run = EscalationRun.objects.create(scheduled=True, finished_at=timezone.now(), error="ticket 7: RuntimeError: x")
-
-    assert escalation.schedule_state() == ("failing", run)
-
-
-@override_settings(ESCALATION_INTERVAL_MINUTES=15)
-def test_an_old_killed_run_does_not_keep_the_schedule_failing(db):
-    now = timezone.now()
-    EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(days=3))
-    good = EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(minutes=10), finished_at=now - timedelta(minutes=10))
-    EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(minutes=1))
-
-    assert escalation.schedule_state() == ("running", good)
-
-
-@override_settings(ESCALATION_INTERVAL_MINUTES=15)
-def test_a_schedule_that_failed_and_then_stopped_is_stale_not_failing(db):
-    now = timezone.now()
-    last = EscalationRun.objects.create(scheduled=True,
-        started_at=now - timedelta(days=3), finished_at=now - timedelta(days=3), error="ticket 1: X",
-    )
-
-    assert escalation.schedule_state() == ("stale", last)
+    assert escalation.schedule_state() == (state, None if index is None else made[index])
 
 
 def test_a_run_typed_at_the_command_line_is_not_the_schedule(two_due):
@@ -353,18 +314,6 @@ def test_a_run_now_never_sets_the_schedule_state(admin_user):
     old = EscalationRun.objects.create(scheduled=True, started_at=now - timedelta(hours=3), finished_at=now - timedelta(hours=3))
     EscalationRun.objects.create(started_by=admin_user, started_at=now, finished_at=now)
     assert escalation.schedule_state() == ("stale", old)
-
-
-def test_a_schedule_that_ran_and_stopped_is_stale_even_if_no_run_ever_finished(db):
-    EscalationRun.objects.create(scheduled=True, started_at=timezone.now() - timedelta(hours=3), error="RuntimeError: x")
-
-    assert escalation.schedule_state() == ("stale", None)
-
-
-def test_the_first_run_still_going_is_running(db):
-    EscalationRun.objects.create(scheduled=True)
-
-    assert escalation.schedule_state() == ("running", None)
 
 
 # ─── The admin's endpoints ──────────────────────────────────────────────────

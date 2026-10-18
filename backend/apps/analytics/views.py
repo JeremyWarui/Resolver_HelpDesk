@@ -37,11 +37,17 @@ def scoped_for(request):
     return role, Ticket.objects.filter(raised_by=request.user)
 
 
-def campus_param(request):
-    """The campus `?campus=<id>` names, or None without one. Not a campus is a 400."""
+def campus_param(request, role):
+    """The campus `?campus=<id>` names, or None without one.
+
+    Only a report over every campus narrows to one; anyone else already reads
+    one campus, and asking is a 400. Not a campus is a 400 too.
+    """
     raw = request.query_params.get("campus")
     if raw is None:
         return None
+    if role not in overview.EVERY_CAMPUS_ROLES:
+        raise ValidationError({"campus": "Only a report over every campus narrows to one."})
     campus = Campus.objects.filter(pk=int(raw)).first() if raw.isascii() and raw.isdigit() else None
     if campus is None:
         raise ValidationError({"campus": "Not a campus."})
@@ -71,9 +77,7 @@ class _ExportView(ReportingView):
         role = resolve_role(request)
         if role not in self.roles:
             raise PermissionDenied("This report is not available to your role.")
-        campus = campus_param(request)
-        if campus and role not in overview.EVERY_CAMPUS_ROLES:
-            raise ValidationError({"campus": "Only a report over every campus narrows to one."})
+        campus = campus_param(request, role)
         data = export.report_data(
             request.user, role, resolve_window(request.query_params), campus, _campus_ids(request, role)
         )
@@ -87,7 +91,7 @@ class _ExportView(ReportingView):
 class ExcelExportView(_ExportView):
     """GET /analytics/export/xlsx/ — the workbook. Every role with reports."""
 
-    roles = export.XLSX_ROLES
+    roles = export.REPORT_ROLES
     extension = "xlsx"
     content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -96,9 +100,9 @@ class ExcelExportView(_ExportView):
 
 
 class PdfExportView(_ExportView):
-    """GET /analytics/export/pdf/ — the summary PDF. Manager, HOD, HOS and technician."""
+    """GET /analytics/export/pdf/ — the summary PDF. Every role with reports."""
 
-    roles = export.PDF_ROLES
+    roles = export.REPORT_ROLES
     extension = "pdf"
     content_type = "application/pdf"
 
@@ -156,9 +160,7 @@ class OverviewView(ReportingView):
             raise PermissionDenied("This report is not available to your role.")
         window = resolve_window(request.query_params)
 
-        campus = campus_param(request)
-        if campus and role not in overview.EVERY_CAMPUS_ROLES:
-            raise ValidationError({"campus": "Only a report over every campus narrows to one."})
+        campus = campus_param(request, role)
         if campus:
             qs = qs.filter(requester_campus=campus)
 
@@ -214,7 +216,7 @@ class CoverView(ReportingView):
     The admin and the manager read every campus; an HOS or HOD their own.
     """
 
-    ROLES = ("admin", "manager", "hod", "hos")
+    ROLES = overview.OVERVIEW_ROLES
 
     def get(self, request):
         role, qs = scoped_for(request)

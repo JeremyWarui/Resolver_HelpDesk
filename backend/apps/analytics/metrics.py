@@ -399,7 +399,6 @@ def snapshot(qs, dimensions) -> list:
             on_hold=Count("id", filter=Q(status="pending")),
             overdue=Count("id", filter=q_overdue()),
             at_hod=Count("id", filter=Q(current_level="hod")),
-            unassigned=Count("id", filter=Q(assigned_to__isnull=True)),
             live_assigned=Count("id", filter=Q(assigned_to__isnull=False)),
         )
         # Clears the scope queryset's ordering; see `group`.
@@ -407,7 +406,7 @@ def snapshot(qs, dimensions) -> list:
     )
 
 
-def _working_links(campus_ids):
+def working_links(campus_ids):
     """Every (campus, trade) link held by a technician who can still sign in."""
     from apps.accounts.models import TechnicianTrade
 
@@ -417,7 +416,7 @@ def _working_links(campus_ids):
 def technicians_by_campus(campus_ids) -> dict:
     """How many working technicians each campus has, each counted once: {campus_id: count}."""
     rows = (
-        _working_links(campus_ids)
+        working_links(campus_ids)
         .values("campus_id")
         .annotate(n=Count("user_id", distinct=True))
         .order_by()
@@ -428,7 +427,7 @@ def technicians_by_campus(campus_ids) -> dict:
 def technicians_by_pair(campus_ids) -> dict:
     """How many working technicians cover each (campus_id, trade_id) pair."""
     rows = (
-        _working_links(campus_ids)
+        working_links(campus_ids)
         .values("campus_id", "trade_id")
         .annotate(n=Count("user_id", distinct=True))
         .order_by()

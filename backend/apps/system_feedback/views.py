@@ -55,6 +55,6 @@ class SystemFeedbackReviewView(generics.UpdateAPIView):
     """PATCH /system-feedback/{id}/ — the admin marks it reviewed, or new again."""
 
     serializer_class = SystemFeedbackReviewSerializer
-    permission_classes = [IsAuthenticated, IsAdminGroup]
+    permission_classes = [IsAdminGroup]
     queryset = SystemFeedback.objects.all()
     http_method_names = ["patch"]

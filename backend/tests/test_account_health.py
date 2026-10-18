@@ -124,7 +124,7 @@ def test_a_deactivated_post_holder_leaves_the_post_vacant(api, admin_user, nrb, 
 def test_escalation_skips_a_deactivated_hos_to_the_hod(
     api, admin_user, nrb_hos, nrb_hod, nrb_electrical_ticket
 ):
-    factories.age_ticket(nrb_electrical_ticket, minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1)
+    factories.age_past(nrb_electrical_ticket, "escalate_to_hos_minutes")
     _deactivate(api, admin_user, nrb_hos)
 
     assert factories.escalate(nrb_electrical_ticket, timezone.now()) is True
