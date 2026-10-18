@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DialogActions } from '@/components/shared/forms/DialogActions';
 import { useCampuses } from '@/hooks/useOrganizations';
-import { facilitiesService } from '@/lib/api/organizations';
+import { createFacility } from '@/lib/api/organizations';
 import { createFacilitySchema, type CreateFacilityFormValues } from '@/utils/validation';
 import { useFacilityTypes } from '@/hooks/useCatalogue';
 
@@ -32,7 +32,7 @@ const FacilityForm = ({ isOpen, onOpenChange, onSuccess }: FacilityFormProps) =>
   const onSubmit = async (values: CreateFacilityFormValues) => {
     setIsSubmitting(true);
     try {
-      await facilitiesService.createFacility(values);
+      await createFacility(values);
       toast.success('Facility created');
       form.reset();
       onSuccess?.();

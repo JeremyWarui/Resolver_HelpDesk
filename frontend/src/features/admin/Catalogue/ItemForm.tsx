@@ -10,10 +10,8 @@ import type { ServiceItem, Trade } from '@/types';
 
 // Mounted only while open — state initializes from props on mount.
 //
-// No priority field, deliberately. Priority is not a property of the service:
-// a leaking tap in a store room and one over a server rack are the same
-// catalogue entry and nowhere near the same urgency. The HOS decides it per
-// ticket, when they assign it.
+// No priority field: priority belongs to a ticket, and the HOS sets it when
+// they assign it.
 export function ItemForm({
   tradeId,
   trades,

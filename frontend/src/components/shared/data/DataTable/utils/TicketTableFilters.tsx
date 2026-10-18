@@ -20,11 +20,10 @@ interface FilterOptionsConfig {
  * The ticket table's filter dropdowns, wired to `useTicketTable`'s server-side
  * filter state.
  *
- * A hook rather than a plain factory: the technician and requester lists come
- * from `/tickets/filter-options/`, so a page asking for those dropdowns should
- * not also have to remember to fetch what fills them. Every option list is
- * built server-side from the caller's own rows, so no dropdown can offer an id
- * whose tickets the caller would be refused.
+ * A hook, because it also fetches the technician and requester lists from
+ * `/tickets/filter-options/`. Every option list is built server-side from the
+ * caller's own rows, so no dropdown can offer an id whose tickets the caller
+ * would be refused.
  */
 export function useTicketTableFilters(
   table: UseTicketTableResult,

@@ -1,8 +1,7 @@
 /** Kenyan numbers are stored E.164 (+254712345678) and read locally.
  *
- * Display only — never send this back to the server; the stored form is the
- * dialable one, and the
- * `tel:` href should use it too so the dialler gets an unambiguous number.
+ * Display only: never send this back to the server. The stored form is the
+ * dialable one, and the `tel:` href uses it too.
  */
 export function formatPhoneLocal(e164: string | null | undefined): string {
   if (!e164) return '';

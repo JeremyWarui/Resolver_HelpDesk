@@ -29,8 +29,8 @@ test('a forgotten password is reset from the emailed link, which then stops work
   await page.getByRole('button', { name: 'Set new password' }).click();
   await expect(page).toHaveURL(/\/login$/);
 
-  await page.locator('input[name="email"]').fill(EMAIL);
-  await page.locator('input[name="password"]').fill(NEW);
+  await page.getByLabel('Email Address').fill(EMAIL);
+  await page.getByLabel('Password', { exact: true }).fill(NEW);
   await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page).toHaveURL(/\/user/);
 

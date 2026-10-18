@@ -10,8 +10,7 @@ from apps.sla.serializers import PrioritySerializer
 class PriorityViewSet(mixins.UpdateModelMixin, viewsets.ReadOnlyModelViewSet):
     """The SLA policy: read, and edited by an admin. The set itself is fixed.
 
-    Read and update only, because the four levels are a vocabulary rather than
-    a table an admin fills in. Adding one is the dangerous half: a new lowest
+    Read and update only. Adding a level is the dangerous half: a new lowest
     rank silently becomes `Priority.default()` and changes what every new
     ticket opens at, with nothing on any trail to say so. Deleting one is
     refused by `Ticket.priority`'s PROTECT regardless, since tickets reference

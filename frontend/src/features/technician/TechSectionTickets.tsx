@@ -22,13 +22,7 @@ const TechSectionTickets = ({ onTicketSelect }: { onTicketSelect?: (ticketId: nu
         filterOptions={filters}
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}
         selectedRowId={table.selectedTicket?.id ?? null}
-        pagination={{
-          total: table.totalTickets,
-          pageIndex: table.pageIndex,
-          pageSize: table.pageSize,
-          onPageChange: table.setPageIndex,
-          onPageSizeChange: table.setPageSize,
-        }}
+        pagination={table.pagination}
       />
     </div>
   );

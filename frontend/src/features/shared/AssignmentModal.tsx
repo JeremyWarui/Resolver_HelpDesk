@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -21,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { assignTicket } from '@/lib/api/tickets';
 import { useTicketInvalidate } from '@/hooks/tickets/useTicketDetail';
 import { useTechnicians } from '@/hooks/useTechnicians';
-import { getPriorities } from '@/lib/api/sla';
+import { usePriorities } from '@/hooks/usePriorities';
 import type { Ticket } from '@/types';
 
 interface AssignmentModalProps {
@@ -52,12 +51,7 @@ export function AssignmentModal({
     { enabled: open },
   );
 
-  const { data: priorities = [] } = useQuery({
-    queryKey: ['priorities'],
-    queryFn: getPriorities,
-    enabled: open,
-    staleTime: 30 * 60 * 1000,
-  });
+  const { priorities } = usePriorities({ enabled: open });
 
   // Highest urgency first — the judgement being made is "is this worse than
   // the Low it opened at", so the alternatives should lead.
@@ -86,9 +80,7 @@ export function AssignmentModal({
         note,
       );
       const tech = technicians.find((t) => t.id === selectedTechId);
-      const displayName = tech
-        ? (tech.first_name && tech.last_name ? `${tech.first_name} ${tech.last_name}` : tech.username)
-        : `technician ${selectedTechId}`;
+      const displayName = tech ? tech.full_name : `technician ${selectedTechId}`;
       toast.success(
         mode === 'reassign'
           ? `Ticket reassigned to ${displayName}`
@@ -136,11 +128,8 @@ export function AssignmentModal({
             </div>
           )}
 
-          {/* Priority — above the technician list on purpose.
-              The two judgements feed each other: how urgent this is decides
-              who can realistically take it now. Deciding the person first, and
-              the urgency afterwards from below a scrolling list, is the wrong
-              way round. */}
+          {/* Priority sits above the technician list: how urgent the job is decides
+              who can take it now. */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
@@ -149,9 +138,7 @@ export function AssignmentModal({
               <div className="flex-1 border-t border-border" />
             </div>
 
-            {/* No choices means the fetch failed, not that there are no
-                priorities — there are always four. Say so rather than drawing a
-                heading above a control that looks simply missing. */}
+            {/* No choices means the fetch failed: there are always four priorities. */}
             {priorityChoices.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 Could not load the priority list. The ticket keeps its current
@@ -213,9 +200,8 @@ export function AssignmentModal({
             ) : (
               technicians.map((tech) => {
                 const isSelected = selectedTechId === tech.id;
-                const fullName = tech.first_name && tech.last_name
-                  ? `${tech.first_name} ${tech.last_name}`
-                  : null;
+                // Someone with no name in their address goes by the username: say it once.
+                const named = tech.full_name !== tech.username;
                 return (
                   <button
                     key={tech.id}
@@ -244,10 +230,10 @@ export function AssignmentModal({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-foreground leading-snug">
-                          {fullName ?? tech.username}
+                          {tech.full_name}
                         </p>
                       </div>
-                      {fullName && (
+                      {named && (
                         <p className="text-xs text-muted-foreground leading-snug">
                           @{tech.username}
                         </p>

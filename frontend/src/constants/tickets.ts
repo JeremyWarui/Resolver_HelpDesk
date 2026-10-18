@@ -6,11 +6,7 @@ import type { FilterPill, Ticket } from '@/types';
 
 // Status display names.
 //
-// `pending` reads "On Hold" because that is what every other surface already
-// called it — the technician's filter pills, the whole mobile list and detail,
-// My Tickets, and the Resume Work modal. Only this map said "Pending", and it
-// is the map behind `StatusBadge`, so one ticket showed both words at once:
-// an "On Hold" pill directly above a row badged "Pending".
+// `pending` reads "On Hold" on every surface.
 export const STATUS_LABELS: Record<Ticket['status'], string> = {
   open: 'Open',
   assigned: 'Assigned',
@@ -70,11 +66,8 @@ export const HELD_STATUSES: Ticket['status'][] = ['assigned', 'in_progress', 'pe
 export const ESCALATED_LEVELS: NonNullable<Ticket['current_level']>[] = ['hos', 'hod'];
 
 /**
- * A status filter row: "All" and then the statuses a page offers.
- *
- * Derived rather than retyped. Three pages wrote their own list, so a status
- * read "On Hold" on one and "Pending" on another, and each carried its own
- * colour variant beside a row badged from `STATUS_LABELS`.
+ * A status filter row: "All" and then the statuses a page offers, labelled
+ * from `STATUS_LABELS`.
  */
 export function statusPills(statuses: Ticket['status'][]): FilterPill[] {
   return [

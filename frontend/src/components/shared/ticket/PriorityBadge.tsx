@@ -1,4 +1,4 @@
- // The priority pill. Every colour is a --priority-* CSS token from index.css,
+// The priority pill. Every colour is a --priority-* CSS token from index.css,
 // and priority itself is a server entity: {id, name, rank, …}.
 
 import { TokenPill } from './TokenPill';

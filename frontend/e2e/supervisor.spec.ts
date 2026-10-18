@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, NRB_OFFICE_BLOCK, PLUMBING, seedPassword, USERS } from './helpers';
+import { login, NRB_OFFICE_BLOCK, PLUMBING, USERS, API, apiGet, authHeaders } from './helpers';
 
 // The HOS and the HOD share one dashboard and one Reports page, built from the
 // manager's pieces. The server decides the scope: their campus, open work by
@@ -18,12 +18,7 @@ interface Overview {
 }
 
 async function get<T>(page: Page, path: string): Promise<T> {
-  return page.evaluate(async (p) => {
-    const r = await fetch(`http://localhost:8001/api/v1/analytics/${p}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  }, path);
+  return apiGet(page, `/analytics/${path}`);
 }
 
 for (const role of ['hos', 'hod'] as const) {
@@ -61,17 +56,13 @@ for (const role of ['hos', 'hod'] as const) {
 
 /** Raise one Nairobi plumbing ticket as the requester, so there is always work waiting. */
 async function raiseOne(page: Page) {
-  const api = 'http://localhost:8001/api/v1';
-  const auth = await page.request.post(`${api}/auth/login/`, {
-    data: { email: USERS.requester, password: seedPassword() },
-  });
-  const headers = { Authorization: `Bearer ${(await auth.json()).accessToken}` };
-  const catalog = await (await page.request.get(`${api}/catalog/`, { headers })).json();
+  const headers = await authHeaders(page.request, USERS.requester);
+  const catalog = await (await page.request.get(`${API}/catalog/`, { headers })).json();
   const plumbing = catalog.results.find((t: { name: string }) => t.name === PLUMBING.trade);
   const item = plumbing.items.find((i: { name: string }) => i.name === PLUMBING.item);
-  const places = await (await page.request.get(`${api}/facilities/`, { headers })).json();
+  const places = await (await page.request.get(`${API}/facilities/`, { headers })).json();
   const place = places.results.find((f: { name: string }) => f.name === NRB_OFFICE_BLOCK);
-  const raised = await page.request.post(`${api}/tickets/`, {
+  const raised = await page.request.post(`${API}/tickets/`, {
     headers,
     data: { service_item: item.id, location: { facility: place.id, detail: 'E2E supervisor, room 1' } },
   });

@@ -1,11 +1,9 @@
 /**
  * Resume a held job, or re-code why it is still held.
  *
- * Two modes because they are genuinely different events and conflating them
- * corrupts the history: parts arrived and work restarted is one fact; parts
- * arrived but nobody is free is another. Without `change`, the second gets
- * recorded as a resume followed immediately by a fresh hold, and the reporting
- * shows two short stoppages where there was one long one.
+ * Two modes, because they are different events: work restarted, or still held
+ * for a new reason. Recording the second as a resume and a fresh hold would
+ * report one long stoppage as two short ones.
  */
 import { useState } from 'react';
 import { toast } from 'sonner';

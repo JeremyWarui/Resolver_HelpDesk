@@ -39,14 +39,6 @@ export interface AssignedUser {
   full_name: string;
 }
 
-export interface Attachment {
-  id: number;
-  filename: string;
-  url: string;
-  mime_type: string;
-  size_bytes: number;
-}
-
 /** The nested `feedback` on ticket detail. Null until the requester rates it. */
 export interface Feedback {
   rating: number;
@@ -104,15 +96,14 @@ export interface Ticket {
   pending_reason_display?: string | null;
   pending_reason_note?: string | null;
 
-  /** Whether the requester has rated it. A flag, present on list rows; the
-   *  rating object itself stays on the detail view. */
-  /** Sent by the list serializer. Use this on table rows. */
+  /** Whether the requester has rated it. Sent on list rows; use this there.
+   *  The rating object itself stays on the detail view. */
   has_feedback?: boolean;
 
   /** Past its resolution deadline right now, decided server-side. A paused
-   *  ticket is never breaching (R9), so reading this rather than comparing
-   *  `resolution_due_at` to the clock is what keeps a row's colour agreeing
-   *  with the badge on the ticket and the count on the dashboard. */
+   *  ticket is never breaching. Read this, never `resolution_due_at` against
+   *  the clock, so a row's colour agrees with the badge on the ticket and the
+   *  count on the dashboard. */
   is_breaching?: boolean;
 
   /** Detail only: the server's verdict on the resolution target, from
@@ -122,9 +113,8 @@ export interface Ticket {
   /** Detail endpoint only. On a list row this is always undefined — read
    *  `has_feedback` there instead. */
   feedback?: Feedback | null;
-  /** Detail only. Deliberately absent from the list serializer — a phone
-   *  number is for the technician who opened the ticket, not for anyone
-   *  scrolling a table. Stored E.164, rendered locally. */
+  /** Detail only: a phone number is for whoever opens the ticket, not for a
+   *  table. Stored E.164, rendered locally. */
   contact_phone?: string;
   service_item?: {
     id: number;
@@ -152,14 +142,6 @@ export interface CreateTicketPayload {
     facility: number;
     detail: string;
   };
-}
-
-export interface UpdateTicketPayload {
-  description?: string;
-  status?: Ticket['status'];
-  assigned_to_id?: number | null;
-  pending_reason?: string | null;
-  pending_reason_note?: string | null;
 }
 
 // Params for GET /tickets/ — role scoping enforced server-side from JWT.

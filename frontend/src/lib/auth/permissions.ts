@@ -64,10 +64,7 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionMap> = {
 /**
  * What the signed-in role may do.
  *
- * Reads the auth store directly. This was a React context with a provider
- * around the whole app, but the store hydrates synchronously and this is a
- * lookup in a static map — there was nothing to provide and nothing to
- * memoize, and every consumer of that context wanted only the role anyway.
+ * Reads the auth store directly.
  */
 export function usePermissions(): PermissionMap {
   const role = useAuthStore((s) => s.user?.role);

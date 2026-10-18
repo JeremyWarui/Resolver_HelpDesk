@@ -587,9 +587,8 @@ class Command(BaseCommand):
         """Let the escalation engine act on the demo data it just inherited.
 
         Escalation is automatic: a ticket whose active time passes its
-        priority's threshold climbs technician → HOS → HOD. Running the real
-        engine rather than stamping levels by hand means the demo shows what
-        production would actually have done.
+        priority's threshold climbs technician → HOS → HOD. This runs the real
+        engine, so the demo shows what production would have done.
 
         Each pass moves a ticket one level, as the scheduled check does, so it runs
         until nothing moves: the backlog it inherits has been waiting for weeks.
@@ -739,8 +738,8 @@ class Command(BaseCommand):
     def _next_phone(self):
         """A distinct, obviously-fake Kenyan mobile per demo ticket, in E.164.
 
-        Through `normalise_phone` rather than formatted by hand, so seed cannot
-        mint a number the ticket API would refuse.
+        Built through `normalise_phone`, so seed cannot mint a number the
+        ticket API would refuse.
         """
         self._phone_counter += 1
         return normalise_phone(f"07{self._phone_counter:08d}")
@@ -753,7 +752,7 @@ class Command(BaseCommand):
         of it, so seeded accounts are indistinguishable from registered ones.
 
         Two seeded people sharing a name would share an address and therefore an
-        account, so that is a hard error rather than a `get_or_create`.
+        account, so that is a hard error.
         """
         email = f"{first}.{last}@ksg.ac.ke".lower()
         username = local_part(email)
@@ -786,7 +785,7 @@ class Command(BaseCommand):
     _roster = None
 
     def _set_role(self, user, role, trades=(), **scope):
-        """One call writes the role and the org FK that grants it.
+        """One call writes the role and the trade links that grant it.
 
         Delegates to `accounts.posts.assign_role`, the only writer of both. A
         seed keeping its own copy would seed a state the running app cannot
@@ -808,7 +807,7 @@ class Command(BaseCommand):
         self.stdout.write("  admin: 1")
 
     def _seed_director(self, password):
-        """The Corporate HOD — manager role, oversight across all campuses."""
+        """The manager: reads every campus and opens no ticket."""
         user = self._make_user("Wanjiku", "Kamau", password)
         self._set_role(user, "manager")
         self.stdout.write("  manager: 1 (director)")
@@ -1131,7 +1130,7 @@ class Command(BaseCommand):
     @staticmethod
     def _pick_facility(facilities, rng):
         """One facility off the campus's register."""
-        # Weighted, not uniform: an even spread drew a facility chart of equal stubs.
+        # Weighted, so the facility chart is not a row of equal stubs.
         weights = [4 if i < 2 else 2 if i < 5 else 1 for i in range(len(facilities))]
         return rng.choices(facilities, weights=weights)[0]
 

@@ -33,8 +33,8 @@ FACILITY_ROWS = 7
 # on-time share is news.
 CELL_MIN_TICKETS = 10
 INSIGHT_ROWS = 5
-# Whose Reports page and dashboard this module arranges.
-OVERVIEW_ROLES = ("manager", "hod", "hos")
+# Whose Reports page this module arranges.
+OVERVIEW_ROLES = ("admin", "manager", "hod", "hos")
 # The roles whose reports cover every campus: they read the campus sections and
 # may narrow to one campus. An HOS or HOD reads their technicians instead.
 EVERY_CAMPUS_ROLES = ("admin", "manager")
@@ -48,13 +48,11 @@ def build(qs, window: dict, role: str = "manager", campus_ids=None) -> dict:
     """
     every_campus = role in EVERY_CAMPUS_ROLES
     current = metrics.totals(qs, window)
-    previous = metrics.totals(qs, metrics.previous_window(window))
 
     campus_rows = metrics.group(qs, window, ["campus"])
     trade_rows = metrics.group(qs, window, ["trade"])
     cells = metrics.group(qs, window, ["campus", "trade"])
     live_campus_rows = metrics.snapshot(qs, ["campus"])
-    live_by_campus = {row["key"]: row for row in live_campus_rows}
 
     all_campuses = set(Campus.objects.values_list("id", flat=True))
     campuses = _campuses(
@@ -67,12 +65,7 @@ def build(qs, window: dict, role: str = "manager", campus_ids=None) -> dict:
     data = {
         "target_pct": metrics.SLA_TARGET_PCT,
         "current": current,
-        "previous": {
-            "resolution_sla_pct": previous["resolution_sla_pct"],
-            "resolution_seconds_avg": previous["resolution_seconds_avg"],
-        },
-        "unassigned_now": sum(row["unassigned"] for row in live_by_campus.values()),
-        "at_hod_now": sum(row["at_hod"] for row in live_by_campus.values()),
+        "previous": metrics.before(qs, window),
         "insights": _insights(
             campuses, campus_rows, trade_rows, cells, gaps, facility_rows, technicians, qs, window
         ),

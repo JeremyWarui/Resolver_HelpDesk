@@ -9,8 +9,7 @@ interface LazyMountProps {
 }
 
 // Defers mounting children (and their forced-reflow-triggering chart measurements)
-// until the wrapper scrolls near the viewport, instead of mounting everything in
-// one synchronous commit on page load.
+// until the wrapper scrolls near the viewport.
 const LazyMount = ({ children, minHeight = 320 }: LazyMountProps) => {
   const { ref, isInView } = useInView<HTMLDivElement>();
 

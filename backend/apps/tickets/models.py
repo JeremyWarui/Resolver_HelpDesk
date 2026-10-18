@@ -3,8 +3,8 @@ What a ticket is, as rows.
 
 The Ticket row carries intrinsic current state only — what happened to it is a
 TicketLog row. No status is ever changed here; that is `tickets.lifecycle`'s.
-A ticket's location and its rating are columns rather than side tables: both
-are exactly one per ticket, so a second table could only ever be a join.
+A ticket's location and its rating are columns on it: each is exactly one per
+ticket.
 """
 
 import os
@@ -20,7 +20,7 @@ from apps.tickets.constants import LEVELS, PENDING_REASONS, STATUSES
 
 
 class Ticket(models.Model):
-    """A service request Model
+    """A service request.
 
     No history and no derived figures on this row. Every change of state goes
     through `tickets.lifecycle`, never a direct write from a view.
@@ -274,9 +274,9 @@ class EscalationRun(models.Model):
 class TicketComment(models.Model):
     """A comment on a ticket: the staff working log, not a conversation.
 
-    The requester neither writes nor reads these, which is why there is no
-    visibility flag — every row is staff-facing. Who may post is decided in
-    `tickets.views.TicketCommentListCreateView`.
+    There is no visibility flag: every row is staff-facing. The requester never
+    posts, and reads the thread only while the ticket is pending or resolved.
+    Who may read and post is decided in `tickets.views.TicketCommentListCreateView`.
     """
 
     ticket = models.ForeignKey(

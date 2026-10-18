@@ -1,7 +1,7 @@
 """The ticket vocabulary: statuses, escalation levels, and hold reasons.
 
 The single definition of each. `Ticket.status` and `Ticket.current_level` take
-their choices from here rather than restating the list beside the column.
+their choices from here.
 """
 
 STATUSES = (

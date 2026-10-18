@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Pencil, Plus, Trash2, UserRound, Wrench } from 'lucide-react';
+import { MapPin, Plus, UserRound, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,11 +8,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { campusesService } from '@/lib/api/organizations';
+import { createCampus, deleteCampus, updateCampus } from '@/lib/api/organizations';
 import { useCampusRoster } from '@/hooks/useOrganizations';
 import { handleDRFError } from '@/utils/handleDRFError';
 import type { Campus } from '@/types';
 import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
+import { RowActions } from '@/components/shared/data/RowActions';
 
 function CampusForm({ campus, onSuccess, onClose }: {
   campus: Campus | null;
@@ -29,10 +30,10 @@ function CampusForm({ campus, onSuccess, onClose }: {
     setSaving(true);
     try {
       if (campus) {
-        await campusesService.updateCampus(campus.id, { name, code, location });
+        await updateCampus(campus.id, { name, code, location });
         toast.success('Campus updated');
       } else {
-        await campusesService.createCampus({ name, code, location });
+        await createCampus({ name, code, location });
         toast.success('Campus created');
       }
       onSuccess();
@@ -126,24 +127,7 @@ const CampusesPage = ({ manage = true }: { manage?: boolean }) => {
                     </div>
                     {manage && (
                       <div className="flex gap-1 flex-shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Edit ${campus.name}`}
-                          onClick={() => { setEditing(campus); setIsFormOpen(true); }}
-                          className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Delete ${campus.name}`}
-                          onClick={() => setDeleteTarget(campus)}
-                          className="h-7 w-7 p-0 hover:bg-red-50 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <RowActions name={campus.name} onEdit={() => { setEditing(campus); setIsFormOpen(true); }} onDelete={() => setDeleteTarget(campus)} />
                       </div>
                     )}
                   </div>
@@ -209,7 +193,7 @@ const CampusesPage = ({ manage = true }: { manage?: boolean }) => {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await campusesService.deleteCampus(deleteTarget.id);
+            await deleteCampus(deleteTarget.id);
             toast.success('Campus deleted');
             refetch();
             setDeleteTarget(null);

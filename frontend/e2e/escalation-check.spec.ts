@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAsAdmin } from './helpers';
+import { loginAsAdmin, apiGet } from './helpers';
 
 // The admin's escalation check on SLA Rules: whether the scheduled job is
 // alive, what it would move now, and a preview that changes nothing.
@@ -11,12 +11,7 @@ interface Status {
 }
 
 async function status(page: Page): Promise<Status> {
-  return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/escalations/', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  });
+  return apiGet(page, `/escalations/`);
 }
 
 const LABEL = { never: 'Not scheduled', failing: 'Failing', stale: 'Stopped', running: 'Running' } as const;

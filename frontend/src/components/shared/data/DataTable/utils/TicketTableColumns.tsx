@@ -38,9 +38,8 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
     TableUtils.searchFieldColumn(),
   ];
 
-  // Actions column — varies by variant. `queue` and `admin` get none:
-  // the whole row opens the ticket, so a View button would be a column of
-  // buttons doing what clicking anywhere already does.
+  // Actions column, by variant. `queue` and `admin` get none: the whole row
+  // opens the ticket.
   if (variant === 'pending' && onResume && onChangeReason) {
     all.push(TableUtils.resumeActionColumn({ onResume, onChangeReason }));
   } else if (variant === 'my-tickets' && onRate) {
@@ -52,17 +51,11 @@ export function createVariantColumns(config: VariantColumnsConfig): ColumnDef<Ti
 
 // Variant → initial column visibility map.
 // Hidden columns are still in the table (so search still works) but not rendered.
-// Standard hidden columns across all variants: facility, sla_countdown, priority,
-// updated_at, searchField.
-// Variants may additionally hide columns that aren't relevant to their context.
-// `pending_reason` and `pending_for` are meaningless off the Pending Work view —
-// every other variant lists rows whose `paused_at` is null, where both would
-// render an em dash in every cell.
+// `pending_reason` and `pending_for` belong to the Pending Work view; elsewhere
+// most rows are not on hold, and both would read as an em dash.
 export const VARIANT_COLUMN_VISIBILITY: Record<TicketTableVariant, Record<string, boolean>> = {
-  // `description` is hidden: a ticket has no title of its own, so the Title
-  // column already shows the service item and Description repeats it with
-  // "reported by …" appended — "Repair paving or walkway" beside "Repair
-  // paving or walkway reported b…", a whole column of restatement.
+  // `description` is hidden: it repeats the service item the Title column
+  // already shows, with "reported by …" appended.
   queue: {
     searchField: false, facility: false, sla_countdown: false,
     priority: false, updated_at: false, raised_by: false, description: false,

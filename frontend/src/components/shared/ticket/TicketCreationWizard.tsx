@@ -48,7 +48,7 @@ export interface TicketQuickStart {
   tradeCode?: string;
 }
 
-export interface TicketCreationWizardProps {
+interface TicketCreationWizardProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
@@ -223,12 +223,9 @@ export function TicketCreationWizard({ isOpen, onOpenChange, onSuccess, quickSta
   /**
    * Resolve the pre-filled trade as soon as the catalogue can answer for it.
    *
-   * Gated on the trade still being unset, not on the catalogue's identity:
-   * `useQuery` hands back the same array on every render once it is cached, so
-   * comparing references only ever fired on a refetch. The first card click
-   * worked — the catalogue was still arriving — and every one after it opened
-   * the item list on a null trade, which renders "No services listed under
-   * this trade" until the invalidation round trip lands.
+   * Gated on the trade still being unset, never on the catalogue's identity:
+   * `useQuery` returns the same array on every render once it is cached, so a
+   * reference check fires only on a refetch and leaves the item list empty.
    *
    * `subStep` is the guard against re-resolving: stepping back to the trade
    * tiles clears it, and this must not immediately undo that.

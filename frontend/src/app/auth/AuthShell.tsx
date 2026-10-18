@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { BarChart2, MapPin, Paperclip, Settings, Shield, Zap } from 'lucide-react';
+import { BarChart2, MapPin, Paperclip, Settings, Shield, Zap, type LucideIcon } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
  * The two-column frame both auth pages sit in: what Resolver is on the left,
@@ -8,11 +9,8 @@ import { BarChart2, MapPin, Paperclip, Settings, Shield, Zap } from 'lucide-reac
  * and white wave along its foot. White text holds at least 5.70:1 on it.
  */
 
-/** What the product does, said once.
- *
- *  Every line here is a claim shown to someone who has not signed in yet, so
- *  it is checked against what the system actually does rather than what it was
- *  once planned to do. */
+/** What the product does. Each line is shown before sign-in, so it must match
+ *  what the system actually does. */
 const FEATURES = [
   {
     icon: Shield,
@@ -30,8 +28,8 @@ const FEATURES = [
     desc: 'Automatic SLA timers, and escalation to the section and department heads',
   },
   {
-    // Not "multi-org": one department, one Maintenance section, five campuses.
-    // It is campus-based and not designed for other departments.
+    // One department, one Maintenance section, five campuses: campus-based, and
+    // not built for other departments.
     icon: MapPin,
     title: 'Campus Routing',
     desc: 'Requests route to the maintenance team at the campus they were raised from',
@@ -49,13 +47,25 @@ const FEATURES = [
 ];
 
 interface AuthShellProps {
-  heading: string;
-  blurb: string;
-  /** The form card. */
+  /** The form card's icon, title and line beneath. */
+  icon: LucideIcon;
+  title: ReactNode;
+  description: ReactNode;
+  /** The left panel's heading and line, when the page says something of its own. */
+  heading?: string;
+  blurb?: string;
+  /** The card's body. */
   children: ReactNode;
 }
 
-export function AuthShell({ heading, blurb, children }: AuthShellProps) {
+export function AuthShell({
+  icon: Icon,
+  title,
+  description,
+  heading = 'Resolver',
+  blurb = 'A maintenance helpdesk for the Kenya School of Government — every request tracked, assigned and closed on time.',
+  children,
+}: AuthShellProps) {
   return (
     <div className="min-h-screen flex">
       {/* What this is — hidden on narrow screens, where the form is the page. */}
@@ -94,7 +104,20 @@ export function AuthShell({ heading, blurb, children }: AuthShellProps) {
       </div>
 
       <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-lg">{children}</div>
+        <Card className="w-full max-w-lg shadow-xl border-0">
+          <CardHeader className="space-y-4 pb-6">
+            <div className="flex justify-center">
+              <div className="w-14 h-14 bg-ksg-brown rounded-xl flex items-center justify-center shadow-lg">
+                <Icon className="w-7 h-7 text-white" />
+              </div>
+            </div>
+            <div className="text-center">
+              <CardTitle className="text-2xl font-bold text-gray-900">{title}</CardTitle>
+              <CardDescription className="text-base text-gray-600 mt-2">{description}</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">{children}</CardContent>
+        </Card>
       </div>
     </div>
   );

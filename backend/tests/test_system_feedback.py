@@ -84,7 +84,6 @@ def test_the_admin_reads_who_sent_it_and_from_where(api, admin_user, requester, 
 
     assert row["category"] == "problem"
     assert row["message"] == "The wizard lost my photo"
-    assert row["author_email"] == requester.email
     assert row["author_campus"] == nrb.name
     assert row["author_role"] == "user"
 
@@ -157,7 +156,6 @@ def test_feedback_outlives_its_author(api, requester, admin_user):
     [row] = api.get(reverse(LIST)).json()["results"]
 
     assert row["author_name"] == "Deleted account"
-    assert row["author_email"] is None
 
 
 def test_signed_out_callers_can_neither_send_nor_read(api):

@@ -4,8 +4,8 @@
 // exclusively by this store: every read goes through store state and every
 // write goes through a store action. The store hydrates synchronously at
 // module load, so the session is available on first render — no async
-// re-hydration step. Components subscribe via useAuthStore (or the useAuth
-// adapter hook); non-React modules use useAuthStore.getState().
+// re-hydration step. Components subscribe via useAuthStore; non-React
+// modules use useAuthStore.getState().
 
 import { create } from 'zustand';
 import type { User } from '@/types';
@@ -23,8 +23,8 @@ function readStoredUser(): User | null {
   }
 }
 
-// The old zustand persist middleware kept a third copy of the token under
-// this key; clean it up so authToken/currentUser are the only stored state.
+// Removes the stale 'auth-store' key, so authToken and currentUser are the only
+// stored session state.
 localStorage.removeItem('auth-store');
 
 interface AuthState {

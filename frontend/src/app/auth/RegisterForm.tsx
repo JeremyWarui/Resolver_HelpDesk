@@ -7,7 +7,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -85,159 +84,142 @@ export const RegisterForm: React.FC = () => {
   return (
     <>
       <AuthShell
+        icon={UserPlus}
+        title="Create Account"
+        description="Get started with Resolver"
         heading="Join Resolver"
         blurb="Create your account and raise your first request in minutes. Resolver follows every request from submission to resolution."
       >
-        <Card className="w-full shadow-xl border-0">
-          <CardHeader className="space-y-4 pb-8">
-            <div className="flex justify-center">
-              <div className="w-14 h-14 bg-ksg-brown rounded-xl flex items-center justify-center shadow-lg">
-                <UserPlus className="w-7 h-7 text-white" />
-              </div>
-            </div>
-            <div className="text-center">
-              <CardTitle className="text-2xl font-bold text-gray-900">
-                Create Account
-              </CardTitle>
-              <CardDescription className="text-base text-gray-600 mt-2">
-                Get started with Resolver
-              </CardDescription>
-            </div>
-          </CardHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium text-gray-700">Email Address</FormLabel>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" aria-hidden="true" />
+                    <FormControl>
+                      <Input type="email" autoComplete="email" placeholder="you@ksg.ac.ke" className="pl-10 h-11" {...field} disabled={isLoading} />
+                    </FormControl>
+                  </div>
+                  {preview ? (
+                    <p className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      You'll appear as <span className="font-medium text-gray-800">{preview.name}</span>
+                      <span className="text-gray-400">·</span>
+                      <span className="font-mono">{preview.username}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Use your work address — your name is taken from it, e.g. jeremy.mwangi@ksg.ac.ke becomes Jeremy Mwangi.
+                    </p>
+                  )}
+                  <FormMessage className="text-xs" />
+                </FormItem>
+              )}
+            />
 
-          <CardContent className="space-y-6">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Email Address</FormLabel>
+            <FormField
+              control={form.control}
+              name="campus_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium text-gray-700">Campus</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 z-10 pointer-events-none" aria-hidden="true" />
                       <FormControl>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          <Input type="email" autoComplete="email" placeholder="you@ksg.ac.ke" className="pl-10 h-11" {...field} disabled={isLoading} />
-                        </div>
+                        <SelectTrigger className="pl-10 h-11">
+                          <SelectValue placeholder="Select your campus" />
+                        </SelectTrigger>
                       </FormControl>
-                      {preview ? (
-                        <p className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <User className="w-3.5 h-3.5 text-gray-400" />
-                          You'll appear as <span className="font-medium text-gray-800">{preview.name}</span>
-                          <span className="text-gray-400">·</span>
-                          <span className="font-mono">{preview.username}</span>
-                        </p>
-                      ) : (
-                        <p className="text-xs text-gray-500">
-                          Use your work address — your name is taken from it, e.g. jeremy.mwangi@ksg.ac.ke becomes Jeremy Mwangi.
-                        </p>
-                      )}
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
+                    </div>
+                    <SelectContent>
+                      {campuses.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage className="text-xs" />
+                </FormItem>
+              )}
+            />
 
-                <FormField
-                  control={form.control}
-                  name="campus_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Campus</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                        <FormControl>
-                          <div className="relative">
-                            <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 z-10 pointer-events-none" />
-                            <SelectTrigger className="pl-10 h-11">
-                              <SelectValue placeholder="Select your campus" />
-                            </SelectTrigger>
-                          </div>
-                        </FormControl>
-                        <SelectContent>
-                          {campuses.map(c => (
-                            <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium text-gray-700">Password</FormLabel>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" aria-hidden="true" />
+                      <FormControl>
+                        <PasswordInput placeholder="Create password" className="pl-10 h-11" {...field} disabled={isLoading} />
+                      </FormControl>
+                    </div>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-gray-700">Password</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                            <PasswordInput placeholder="Create password" className="pl-10 h-11" {...field} disabled={isLoading} />
-                          </div>
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium text-gray-700">Confirm Password</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                            <PasswordInput placeholder="Confirm password" className="pl-10 h-11" {...field} disabled={isLoading} />
-                          </div>
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
-                  disabled={isLoading}
-                >
-                  {isLoading ? 'Creating Account...' : 'Create Account'}
-                </Button>
-              </form>
-            </Form>
-
-            <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-100">
-              <h4 className="font-semibold text-green-800 mb-2 flex items-center">
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Account Information
-              </h4>
-              <ul className="text-sm text-green-700 space-y-1">
-                <li>• You sign in with your email address — there's no separate username to remember</li>
-                <li>• Your name comes from the part before the @ (jeremy.mwangi → Jeremy Mwangi)</li>
-                <li>• New accounts start with the requester role by default</li>
-                <li>• Contact your administrator to be assigned a staff role</li>
-                <li>• Requests are routed automatically based on your organisation's structure</li>
-              </ul>
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-medium text-gray-700">Confirm Password</FormLabel>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" aria-hidden="true" />
+                      <FormControl>
+                        <PasswordInput placeholder="Confirm password" className="pl-10 h-11" {...field} disabled={isLoading} />
+                      </FormControl>
+                    </div>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
             </div>
 
-            <div className="pt-6">
-              <Separator className="mb-6" />
-              <div className="text-center pb-4">
-                <span className="text-sm text-gray-600">Already have an account? </span>
-                <button
-                  type="button"
-                  onClick={() => navigate('/login')}
-                  className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
-                >
-                  Sign in instead
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Button
+              type="submit"
+              className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Creating Account...' : 'Create Account'}
+            </Button>
+          </form>
+        </Form>
+
+        <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-100">
+          <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Account Information
+          </h4>
+          <ul className="text-sm text-green-700 space-y-1">
+            <li>• You sign in with your email address — there's no separate username to remember</li>
+            <li>• Your name comes from the part before the @ (jeremy.mwangi → Jeremy Mwangi)</li>
+            <li>• New accounts start with the requester role by default</li>
+            <li>• Contact your administrator to be assigned a staff role</li>
+            <li>• Requests are routed automatically based on your organisation's structure</li>
+          </ul>
+        </div>
+
+        <div className="pt-6">
+          <Separator className="mb-6" />
+          <div className="text-center pb-4">
+            <span className="text-sm text-gray-600">Already have an account? </span>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+            >
+              Sign in instead
+            </button>
+          </div>
+        </div>
       </AuthShell>
 
     <Dialog open={registeredEmail !== null} onOpenChange={() => {}}>

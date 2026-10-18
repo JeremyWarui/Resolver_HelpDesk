@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { DETAILS_SHEET_CONFIG, type DetailSheetField, type DetailSheetFieldType } from '@/components/shared/ticket/detailsSheetConfig';
-import { facilitiesService } from '@/lib/api/organizations';
+import { updateFacility } from '@/lib/api/organizations';
 import { updateUser } from '@/lib/api/users';
 import { useFacilityTypes } from '@/hooks/useCatalogue';
 import type { Technician, Facility } from '@/types';
@@ -85,8 +85,7 @@ export function UnifiedDetailsSheet({
   }
 
   // Reset edit state when the entity (or its config) changes. Adjusted during
-  // render — per React's "you might not need an effect" guidance — rather than
-  // in a useEffect, which would trigger an extra commit-and-rerun cycle.
+  // render, so there is no extra commit.
   const [prevEntity, setPrevEntity] = useState(entity);
   const [prevConfig, setPrevConfig] = useState(config);
   if (entity !== prevEntity || config !== prevConfig) {
@@ -108,13 +107,12 @@ export function UnifiedDetailsSheet({
     try {
       if (entityType === 'technician') {
         // Only the email is writable here: name and username follow it, and a
-        // trade link is a role assignment, not a user field — the server has
-        // never read one off this endpoint.
+        // trade link is a role assignment, not a user field.
         await updateUser(entity.id, {
           email: asString(editedValues.email),
         });
       } else if (entityType === 'facility') {
-        await facilitiesService.updateFacility(entity.id, {
+        await updateFacility(entity.id, {
           name: asString(editedValues.name),
           facility_type: Number(editedValues.facility_type),
         });
@@ -141,16 +139,13 @@ export function UnifiedDetailsSheet({
     }
   };
 
-  // Get title based on entity type
   const getTitle = (): React.ReactNode => {
     if (entityType === 'technician') {
-      const tech = entity as Technician;
-      return `${tech.first_name} ${tech.last_name}`;
+      return (entity as Technician).full_name;
     }
     return getEntityField(entity, config.titleField);
   };
 
-  // Render field value in view mode
   const renderViewField = (fieldName: string, fieldType: DetailSheetFieldType): React.ReactNode => {
     if (fieldType === 'trades') {
       return (entity as Technician).trade_names?.join(', ') || 'None';
@@ -158,7 +153,6 @@ export function UnifiedDetailsSheet({
     return getEntityField(entity, fieldName) || '—';
   };
 
-  // Render field input in edit mode
   const renderEditField = (field: DetailSheetField) => {
     if (field.type === 'text') {
       return (
@@ -247,7 +241,6 @@ export function UnifiedDetailsSheet({
                     ))}
                   </div>
 
-                  {/* Save Changes Button */}
                   <Button
                     onClick={handleSaveChanges}
                     disabled={isUpdating}

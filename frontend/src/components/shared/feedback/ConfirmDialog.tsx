@@ -1,8 +1,8 @@
 // The confirmation every irreversible action goes through: delete a campus, a
 // user, a trade, a service item.
 //
-// `description` takes a ReactNode rather than a string because most callers
-// format the entity's name inside the sentence.
+// `description` is a ReactNode so a caller can format the entity's name inside
+// the sentence.
 
 import {
   AlertDialog,

@@ -1,8 +1,8 @@
 // The live countdown to a ticket's resolution target: a bar that fills as the
 // time is spent, colouring ok → warning → breach as it goes.
 //
-// The bar is rendered by hand rather than with shadcn's Progress, which pins
-// its fill to bg-primary and cannot take a colour that shifts with the value.
+// The bar is drawn by hand: shadcn's Progress pins its fill to bg-primary and
+// cannot take a colour that shifts with the value.
 
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';

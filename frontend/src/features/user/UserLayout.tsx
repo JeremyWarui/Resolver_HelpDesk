@@ -3,10 +3,8 @@ import UserDashboard from './UserDashboard';
 import MyTicketsPage from './MyTicketsPage';
 import NotificationsPage from '@/features/shared/NotificationsPage';
 
-/** Every section loads eagerly, unlike the other roles': the dashboard is the
- *  landing page, and `RoleDashboardLayout` already imports `MyTicketsPage`
- *  statically for the My Requests switch — so splitting it here would emit a
- *  chunk for something already in the shell's bundle. */
+/** Every section loads eagerly, unlike the other roles': `RoleDashboardLayout`
+ *  already imports `MyTicketsPage` statically for the My Requests switch. */
 const UserLayout = () => (
   <RoleDashboardLayout
     role="user"

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import { rovingKeyDown } from '@/utils/roving';
 
-export interface Tab<K extends string> {
+interface Tab<K extends string> {
   key: K;
   label: string;
   /** A count badge after the label; zero shows none. */

@@ -1,12 +1,8 @@
 // Every nav item must name a section its layout renders, and every section
 // must be reachable from the nav.
 //
-// This is the failure the nav consolidation was meant to make impossible. It
-// used to be spread over five maps — the sidebar's items, the sidebar's
-// id → URL table, `sectionFromPath`, `headerTitle`, and a private copy of the
-// last two inside AdminLayout — so a renamed section left a sidebar entry
-// pointing at a section no layout had. `tsc` has no opinion about either side:
-// both are string keys in object literals. The click just did nothing.
+// `tsc` cannot check this: both sides are string keys in object literals, and
+// a mismatch leaves a sidebar entry whose click does nothing.
 //
 // Run: node scripts/check-nav.mjs
 
@@ -38,7 +34,13 @@ function navIds() {
       .map((r) => body.indexOf(`\n  ${r}: {`))
       .filter((i) => i > at)
       .sort((a, b) => a - b)[0] ?? body.length;
-    const chunk = body.slice(at, next);
+    let chunk = body.slice(at, next);
+    // `items: SOME_LIST` names a list declared elsewhere in the file: read that.
+    const named = chunk.match(/\bitems:\s*([A-Z_]+)\b/);
+    if (named) {
+      const start = src.indexOf(`const ${named[1]}`);
+      chunk = start === -1 ? '' : src.slice(start, src.indexOf('];', start));
+    }
     out[role] = [...chunk.matchAll(/\bid:\s*'([^']+)'/g)].map((m) => m[1]);
   }
   return out;

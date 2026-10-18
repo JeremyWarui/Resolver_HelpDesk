@@ -23,9 +23,12 @@ DAYS = 7
 # The periods the two charts offer, in days, and how the trend cuts each.
 PERIODS = {7: "day", 30: "day", 90: "week"}
 FACILITY_ROWS = 5
+# Whose dashboard this is; the admin has their own (`desk`).
+DASHBOARD_ROLES = ("manager", "hod", "hos")
+
 _LIVE = ("open_now", "waiting", "with_technician", "on_hold", "overdue", "at_hod")
 _STAGES = ("open_now", "waiting", "with_technician", "on_hold")
-_WEEK = ("total", "resolution_sla_pct", "resolution_seconds_avg", "rating_avg", "rating_count")
+_WEEK = ("total", "settled", "resolution_sla_pct", "resolution_seconds_avg", "rating_avg", "rating_count")
 
 
 def period(value) -> int | None:

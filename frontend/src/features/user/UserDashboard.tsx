@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils';
 import type { Ticket } from '@/types';
 
 interface UserDashboardProps {
-  /** The shell owns the wizard, so opening it is a navigation like any other —
-   *  this page sends the chosen service along rather than mounting its own. */
+  /** The shell owns the wizard, so this page opens it by navigating, with the
+   *  chosen service along. */
   onNavigate?: (
     section: 'dashboard' | 'userTickets' | 'submitTicket',
     quickStart?: TicketQuickStart,

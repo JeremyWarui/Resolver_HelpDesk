@@ -64,8 +64,7 @@ REPORT_TZ = ZoneInfo("Africa/Nairobi")
 DEFAULT_DAYS = 30
 MAX_DAYS = 3650
 
-# The share of settled work that should finish on time. One number, until the
-# admin can set it.
+# The share of settled work that should finish on time.
 SLA_TARGET_PCT = 75
 
 # The name as `accounts.identity.display_name_parts` builds it, so one person is
@@ -147,6 +146,12 @@ def previous_window(window: dict) -> dict:
         "to": window["from"] - timedelta(microseconds=1),
         "bucket": window["bucket"],
     }
+
+
+def before(qs, window) -> dict:
+    """The figures a report sets beside the period before: raised, resolved, on time and time to resolve."""
+    figures = totals(qs, previous_window(window))
+    return {key: figures[key] for key in ("total", "settled", "resolution_sla_pct", "resolution_seconds_avg")}
 
 
 def raised_in(qs, window):
@@ -336,19 +341,28 @@ def group(qs, window: dict, dimensions) -> list:
 
 
 def bottlenecks(qs) -> list:
-    """What is on hold right now, by reason, with the oldest hold in each.
+    """What is on hold right now, by reason, with the oldest hold in each and the
+    trades the held tickets are in, most first.
 
     A snapshot, never windowed: `pending_reason` clears when work resumes, so
     no hold history is kept. Do not add a history column without deciding that.
     """
+    held = qs.filter(status="pending").exclude(pending_reason="")
     rows = (
-        qs.filter(status="pending")
-        .exclude(pending_reason="")
-        .values(key=F("pending_reason"))
+        held.values(key=F("pending_reason"))
         .annotate(total=Count("id"), since=Min("paused_at"))
         # Clears the scope queryset's `-updated_at`; see `group`.
         .order_by("-total")
     )
+    trades = {}
+    for row in (
+        held.values("pending_reason", label=F("trade__name"), code=F("trade__code"))
+        .annotate(total=Count("id"))
+        .order_by("-total", "label")
+    ):
+        trades.setdefault(row["pending_reason"], []).append(
+            {"label": row["label"], "code": row["code"], "total": row["total"]}
+        )
     return [
         {
             "key": row["key"],
@@ -357,6 +371,7 @@ def bottlenecks(qs) -> list:
             "label": PENDING_REASON_LABELS.get(row["key"], row["key"]),
             "total": row["total"],
             "since": row["since"],
+            "trades": trades.get(row["key"], []),
         }
         for row in rows
     ]

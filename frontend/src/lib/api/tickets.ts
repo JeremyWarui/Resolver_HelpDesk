@@ -11,10 +11,7 @@ import type {
   TicketTimelineEvent,
 } from '@/types';
 
-/** The comment and log feeds are cursor-paged, so `count` comes back null. */
-export type Feed<T> = Page<T>;
-
-export interface TicketLog {
+interface TicketLog {
   id: number;
   actor: { id: number; username: string; full_name: string } | null;
   event_type: string;
@@ -52,7 +49,7 @@ export interface PendingReasonOption {
   label: string;
 }
 
-export interface TicketFilterOptions {
+interface TicketFilterOptions {
   campuses: TicketFilterOption[];
   trades: TicketFilterOption[];
   technicians: TicketFilterOption[];
@@ -85,17 +82,12 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-/** Assignment is also where priority is decided.
- *
- *  A ticket opens at Low because the requester should not be grading their own
- *  urgency. The HOS has read it and knows the section's workload, so they set
- *  the real priority as they hand it out. Omit it to leave the ticket as it is
- *  — reassignment is not necessarily a re-judgement. */
 /**
- * `note` is the HOS's handover message to the technician. It is stored on the
- * `assigned` log row, so it appears in the timeline rather than overwriting
- * anything on the ticket. Blank is omitted rather than sent as "" — an empty
- * note should leave no trace in the audit log at all.
+ * Assign a ticket, setting its priority as it is handed over. Omit `priorityId`
+ * to leave the priority as it is.
+ *
+ * `note` is the HOS's handover message, stored on the `assigned` log row. A
+ * blank note is left out, never sent as "".
  */
 export async function assignTicket(
   id: number,
@@ -136,10 +128,10 @@ export async function updateTicketStatus(
 export async function getComments(
   ticketId: number,
   cursor?: string | null
-): Promise<Feed<TicketComment>> {
+): Promise<Page<TicketComment>> {
   const params: Record<string, string> = {};
   if (cursor) params.cursor = cursor;
-  const { data } = await apiClient.get<Feed<TicketComment>>(
+  const { data } = await apiClient.get<Page<TicketComment>>(
     `/tickets/${ticketId}/comments/`,
     { params }
   );
@@ -160,7 +152,7 @@ export async function addComment(
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
 /** What rating a ticket answers. Rating a resolved ticket closes it. */
-export interface FeedbackResult {
+interface FeedbackResult {
   rating: number;
   comment: string;
   created_at: string;
@@ -189,13 +181,12 @@ export async function getTicketTimeline(ticketId: number): Promise<TicketTimelin
   // Every page: the trail is a ticket's whole history, and a busy one runs past the first.
   const logsRes = await fetchAll<TicketLog>(`/tickets/${ticketId}/logs/`);
 
-  const logEvents: TicketTimelineEvent[] = (logsRes as TicketLog[]).map((log) => ({
+  const logEvents: TicketTimelineEvent[] = logsRes.map((log) => ({
     id: `log-${log.id}`,
     event_type: (log.event_type as TicketTimelineEvent['event_type']) ?? 'status_changed',
     actor: log.actor ?? undefined,
     // note = the human-entered reason only (pending reason, resolution note…).
-    // from/to stay in data — falling back to to_value here rendered raw values
-    // (statuses, comment pks) as if they were notes.
+    // from/to stay in data: they hold raw values such as statuses and comment pks.
     note: log.reason || undefined,
     data: {
       from: log.from_value,
@@ -218,12 +209,12 @@ export async function reopenTicket(id: number): Promise<Ticket> {
   return updateTicketStatus(id, 'open', '');
 }
 
-// Technician self-assigns an unassigned open ticket in their section.
 /** The assignee starting a job: assigned to in progress, with a short note. */
 export async function startWork(id: number): Promise<Ticket> {
   return updateTicketStatus(id, 'in_progress', 'Started work');
 }
 
+/** A technician takes an open, unassigned ticket in their scope, straight to in progress. */
 export async function claimTicket(id: number): Promise<Ticket> {
   const { data } = await apiClient.post<Ticket>(`/tickets/${id}/claim/`);
   return data;
@@ -269,7 +260,7 @@ export interface TicketFeedbackRow {
   created_at: string;
 }
 
-export interface TicketFeedbackResponse {
+interface TicketFeedbackResponse {
   count: number;
   next: string | null;
   previous: string | null;
@@ -295,7 +286,7 @@ export async function getFeedback(
 }
 
 /** The period's figures, over every rating in it. */
-export interface FeedbackSummary {
+interface FeedbackSummary {
   count: number;
   average: number | null;
   commented: number;

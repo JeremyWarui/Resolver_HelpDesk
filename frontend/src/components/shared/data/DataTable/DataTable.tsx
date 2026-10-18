@@ -29,16 +29,14 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Import components
 import { DefaultTableHeader } from "./utils/TableHeaders";
 import { RenderTableContent } from "./utils/TableContent";
 
-// TABLE TYPES
 export interface FilterOption {
   label: string;
   options: { label: string; value: string }[];
   defaultValue?: string;
-  value?: string; // Add value for controlled behavior
+  value?: string;
   onFilterChange: (value: string) => void;
 }
 
@@ -63,18 +61,14 @@ interface DataTableProps<TData, TValue> {
   onPageChange?: (pageIndex: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   rowClassName?: (row: TData) => string;
-  /** What one row is, for the footer's count. The campus register said
-   *  "5 ticket(s) found" until this stopped being hardcoded. */
+  /** What one row is, for the footer's count. */
   noun?: { one: string; many: string };
 }
 
 const DataTable = <TData, TValue>({
   columns,
   data,
-  // No default. `DefaultTableHeader` already renders no header when the title
-  // is absent, so a placeholder here only meant the two callers that omit it —
-  // the requester's Recent activity and SLA Tracking — printed the literal
-  // words "Data Table" on screen under their real heading.
+  // No default: `DefaultTableHeader` renders no header when the title is absent.
   title,
   subtitle,
   titleAction,
@@ -114,10 +108,8 @@ const DataTable = <TData, TValue>({
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(defaultPageSize);
 
-  // Calculate actual total items for pagination
   const actualTotalItems = manualPagination ? totalItems || 0 : data.length;
 
-  // Initialize the table
   // eslint-disable-next-line react-hooks/incompatible-library -- known, handled above
   const table = useReactTable({
     data,
@@ -149,16 +141,13 @@ const DataTable = <TData, TValue>({
     setPageIndex(0);
   }, [columnFilters]);
 
-  // Handle search input changes
   const handleSearch = (value: string) => {
     setSearchValue(value);
-    // Assuming we have a searchable column (usually named 'searchField')
     if (table.getColumn("searchField")) {
       table.getColumn("searchField")?.setFilterValue(value.toLowerCase());
     }
   };
 
-  // Handle page changes with support for manual pagination
   const handlePageChange = (newPageIndex: number) => {
     setPageIndex(newPageIndex);
 
@@ -167,12 +156,10 @@ const DataTable = <TData, TValue>({
     }
   };
 
-  // Handle page size changes
   const handlePageSizeChange = (newPageSize: number) => {
     setPageSize(newPageSize);
     setPageIndex(0); // Reset to first page on page size change
 
-    // Notify parent component if callback is provided
     if (onPageSizeChange) {
       onPageSizeChange(newPageSize);
     }
@@ -241,7 +228,6 @@ const DataTable = <TData, TValue>({
     columnVisibilityDropdown,
   };
 
-  // Build tableContentProps for the RenderTableContent component
   const tableContentProps = {
     table,
     columns: columns as ColumnDef<TData>[],
@@ -262,10 +248,8 @@ const DataTable = <TData, TValue>({
   return (
     <Card className="w-full">
       <CardContent className="pt-7">
-        {/* Use custom header or default header component */}
         <DefaultTableHeader {...headerProps} />
 
-        {/* Table content with conditional rendering for loading and empty states */}
         <RenderTableContent {...tableContentProps} />
       </CardContent>
     </Card>

@@ -23,7 +23,7 @@ const MyTicketsPage = ({ onNavigate, onTicketSelect }: MyTicketsPageProps) => {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [ratingTicket, setRatingTicket] = useState<Ticket | null>(null);
 
-  // Server-side filtered ticket fetch — mine:1 scopes to tickets raised_by == self (R15)
+  // Server-side filtered ticket fetch — mine:1 scopes to tickets raised_by == self
   const { tickets, totalTickets, loading, refetch } = useTickets({
     status: activeFilter !== 'all' ? activeFilter : undefined,
     mine: 1,

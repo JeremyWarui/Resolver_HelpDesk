@@ -14,8 +14,7 @@ const queryClient = new QueryClient({
 })
 
 createRoot(document.getElementById('root')!).render(
-  // Note: StrictMode disabled to prevent duplicate API calls in development
-  // Re-enable for debugging: <StrictMode><App /></StrictMode>
+  // No StrictMode: it doubles every API call in development.
   <QueryClientProvider client={queryClient}>
     <App />
   </QueryClientProvider>

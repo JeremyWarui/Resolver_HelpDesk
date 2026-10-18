@@ -12,7 +12,6 @@ class SystemFeedbackSerializer(serializers.ModelSerializer):
     """Who sent it is taken from the request, never from the body."""
 
     author_name = serializers.SerializerMethodField()
-    author_email = serializers.SerializerMethodField()
     author_campus = serializers.SerializerMethodField()
 
     class Meta:
@@ -25,7 +24,6 @@ class SystemFeedbackSerializer(serializers.ModelSerializer):
             "reviewed",
             "created_at",
             "author_name",
-            "author_email",
             "author_role",
             "author_campus",
         ]
@@ -41,9 +39,6 @@ class SystemFeedbackSerializer(serializers.ModelSerializer):
 
     def get_author_name(self, obj):
         return display_name(obj.author) or "Deleted account"
-
-    def get_author_email(self, obj):
-        return obj.author.email if obj.author else None
 
     def get_author_campus(self, obj):
         campus = obj.author.campus if obj.author else None

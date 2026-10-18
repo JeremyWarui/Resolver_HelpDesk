@@ -208,8 +208,6 @@ def test_an_escalation_tells_the_post_it_reached_and_the_assignee(
     technician has to know the job left their level."""
     from django.utils import timezone
 
-    from apps.tickets.escalation import run_escalation_for_ticket
-
     nrb_electrical_ticket.assigned_to = nrb_electrician
     nrb_electrical_ticket.status = "in_progress"
     nrb_electrical_ticket.save(update_fields=["assigned_to", "status"])
@@ -218,7 +216,7 @@ def test_an_escalation_tells_the_post_it_reached_and_the_assignee(
         minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1,
     )
 
-    assert run_escalation_for_ticket(nrb_electrical_ticket, timezone.now()) is True
+    assert factories.escalate(nrb_electrical_ticket, timezone.now()) is True
 
     assert _for(nrb_hos, "ticket_escalated").count() == 1
     assert _for(nrb_electrician, "ticket_escalated").count() == 1

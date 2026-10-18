@@ -51,10 +51,10 @@ test('the detail matches the ticket at every status it is found in', async ({ pa
     const details = dialog.getByRole('heading', { name: 'Ticket Information' }).locator('..');
     await expect(details.getByText('Fix by')).toBeVisible();
     if (SETTLED.includes(status)) {
-      await expect(dialog.getByRole('heading', { name: 'Time to fix' })).toHaveCount(0);
+      await expect(dialog.getByRole('heading', { name: 'Time to resolve' })).toHaveCount(0);
       await expect(details.getByText(/^(Met|Missed)$/)).toBeVisible();
     } else {
-      await expect(dialog.getByRole('heading', { name: 'Time to fix' })).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: 'Time to resolve' })).toBeVisible();
     }
 
     // The trail is one line per event: typed notes go out as messages instead.

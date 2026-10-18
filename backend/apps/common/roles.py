@@ -61,8 +61,8 @@ class IsAdminOrManagerReadOnly(BasePermission):
 class IsAdminOrReadOnly(BasePermission):
     """Read for any authenticated caller, write for admin only.
 
-    Used on the reference-data viewsets the requester UI has to read, such as
-    the catalogue tree and the department list.
+    Used on the reference data the requester UI has to read: trades, service
+    items, facilities and priorities.
     """
 
     def has_permission(self, request, view):

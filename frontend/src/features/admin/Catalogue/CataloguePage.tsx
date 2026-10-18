@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +11,7 @@ import { useTrades } from '@/hooks/useCatalogue';
 import { TradeForm } from './TradeForm';
 import { ItemForm } from './ItemForm';
 import { ConfirmDialog } from '@/components/shared/feedback/ConfirmDialog';
+import { RowActions } from '@/components/shared/data/RowActions';
 
 type DeleteTarget = { type: 'trade' | 'item'; id: number; name: string };
 
@@ -110,24 +111,7 @@ export default function CataloguePage() {
                         <span className="text-xs text-gray-500 tabular-nums mr-1">
                           {items.length} {items.length === 1 ? 'item' : 'items'}
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Edit ${trade.name}`}
-                          onClick={() => setTradeForm({ editing: trade })}
-                          className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Delete ${trade.name}`}
-                          onClick={() => setDeleteTarget({ type: 'trade', id: trade.id, name: trade.name })}
-                          className="h-7 w-7 p-0 hover:bg-red-50 text-gray-400 hover:text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <RowActions name={trade.name} onEdit={() => setTradeForm({ editing: trade })} onDelete={() => setDeleteTarget({ type: 'trade', id: trade.id, name: trade.name })} />
                       </div>
                     </div>
 
@@ -144,24 +128,7 @@ export default function CataloguePage() {
                               )}
                             </div>
                             <div className="flex gap-0.5 flex-shrink-0">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                aria-label={`Edit ${item.name}`}
-                                onClick={() => setItemForm({ editing: item, tradeId: trade.id })}
-                                className="h-7 w-7 p-0 hover:bg-blue-50 text-gray-400 hover:text-blue-600"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                aria-label={`Delete ${item.name}`}
-                                onClick={() => setDeleteTarget({ type: 'item', id: item.id, name: item.name })}
-                                className="h-7 w-7 p-0 hover:bg-red-50 text-gray-400 hover:text-red-600"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              <RowActions name={item.name} onEdit={() => setItemForm({ editing: item, tradeId: trade.id })} onDelete={() => setDeleteTarget({ type: 'item', id: item.id, name: item.name })} />
                             </div>
                           </li>
                         ))}

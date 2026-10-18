@@ -27,7 +27,7 @@ function AllTicketsTable({ onTicketSelect }: { onTicketSelect?: (ticketId: numbe
 
   /**
    * The pills and the status dropdown drive the same `statusFilter`, so they
-   * are kept in step rather than left to disagree: `activeFilter` takes the
+   * stay in step: `activeFilter` takes the
    * chosen status either way, and a pill that represents it lights up while
    * one that doesn't (assigned/pending/closed) leaves the row unlit.
    *
@@ -67,13 +67,7 @@ function AllTicketsTable({ onTicketSelect }: { onTicketSelect?: (ticketId: numbe
         onRowClick={onTicketSelect ? (t) => onTicketSelect(t.id) : table.handleViewTicket}
         selectedRowId={table.selectedTicket?.id ?? null}
         filterOptions={filterOptions}
-        pagination={{
-          total: table.totalTickets,
-          pageIndex: table.pageIndex,
-          pageSize: table.pageSize,
-          onPageChange: table.setPageIndex,
-          onPageSizeChange: table.setPageSize,
-        }}
+        pagination={table.pagination}
       />
     </div>
   );

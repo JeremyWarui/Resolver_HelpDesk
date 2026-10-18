@@ -1,8 +1,8 @@
 """
 Auth and user-management endpoints, and the token claims they issue.
 
-Every claim is re-read from the database at issue time rather than copied from
-the token being replaced, so a role change lands on the next silent refresh.
+Every claim is re-read from the database at issue time, never copied from the
+token being replaced, so a role change lands on the next silent refresh.
 """
 
 import logging
@@ -49,7 +49,7 @@ def get_assignment(user):
     # never serialized many at once.
     return (
         RoleAssignment.objects.filter(user=user)
-        .select_related("campus", "assigned_by")
+        .select_related("campus")
         .first()
     )
 
@@ -336,8 +336,8 @@ class UserActiveView(APIView):
     """POST /users/{pk}/deactivate/ and /users/{pk}/reactivate/.
 
     A deactivated person cannot sign in, holds no post and drops off every
-    picker; their tickets, comments and history stay as they were, which a
-    delete could not promise. The admin cannot deactivate themselves.
+    picker; their tickets, comments and history stay as they were. The admin
+    cannot deactivate themselves.
     """
 
     permission_classes = [IsAuthenticated, IsAdminGroup]

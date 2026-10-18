@@ -3,7 +3,7 @@ import { RoleDashboardLayout } from '@/components/layout/RoleDashboardLayout';
 import AdminDashboard from './AdminDashboard';
 
 const RoleTicketsPage = lazy(() => import('@/features/shared/RoleTicketsPage'));
-const RoleReportsPage = lazy(() => import('@/features/shared/RoleReportsPage'));
+const OverviewReportsPage = lazy(() => import('@/features/shared/OverviewReportsPage'));
 const TechniciansPage = lazy(() => import('@/features/shared/Technicians/TechniciansPage'));
 const FacilitiesPage = lazy(() => import('@/features/shared/Facilities/FacilitiesPage'));
 const CampusesPage = lazy(() => import('./CampusesPage'));
@@ -21,7 +21,7 @@ const AdminLayout = () => (
     sections={({ onTicketSelect, onNavigate }) => ({
       dashboard:   <AdminDashboard onNavigate={onNavigate} />,
       tickets:     <RoleTicketsPage role="admin" onTicketSelect={onTicketSelect} />,
-      reports:     <RoleReportsPage role="admin" />,
+      reports:     <OverviewReportsPage role="admin" />,
       technicians: <TechniciansPage />,
       facilities:  <FacilitiesPage />,
       campuses:    <CampusesPage />,

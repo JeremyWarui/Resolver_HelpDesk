@@ -1,18 +1,7 @@
 /**
- * Pending Work — what is stopped, why, and for how long. A worklist: every row
- * is actionable, and resume clears the hold in one click.
- *
- * Operational roles only. The manager reads holds on the reports page instead,
- * where `analytics.bottlenecks` counts them server-side — this page groups the
- * one page of rows it fetched, so as a standalone figure it would start
- * disagreeing with the reports page the moment a section held more than
- * `page_size` jobs.
- *
- * No new endpoint. `GET /tickets/?status=pending` is already role-scoped
- * server-side and already pre-loads the facility, trade and assignee in a
- * single query, so a 4-row list and a 400-row list cost the same. "Pending for"
- * is arithmetic on `paused_at`, which is already in the payload — no extra
- * field, no extra call.
+ * Pending Work: what is stopped, why, and for how long. Every row can be
+ * resumed or re-coded from here. Rows come from `/tickets/?status=pending`,
+ * scoped by the server; how long a job has been held is worked out from `paused_at`.
  */
 import { useMemo, useState } from 'react';
 import { AlertCircle, PauseCircle } from 'lucide-react';
@@ -21,10 +10,9 @@ import { TicketTable } from '@/components/shared/ticket/TicketTable';
 import ChartCard from '@/components/shared/data/ChartCard';
 import MetricCard from '@/components/shared/data/MetricCard';
 import { ResumeWorkModal } from '@/components/shared/ticket/ResumeWorkModal';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/stores/authStore';
 import type { Ticket } from '@/types';
+import WorkQueueShell from './WorkQueueShell';
 
 type PendingWorkRole = 'hod' | 'hos' | 'technician';
 
@@ -39,11 +27,7 @@ interface Props {
 const SUBTITLE: Record<PendingWorkRole, string> = {
   hod: 'Jobs on hold across your campus — why, and for how long.',
   hos: 'Jobs your section has stopped, and what each one is waiting for.',
-  // Only the technician's *own* held jobs, unlike the other two roles. The
-  // difference is that this page acts: `TicketStatusView` lets a
-  // technician change status only on tickets assigned to them — section scope
-  // alone is view-only — so listing a section-mate's held job here would put a
-  // Resume button on a row the server answers 403 for.
+  // Only the technician's own jobs: they may change status on nothing else.
   technician:
     'Your jobs that are stopped, why, and for how long. Resume one when the thing it was waiting for arrives.',
 };
@@ -58,17 +42,10 @@ function pendingDays(ticket: Ticket): number | null {
 }
 
 export default function PendingWorkView({ role, onTicketSelect, embedded = false }: Props) {
-  // page_size is generous on purpose: this list is bounded by how much work is
-  // stuck, which is a small number in any healthy section — and if it is not
-  // small, seeing all of it is the point.
   const userId = useAuthStore((st) => st.user?.id);
   const isTechnician = role === 'technician';
 
-  // `assigned_to` narrows *within* the server's scope — it never widens it, so
-  // this is a filter on the technician's own rows rather than a claim about
-  // who they are. Skipped until the id is known: without it the same request
-  // would return their whole trade for a frame, which is the one thing this
-  // page must not show.
+  // A technician's list waits for their id, so an unnarrowed request never fires.
   const { tickets, loading, refetch } = useTickets(
     {
       status: 'pending',
@@ -79,9 +56,7 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
   );
   const [acting, setActing] = useState<{ ticket: Ticket; mode: 'resume' | 'change' } | null>(null);
 
-  // Grouped in the browser rather than fetched: these are the same rows already
-  // on screen, so a second round trip to count them would be a request that can
-  // disagree with the table beside it.
+  // Counted from the rows on screen, so the chart always agrees with the table.
   const byReason = useMemo(() => {
     const counts = new Map<string, number>();
     for (const t of tickets) {
@@ -106,109 +81,90 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
   const stalled = tickets.filter((t) => (pendingDays(t) ?? 0) >= 7).length;
 
   return (
-    <div className={embedded ? 'p-4 sm:p-5 space-y-4' : 'flex-1 overflow-y-auto bg-muted/30 p-4 space-y-4'}>
-      {embedded ? (
-        <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
-      ) : (
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Pending Work</h1>
-          <p className="text-sm text-muted-foreground">{SUBTITLE[role]}</p>
-        </div>
-      )}
-
-      {loading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : total === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-14 text-center">
-            <PauseCircle className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">Nothing is on hold</p>
-            <p className="text-sm text-muted-foreground">
-              {isTechnician
-                ? 'Every job you hold is either being worked on or finished.'
-                : 'Every job in your scope is either being worked on or finished.'}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {/* The two numbers worth leading with. Not a five-card strip: this
-              page answers one question and padding it would bury the answer. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard title="Jobs on hold" value={total} />
-            <MetricCard
-              title="Held over a week"
-              value={stalled}
-              tone={stalled ? 'alert' : 'default'}
-              description={
-                longest && longest.days >= 7 ? `longest ${longest.days} days` : undefined
-              }
-            />
-          </div>
-
-          {/* The shape of the worklist below it, off the same rows, so the
-              two can never disagree. Counts are printed beside every bar: the
-              bar is the comparison, the number is the fact, and neither relies
-              on colour to carry meaning. */}
-          <ChartCard
-            title="Why work is pending"
-            description="What your held jobs are waiting for."
-          >
-            <div className="space-y-2.5">
-              {byReason.map((r) => (
-                <div key={r.label} className="flex items-center gap-3">
-                  <span className="w-56 shrink-0 truncate text-sm" title={r.label}>
-                    {r.label}
-                  </span>
-                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${(r.count / total) * 100}%`,
-                        backgroundColor: 'var(--chart-1)',
-                      }}
-                    />
-                  </div>
-                  <span className="w-20 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-                    {r.count} ({Math.round((r.count / total) * 100)}%)
-                  </span>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
-
-          <TicketTable
-            tickets={tickets}
-            variant="pending"
-            loading={loading}
-            // Every row on a technician's page is assigned to them.
-            hideColumns={isTechnician ? HIDE_FOR_TECHNICIAN : undefined}
-            title="Jobs on hold"
-            onRowClick={(t) => onTicketSelect?.(t.id)}
-            onResume={(t) => setActing({ ticket: t, mode: 'resume' })}
-            onChangeReason={(t) => setActing({ ticket: t, mode: 'change' })}
-            searchPlaceholder="Search by ticket number or job…"
-            emptyMessage="Nothing is on hold"
-            emptyDescription="Every job in your scope is being worked on or finished."
-            rowClassName={(t) =>
-              (pendingDays(t) ?? 0) >= 30
-                ? 'border-l-2 border-status-escalated bg-status-escalated/5'
-                : ''
+    <>
+      <WorkQueueShell
+        title="Pending Work"
+        subtitle={SUBTITLE[role]}
+        embedded={embedded}
+        loading={loading}
+        empty={total === 0 ? {
+          icon: PauseCircle,
+          title: 'Nothing is on hold',
+          text: isTechnician
+            ? 'Every job you hold is either being worked on or finished.'
+            : 'Every job in your scope is either being worked on or finished.',
+        } : null}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricCard title="Jobs on hold" value={total} />
+          <MetricCard
+            title="Held over a week"
+            value={stalled}
+            tone={stalled ? 'alert' : 'default'}
+            description={
+              longest && longest.days >= 7 ? `longest ${longest.days} days` : undefined
             }
           />
+        </div>
 
-          {stalled > 0 && (
-            <p className="flex items-start gap-2 text-sm text-muted-foreground">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                {stalled} job{stalled === 1 ? ' has' : 's have'} been held more than a week.
-                A hold that outlives the thing it was waiting for stops being a pause and
-                starts being a backlog.
-              </span>
-            </p>
-          )}
-        </>
-      )}
+        <ChartCard
+          title="Why work is pending"
+          description="What your held jobs are waiting for."
+        >
+          <div className="space-y-2.5">
+            {byReason.map((r) => (
+              <div key={r.label} className="flex items-center gap-3">
+                <span className="w-56 shrink-0 truncate text-sm" title={r.label}>
+                  {r.label}
+                </span>
+                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(r.count / total) * 100}%`,
+                      backgroundColor: 'var(--chart-1)',
+                    }}
+                  />
+                </div>
+                <span className="w-20 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+                  {r.count} ({Math.round((r.count / total) * 100)}%)
+                </span>
+              </div>
+            ))}
+          </div>
+        </ChartCard>
+
+        <TicketTable
+          tickets={tickets}
+          variant="pending"
+          loading={loading}
+          // Every row on a technician's page is assigned to them.
+          hideColumns={isTechnician ? HIDE_FOR_TECHNICIAN : undefined}
+          title="Jobs on hold"
+          onRowClick={(t) => onTicketSelect?.(t.id)}
+          onResume={(t) => setActing({ ticket: t, mode: 'resume' })}
+          onChangeReason={(t) => setActing({ ticket: t, mode: 'change' })}
+          searchPlaceholder="Search by ticket number or job…"
+          emptyMessage="Nothing is on hold"
+          emptyDescription="Every job in your scope is being worked on or finished."
+          rowClassName={(t) =>
+            (pendingDays(t) ?? 0) >= 30
+              ? 'border-l-2 border-status-escalated bg-status-escalated/5'
+              : ''
+          }
+        />
+
+        {stalled > 0 && (
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {stalled} job{stalled === 1 ? ' has' : 's have'} been held more than a week.
+              A hold that outlives the thing it was waiting for stops being a pause and
+              starts being a backlog.
+            </span>
+          </p>
+        )}
+      </WorkQueueShell>
 
       {acting && (
         <ResumeWorkModal
@@ -222,6 +178,6 @@ export default function PendingWorkView({ role, onTicketSelect, embedded = false
           }}
         />
       )}
-    </div>
+    </>
   );
 }

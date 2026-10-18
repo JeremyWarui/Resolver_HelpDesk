@@ -1,7 +1,6 @@
 """Object builders for the test suite.
 
-Plain functions, not a factory library: the org graph has structural rules a
-default would hide. The org-level builders are get_or_create, so two tests
+Plain functions. The org-level builders are get_or_create, so two tests
 asking for `campus("NRB")` get the same row.
 """
 
@@ -10,8 +9,8 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.accounts.models import SCOPE_FIELD_BY_ROLE
-from apps.accounts.posts import add_trade, assign_role
+from apps.accounts.models import SCOPE_FIELD_BY_ROLE, TechnicianTrade
+from apps.accounts.posts import assign_role
 from apps.facilities.models import Facility, FacilityType
 from apps.org.models import Campus, ServiceItem, Trade
 from apps.sla.models import PRIORITY_LEVELS, Priority
@@ -45,7 +44,7 @@ def make_facility_type(code="building", name=None):
 
 def make_facility(campus, name="Administration Block", facility_type=None):
     """A place on a campus. Every ticket carries one, so `make_ticket` defaults
-    to this campus's block rather than making each test name a location."""
+    to this campus's block."""
     return Facility.objects.get_or_create(
         campus=campus,
         name=name,
@@ -57,8 +56,8 @@ def make_user(username, campus=None, role=None, trades=()):
     """Create a user at a campus and, optionally, give them their one post.
 
     A campus-scoped role is scoped to the campus they work at, which is what
-    every fixture wants. The role goes through `assign_role` rather than being
-    inserted, so a fixture grants exactly the access production would.
+    every fixture wants. The role goes through `assign_role`, so a fixture
+    grants exactly the access production would.
     """
     user = User.objects.create_user(
         username=username,
@@ -86,8 +85,18 @@ def make_technician(username, campus, trades):
 
 
 def link_technician(user, campus, trade):
-    """One more (campus, trade) pair — `accounts.posts` writes it, not this."""
-    return add_trade(user, campus, trade)
+    """One more (campus, trade) pair beside the ones `assign_role` wrote."""
+    return TechnicianTrade.objects.get_or_create(user=user, campus=campus, trade=trade)[0]
+
+
+def escalate(ticket, now):
+    """Run the escalation check on one ticket, as a run would. Returns whether it moved."""
+    from apps.tickets.escalation import _escalate_candidates
+
+    moved = [reached for _, _, reached in _escalate_candidates([(ticket.pk, ticket.current_level)], now)]
+    if moved:
+        ticket.current_level = moved[0]
+    return bool(moved)
 
 
 def make_priorities():

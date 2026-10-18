@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, seedPassword, USERS } from './helpers';
+import { login, USERS, API, authHeaders } from './helpers';
 
 // The technician's On Hold and Escalated tabs list only what is assigned to
 // them, which is narrower than their server scope — a technician's
@@ -121,14 +121,9 @@ test('Section Tickets asks for live work by default', async ({ page }) => {
 });
 
 test('Start work on a card moves the job on, and the card then offers Update status', async ({ page, request }) => {
-  const API = 'http://localhost:8001/api/v1';
-  const token = async (email: string) => {
-    const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });
-    return { Authorization: `Bearer ${(await res.json()).accessToken}` };
-  };
   // Set up: the HOS assigns one open plumbing job to the technician.
-  const techAuth = await token(USERS.technician);
-  const hosAuth = await token(USERS.hos);
+  const techAuth = await authHeaders(request, USERS.technician);
+  const hosAuth = await authHeaders(request, USERS.hos);
   const open = await (await request.get(`${API}/tickets/`, {
     headers: techAuth, params: { status: 'open', page_size: 50 },
   })).json();

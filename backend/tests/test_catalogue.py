@@ -84,7 +84,7 @@ def test_a_ticket_can_be_raised_at_a_newly_added_campus(
     priorities,
 ):
     """A bare Campus row is usable the moment it exists: trades are global and
-    routing is (campus, trade), so there is no chain left to provision. This
+    routing is (campus, trade), so there is nothing further to provision. This
     drives the whole way through: add the campus, register a place on it, put
     someone there, raise."""
     from apps.facilities.models import Facility
@@ -117,8 +117,8 @@ def test_a_retired_service_item_leaves_the_catalogue(api, requester, electrical,
     """`is_active` has to mean something, or an admin's retire button lies.
 
     `Ticket.service_item` is PROTECTed, so an item that has ever been used
-    cannot be deleted — deactivating it is the only way to retire one, and
-    filtering the trade alone left every retired item still on offer.
+    cannot be deleted — deactivating it is the only way to retire one. The
+    catalogue filters on the item as well as its trade.
     """
     retired = factories.make_service_item(electrical, "Rewire the whole block")
     retired.is_active = False

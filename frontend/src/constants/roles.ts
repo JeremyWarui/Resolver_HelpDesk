@@ -1,9 +1,5 @@
 // Everything the frontend knows about a role: what it is called, how it sorts,
 // what it covers, and where it lives.
-//
-// One file because all of it is keyed by `UserRole` and read together — a page
-// that prints a role's name usually also prints what its figures cover, and the
-// sidebar needs the label and the base path in the same breath.
 
 import type { UserRole } from '@/types';
 
@@ -30,7 +26,7 @@ export const ROLE_ORDER: UserRole[] = ['admin', 'manager', 'hod', 'hos', 'techni
 /**
  * Where each role lives. The sidebar builds its links from this and the login
  * redirect reads it, so a renamed prefix moves both together. App.tsx spells
- * its own paths out: a route file that reads as its URLs is worth more there.
+ * its own paths out; change those by hand.
  */
 export const ROLE_BASE: Record<UserRole, string> = {
   user: '/user',
@@ -42,9 +38,8 @@ export const ROLE_BASE: Record<UserRole, string> = {
 };
 
 /**
- * What a role's figures cover, said once. Every scoped page carries this under
- * its title, and all of them read the same server-side scope — so three copies
- * of the map was three chances for one page to claim a reach it does not have.
+ * What a role's figures cover. Every scoped page carries this under its title,
+ * and all of them read the same server-side scope.
  */
 export const SCOPE_SUBTITLE: Partial<Record<UserRole, string>> = {
   admin: 'Every campus',

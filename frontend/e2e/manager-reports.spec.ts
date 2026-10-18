@@ -1,10 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS } from './helpers';
+import { login, USERS, API } from './helpers';
 
 // The manager's report reads one overview: every section agrees with
 // /analytics/overview/, and picking a campus narrows all of them. Read-only.
-
-const API = 'http://localhost:8001/api/v1';
 
 interface Overview {
   current: { resolution_sla_pct: number | null; overdue: number; open_backlog: number };
@@ -36,7 +34,7 @@ test('the manager reads every section in order, matching the overview', async ({
       ['Needs your attention', 'Facility Health', 'Campuses', 'Trades', 'Trades by campus'].includes(l!)));
   expect(sections).toEqual(['Needs your attention', 'Facility Health', 'Campuses', 'Trades', 'Trades by campus']);
 
-  await expect(page.getByText('Resolved on time', { exact: true })).toBeVisible();
+  await expect(page.getByText('Resolved on time', { exact: true }).first()).toBeVisible();
   const attention = page.getByLabel('Needs your attention', { exact: true });
   if (data.insights.length) {
     await expect(attention.getByRole('row')).toHaveCount(data.insights.length);
@@ -63,7 +61,7 @@ test('the manager reads every section in order, matching the overview', async ({
       .toHaveText(String(row.total));
   }
 
-  // The supervisor views are gone from the manager's page.
+  // The supervisor views are not on the manager's page.
   await expect(page.getByText('Technician Performance')).toHaveCount(0);
 });
 

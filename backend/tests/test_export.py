@@ -23,12 +23,14 @@ def worked(
     nrb_electrical_ticket, msa_electrical_ticket, nrb_plumbing_ticket,
     nrb_electrician, msa_electrician, nrb_hos, msa_hos, requester,
 ):
-    """One closed and rated NRB job, one live MSA job, one open NRB job."""
+    """One closed and rated NRB job, one MSA job on hold, one open NRB job."""
     assign_ticket(nrb_electrical_ticket, nrb_electrician, nrb_hos)
     for status in ("in_progress", "resolved"):
         transition_status(nrb_electrical_ticket, status, nrb_electrician)
     rate_ticket(nrb_electrical_ticket, requester, 4, "Good")
     assign_ticket(msa_electrical_ticket, msa_electrician, msa_hos)
+    transition_status(msa_electrical_ticket, "in_progress", msa_electrician)
+    transition_status(msa_electrical_ticket, "pending", msa_electrician, pending_reason="material_not_in_store")
     return nrb_electrical_ticket, msa_electrical_ticket, nrb_plumbing_ticket
 
 
@@ -72,7 +74,7 @@ def test_the_manager_hod_hos_and_technician_download_the_pdf(api, request, worke
     assert response["Content-Disposition"].endswith('.pdf"')
 
 
-@pytest.mark.parametrize("role", ["admin_user", "requester"])
+@pytest.mark.parametrize("role", ["requester"])
 def test_no_one_else_downloads_the_pdf(api, request, worked, role):
     api.force_authenticate(request.getfixturevalue(role))
     assert api.get(reverse(PDF)).status_code == 403
@@ -94,7 +96,7 @@ def test_the_downloads_need_a_login(api):
 def test_the_manager_workbook_is_their_reports_page_over_every_campus(api, manager, worked):
     wb = _workbook(api, manager)
     assert wb.sheetnames == [
-        "Summary", "Facility Health", "Campuses", "Trades", "Trades by campus", "Tickets raised",
+        "Summary", "Tickets raised", "Facility Health", "Campuses", "Trades", "Trades by campus",
         "Holds", "Tickets",
     ]
     assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi", "Mombasa"}
@@ -104,7 +106,7 @@ def test_the_manager_workbook_is_their_reports_page_over_every_campus(api, manag
 def test_an_hos_workbook_is_their_reports_page_over_their_campus(api, nrb_hos, worked):
     wb = _workbook(api, nrb_hos)
     assert wb.sheetnames == [
-        "Summary", "Facility Health", "Technicians", "Trades", "Tickets raised", "Holds", "Tickets",
+        "Summary", "Tickets raised", "Facility Health", "Technicians", "Trades", "Holds", "Tickets",
     ]
     assert {t["Campus"] for t in _tickets(wb)} == {"Nairobi"}
     assert _summary(wb)["Covers"] == "Nairobi campus"
@@ -142,10 +144,10 @@ def test_the_workbook_says_what_the_reports_page_says(api, request, worked, role
     # A technician's headline names the same figures in their own words.
     label = (
         {"total": "Jobs assigned to me", "backlog": "Active now", "overdue": "Overdue now",
-         "sla": "On time", "resolution": "Average time to fix"}
+         "sla": "Resolved on time", "resolution": "Time to resolve"}
         if role == "nrb_electrician" else
         {"total": "Tickets raised", "backlog": "Open backlog (now)", "overdue": "Overdue (now)",
-         "sla": "Resolution SLA", "resolution": "Average resolution time"}
+         "sla": "Resolved on time", "resolution": "Time to resolve"}
     )
     assert summary[label["total"]] == totals["total"]
     assert summary[label["backlog"]] == totals["open_backlog"]
@@ -310,7 +312,7 @@ def test_trend_days_are_kenyan_days(api, manager, nrb, electrical, requester, pr
     assert [p["bucket"][:10] for p in trend] == ["2026-10-10"]
 
 
-# ─── The new figures on /analytics/ ─────────────────────────────────────────
+# ─── Other figures on /analytics/ ───────────────────────────────────────────
 
 
 def test_analytics_reports_completion_escalation_split_and_rated_share(
@@ -334,8 +336,8 @@ def test_a_technicians_headline_is_about_their_own_work(api, nrb_electrician, wo
     """No figure about assigning work, which is the HOS's and never theirs."""
     summary = _summary(_workbook(api, nrb_electrician, days=30))
 
-    assert "Jobs assigned to me" in summary and "Average time to fix" in summary
-    for supervisors_only in ("Open (not yet assigned)", "Average response time", "Response SLA"):
+    assert "Jobs assigned to me" in summary and "Time to resolve" in summary
+    for supervisors_only in ("Open (not yet assigned)", "Time to respond", "Responded on time"):
         assert supervisors_only not in summary
 
 
@@ -389,7 +391,7 @@ def test_a_supervisors_pdf_prints_the_pages_technician_figures(
     words = _pdf_words(api, user, monkeypatch, days=30)
 
     # The name column is a paragraph; the table's own strings follow its last heading, row by row.
-    start = words.index("Avg fix", words.index("Technicians")) + 2
+    start = words.index("Time to resolve", words.index("Technicians")) + 2
     assert len(page["technicians"]) == 2
     for n, t in enumerate(page["technicians"]):
         row = words[start + 5 * n:start + 5 * (n + 1)]
@@ -417,18 +419,26 @@ def _assert_workbook_matches(wb, page):
     """Every figure on every sheet, against the page's own envelope."""
     current, before = page["current"], page["previous"]
     headline = {r["Figure"]: r for r in _sheet_from(wb, "Summary", "Figure") if r["Figure"]}
+    assert headline["Raised"]["Value"] == current["total"]
+    assert headline["Raised"]["Period before"] == before["total"]
+    assert headline["Resolved"]["Value"] == current["settled"]
+    assert headline["Resolved"]["Period before"] == before["settled"]
+    assert headline["On hold now"]["Value"] == sum(b["total"] for b in page["bottlenecks"])
     assert headline["Resolved on time"]["Value"] == _pct(current["resolution_sla_pct"])
     assert headline["Resolved on time"]["Period before"] == _pct(before["resolution_sla_pct"])
-    assert headline["Average time to fix"]["Value"] == _seconds(current["resolution_seconds_avg"])
-    assert headline["Average time to fix"]["Period before"] == _seconds(before["resolution_seconds_avg"])
-    assert headline["Overdue now"]["Value"] == current["overdue"]
-    assert headline["Open right now"]["Value"] == current["open_backlog"]
+    assert headline["Time to resolve"]["Value"] == _seconds(current["resolution_seconds_avg"])
+    assert headline["Time to resolve"]["Period before"] == _seconds(before["resolution_seconds_avg"])
+    assert "Open right now" not in headline
     assert headline["Rating"]["Value"] == current["rating_avg"]
+    assert [(r["Reason"], r["On hold now"], r["By trade"]) for r in _sheet(wb, "Holds")] == [
+        (b["label"], b["total"], " · ".join(f"{t['label']} {t['total']}" for t in b["trades"]) or None)
+        for b in page["bottlenecks"]
+    ]
 
     if "technicians" in page:
         assert _sheet(wb, "Technicians") == [
             {"Technician": t["label"], "Jobs": t["total"], "Open now": t["open_now"],
-             "On time": _pct(t["resolution_sla_pct"]), "Avg fix": _seconds(t["resolution_seconds_avg"]),
+             "Resolved on time": _pct(t["resolution_sla_pct"]), "Time to resolve": _seconds(t["resolution_seconds_avg"]),
              "Rating": t["rating_avg"]}
             for t in page["technicians"]
         ]
@@ -442,13 +452,13 @@ def _assert_workbook_matches(wb, page):
     for c in page["campuses"]:
         assert campuses[c["label"]] == {
             "Campus": c["label"], "Raised": c["total"], "Open now": c["open_now"], "Overdue": c["overdue"],
-            "With HOD": c["at_hod"], "On time": _pct(c["resolution_sla_pct"]),
-            "Avg fix": _seconds(c["resolution_seconds_avg"]), "Rating": c["rating_avg"],
+            "With HOD": c["at_hod"], "Resolved on time": _pct(c["resolution_sla_pct"]),
+            "Time to resolve": _seconds(c["resolution_seconds_avg"]), "Rating": c["rating_avg"],
             "Technicians": c["technicians"], "Jobs each": c["jobs_each"],
         }
 
     assert _sheet(wb, "Trades") == [
-        {"Trade": t["label"], "Raised": t["total"], "On time": _pct(t["resolution_sla_pct"]), "Rating": t["rating_avg"]}
+        {"Trade": t["label"], "Raised": t["total"], "Resolved on time": _pct(t["resolution_sla_pct"]), "Rating": t["rating_avg"]}
         for t in page["trades"]
     ]
 
@@ -552,21 +562,22 @@ def test_only_an_every_campus_report_takes_a_campus(api, request, worked, msa, r
     assert api.get(reverse(XLSX), {"campus": msa.pk}).status_code == 400
 
 
-def test_the_admin_workbook_keeps_its_breakdowns_and_narrows_to_a_campus(api, admin_user, worked, msa):
+def test_the_admin_workbook_is_the_managers_and_narrows_to_a_campus(api, admin_user, manager, worked, msa):
+    assert _workbook(api, admin_user).sheetnames == _workbook(api, manager).sheetnames
+
     wb = _workbook(api, admin_user, campus=msa.pk)
 
-    assert "By campus" in wb.sheetnames and "Facility Health" not in wb.sheetnames
     assert {t["Campus"] for t in _tickets(wb)} == {"Mombasa"}
 
 
 def test_the_managers_pdf_follows_their_reports_page(api, monkeypatch, manager, worked):
     words = _pdf_words(api, manager, monkeypatch)
 
-    order = ["Headline figures", "Needs your attention", "Facility Health", "Campuses", "Trades",
-             "Trades by campus", "Tickets raised", "On hold now, by reason"]
+    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Campuses",
+             "Trades", "Trades by campus", "On hold now, by reason"]
     positions = [words.index(title) for title in order]
     assert positions == sorted(positions)
-    assert {"Resolved on time", "Open right now", "With HOD", "Jobs each"} <= set(words)
+    assert {"Raised", "Resolved", "Resolved on time", "With HOD", "Jobs each"} <= set(words)
     assert "Trade performance" not in words
 
 
@@ -630,15 +641,18 @@ def test_a_two_trade_technicians_pdf_keeps_its_trade_sections(
 def test_a_supervisors_pdf_follows_their_reports_page(api, monkeypatch, request, worked, role):
     words = _pdf_words(api, request.getfixturevalue(role), monkeypatch)
 
-    order = ["Headline figures", "Needs your attention", "Facility Health", "Technicians", "Trades",
-             "Tickets raised", "On hold now, by reason"]
+    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Technicians",
+             "Trades", "On hold now, by reason"]
     positions = [words.index(title) for title in order]
     assert positions == sorted(positions)
     for absent in ("Campuses", "Trades by campus", "Trade performance", "Where my jobs stand"):
         assert absent not in words
 
 
-def test_the_admin_pdf_is_refused_and_their_workbook_keeps_its_breakdowns(api, admin_user, worked):
-    api.force_authenticate(admin_user)
-    assert api.get(reverse(PDF)).status_code == 403
-    assert "By technician" in _workbook(api, admin_user).sheetnames
+def test_the_admins_pdf_follows_the_managers_reports_page(api, monkeypatch, admin_user, worked):
+    words = _pdf_words(api, admin_user, monkeypatch)
+
+    order = ["Headline figures", "Needs your attention", "Tickets raised", "Facility Health", "Campuses",
+             "Trades", "Trades by campus", "On hold now, by reason"]
+    positions = [words.index(title) for title in order]
+    assert positions == sorted(positions)

@@ -13,14 +13,10 @@ import type { Facility } from '@/types';
  * The estate register: every building the institution maintains, campus on the
  * rail.
  *
- * Campus is the rail because it is how the estate is walked — an HOS runs one,
- * a manager compares five. The rail only ever filters: the rows stay grouped by
- * campus and the card stays the same, so what a reader learns at All facilities
- * is what they read on every campus tab.
+ * The rail only filters: rows stay grouped by campus and the card stays the
+ * same, so what a reader learns at All facilities holds on every campus tab.
  *
- * Silent buildings are rows, not absences. A ticket breakdown can only draw the
- * buildings that have tickets, and "which have we heard nothing from" is the
- * question a register exists to answer.
+ * A building with no tickets is still a row.
  *
  * Every source is scoped server-side, so an HOD or HOS sees the same page with
  * their own numbers; `manage` gates the create and edit controls.

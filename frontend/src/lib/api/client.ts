@@ -53,7 +53,7 @@ function processQueue(error: unknown, token: string | null): void {
   failedQueue = [];
 }
 
-export function clearSessionAndRedirect(reason?: 'role-changed'): void {
+function clearSessionAndRedirect(reason?: 'role-changed'): void {
   useAuthStore.getState().clearUser();
   if (!window.location.pathname.includes('/login')) {
     const suffix = reason ? `?reason=${reason}` : '';

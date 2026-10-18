@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginAsAdmin } from './helpers';
+import { loginAsAdmin, apiGet } from './helpers';
 
 // The admin's dashboard: what needs setting up and whether the work moves,
 // every figure the server's, every card a way to the page that fixes it.
@@ -15,12 +15,7 @@ interface Desk {
 }
 
 async function desk(page: Page): Promise<Desk> {
-  return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/analytics/desk/', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  });
+  return apiGet(page, `/analytics/desk/`);
 }
 
 const STATE = { never: 'Not scheduled', failing: 'Failing', stale: 'Stopped', running: 'Running' } as const;
@@ -49,7 +44,7 @@ test('the cards, the campus table and the feedback say what the server says', as
 
   const feedback = page.getByLabel('System feedback, unread', { exact: true });
   for (const f of data.feedback.latest) await expect(feedback.getByText(f.message)).toBeVisible();
-  // The old supervisor dashboard is gone from the admin's.
+  // The supervisor dashboard's Recent Tickets is not on the admin's.
   await expect(page.getByText('Recent Tickets')).toHaveCount(0);
 });
 

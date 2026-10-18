@@ -17,8 +17,7 @@ export interface StatConfig {
 
 interface MetricCardProps {
   title: string;
-  /** A ReactNode, not just a number: the escalation card's value is a short
-   *  list of levels rather than one figure. */
+  /** A ReactNode: the escalation card's value is a short list of levels. */
   value: ReactNode;
   icon?: ReactNode;
   iconBgColor?: string;
@@ -29,17 +28,15 @@ interface MetricCardProps {
   /** `alert` paints the figure in the escalation colour — for a count that is
    *  bad news when it is not zero. */
   tone?: 'default' | 'alert';
-  /** Let a long description wrap rather than cut it short. */
+  /** Let a long title and description wrap rather than cut them short. */
   wrapDescription?: boolean;
 }
 
 /**
  * One figure with a label: the card every stat strip in the app is built from.
  *
- * The icon is optional, and its absence is the only difference between the
- * dashboard's stat grid and the plainer strips on the operational pages —
- * those wrote their own `<Card>` three times over, which is how the same
- * number came to sit at three different sizes on three pages.
+ * The icon is optional; without it the card suits the plainer strips on the
+ * operational pages.
  */
 const MetricCard = ({
   title,
@@ -75,7 +72,7 @@ const MetricCard = ({
           <div className={`${iconBgColor} p-2.5 rounded-full mr-3 shrink-0`}>{icon}</div>
         )}
         <div className="min-w-0">
-          <p className="text-sm text-gray-500 truncate">{title}</p>
+          <p className={`text-sm text-gray-500 ${wrapDescription ? '' : 'truncate'}`}>{title}</p>
           <div className="flex items-baseline">
             <h3
               className="text-2xl font-bold mr-2 tabular-nums whitespace-nowrap"
@@ -101,25 +98,27 @@ const MetricCard = ({
 
 export default MetricCard;
 
-/** One row of cards on a wide screen, whatever the count. Lives here rather
- *  than in its own module: it is the only way these cards are ever arranged,
- *  and a grid wrapper whose sole job is to render `MetricCard` is not a
- *  separate concern from `MetricCard`. */
+/** One row of cards on a wide screen, whatever the count. */
 const gridClass = (count: number) =>
   count <= 4
     ? 'grid-cols-2 lg:grid-cols-4'
     : count === 5
       ? 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'
-      : 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-6';
+      : count === 6
+        ? 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-6'
+        : 'grid-cols-2 lg:grid-cols-4 xl:grid-cols-7';
 
 export const MetricCardRow = ({
   stats,
   loading,
   gridClassName,
+  wrapDescriptions = false,
 }: {
   stats: StatConfig[];
   loading: boolean;
   gridClassName?: string;
+  /** Let every card's title and description wrap, for a row too narrow to fit them on one line. */
+  wrapDescriptions?: boolean;
 }) => (
   <div className={`grid ${gridClassName || gridClass(stats.length)} gap-3 mb-2`}>
     {stats.map((s, i) => (
@@ -133,6 +132,7 @@ export const MetricCardRow = ({
         badge={s.badge}
         className="bg-white hover:shadow-md transition-shadow"
         isLoading={loading}
+        wrapDescription={wrapDescriptions}
       />
     ))}
   </div>

@@ -247,7 +247,7 @@ def test_send_only_to_leaves_no_other_address_on_the_message():
     assert original.to == ["a@example.test"], "the caller's message is left as it was"
 
 
-# ─── What the critic found ──────────────────────────────────────────────────
+# ─── Odd input, the rate limits, and old sessions ───────────────────────────
 
 
 @pytest.mark.parametrize("body", [

@@ -1,7 +1,5 @@
 /**
- * Unified FluentUI color palette for charts, badges, and UI elements.
- * This is the canonical source for all color definitions in the application.
- * Keeps colors consistent across status badges, priority badges, and charts.
+ * The FluentUI chart palette, and the badge colours the stat cards take.
  */
 
 const FLUENT_UI_COLORS = {
@@ -27,15 +25,5 @@ export const CHART_COLORS = [
   FLUENT_UI_COLORS.cyan,
 ] as const;
 
-/**
- * Semantic color assignments:
- * - Primary/Default: blue (tickets, primary actions)
- * - Success/Complete: green (resolved, closed)
- * - Warning/In-Progress: orange (in progress, medium priority)
- * - Danger/Critical: red (escalated, critical priority)
- * - Secondary/Pending: purple (pending status)
- */
-
-/** Badge palette for stat cards. Two modules had typed their own copy of
- *  this, both without 'orange' — which nothing produces. */
+/** Badge palette for stat cards. */
 export type BadgeColor = 'amber' | 'blue' | 'green' | 'red' | 'purple' | 'gray';

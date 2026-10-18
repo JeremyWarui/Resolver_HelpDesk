@@ -29,8 +29,6 @@ interface JWTLoginResponse {
 }
 
 // ── Flat shape returned to callers and stored in localStorage ─────────────────
-// Keeps the same surface as the old DRF token response so all callers
-// (LoginForm, useAuth, useUserData) require no changes.
 
 /** Decode a JWT's payload. base64url is not base64: `-` and `_` must be
  *  translated before atob. Returns null rather than throwing — a malformed
@@ -81,7 +79,7 @@ export interface RegisterPayload {
 function flattenJWT(data: JWTLoginResponse): LoginResponse {
   const ar = data.user.active_role;
 
-  // campus_id comes from the JWT claim (set from UserProfile) — authoritative
+  // campus_id comes from the JWT claim (the home campus) — authoritative
   // for all roles including pure requesters where active_role is null.
   const claims = decodeJwtPayload(data.accessToken);
   const tokenCampusId = typeof claims?.campus_id === 'number' ? claims.campus_id : null;
@@ -167,7 +165,7 @@ export async function logout(): Promise<void> {
 // GET /auth/me/ returns the serialized user at the TOP level (no `user`
 // wrapper, no accessToken) with the server-re-derived active_role — the
 // authoritative answer to "what role is this session actually in now".
-export interface MeResponse {
+interface MeResponse {
   id: number;
   username: string;
   email: string;

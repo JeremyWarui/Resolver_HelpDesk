@@ -39,7 +39,7 @@ const App = () => {
           <Route path="/forgot-password" element={<ForgotPasswordForm />} />
           <Route path="/reset-password" element={<ResetPasswordForm />} />
 
-          {/* Protected Dashboard Routes — DashboardShell wires WebSocket for all roles */}
+          {/* Protected Dashboard Routes */}
           <Route element={<DashboardShell />}>
             <Route
               path="/dashboard/*"

@@ -623,8 +623,7 @@ class TicketAttachmentView(APIView):
 class TicketAttachmentDetailView(APIView):
     """DELETE /tickets/{pk}/attachments/{att_id}/ — remove one file.
 
-    Its own view because the two routes carry different URL kwargs: one class
-    serving both made `DELETE` on the collection a 500.
+    Its own view because the two routes carry different URL kwargs.
     """
 
     permission_classes = [IsAuthenticated]

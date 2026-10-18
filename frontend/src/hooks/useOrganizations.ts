@@ -3,7 +3,7 @@
 // reads the same call and sees its own rows.
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { campusesService, facilitiesService } from '@/lib/api/organizations';
+import { getCampusRoster, getCampuses, getFacilities } from '@/lib/api/organizations';
 import type { Campus, CampusRosterRow, Facility } from '@/types';
 
 const CAMPUSES_KEY = ['campuses'] as const;
@@ -14,7 +14,7 @@ export const useCampuses = (options?: { enabled?: boolean }) => {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<Campus[]>({
     queryKey: CAMPUSES_KEY,
-    queryFn: () => campusesService.getCampuses(),
+    queryFn: () => getCampuses(),
     staleTime: 10 * 60 * 1000,
     enabled: options?.enabled ?? true,
   });
@@ -32,7 +32,7 @@ export const useCampusRoster = () => {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<CampusRosterRow[]>({
     queryKey: ROSTER_KEY,
-    queryFn: () => campusesService.getRoster(),
+    queryFn: () => getCampusRoster(),
   });
 
   return {
@@ -50,10 +50,7 @@ export const useFacilities = () => {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<Facility[]>({
     queryKey: FACILITIES_KEY,
-    queryFn: async () => {
-      const response = await facilitiesService.getFacilities();
-      return Array.isArray(response) ? response : (response as { results?: Facility[] }).results ?? [];
-    },
+    queryFn: getFacilities,
     staleTime: 5 * 60 * 1000,
   });
 

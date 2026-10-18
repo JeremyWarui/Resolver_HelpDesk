@@ -1,5 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-import { login, PLUMBING, NRB_OFFICE_BLOCK, USERS, uniqueSuffix } from './helpers';
+import { test, expect } from '@playwright/test';
+import { login, PLUMBING, USERS, raiseTicket, uniqueSuffix, API, bearer } from './helpers';
 
 // Claiming is the technician half of assignment: nobody hands the ticket over,
 // they take it. It is two hops in one action — open → assigned → in_progress —
@@ -13,40 +13,15 @@ const suffix = uniqueSuffix();
 let ticketNo = '';
 let ticketId = 0;
 
-/** The access token this signed-in page is using, for the raced second claim. */
-async function bearer(page: Page): Promise<string> {
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
-  expect(token, 'the signed-in page must hold an access token').toBeTruthy();
-  return token as string;
-}
-
 test.describe.configure({ mode: 'serial' });
 
 test('a requester raises a plumbing ticket, which opens unassigned', async ({ page }) => {
   await login(page, USERS.requester);
-  await page.getByRole('button', { name: 'New Ticket' }).first().click();
-
-  const wizard = page.getByRole('dialog');
-  await wizard.getByRole('button', { name: PLUMBING.trade }).click();
-  await wizard.getByRole('button', { name: PLUMBING.item }).click();
-  await wizard.getByRole('button', { name: 'Next' }).click();
-  await wizard
-    .getByPlaceholder('Describe the fault — what is wrong, and since when…')
-    .fill(`CLAIM ${suffix} — washroom tap will not shut off`);
-  await wizard.getByRole('button', { name: 'Office' }).click();
-  await wizard.getByRole('combobox').last().click();
-  await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
-  await wizard.getByRole('button', { name: 'Next' }).click();
-
-  const created = page.waitForResponse(
-    (r) => /\/tickets\/$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok(),
-  );
-  await wizard.getByRole('button', { name: 'Submit request' }).click();
-  const body = await (await created).json();
-  ticketNo = body.ticket_no;
-  ticketId = body.id;
-  expect(ticketNo).toBeTruthy();
+  ({ ticket_no: ticketNo, id: ticketId } = await raiseTicket(page, {
+    ...PLUMBING,
+    description: `CLAIM ${suffix} — washroom tap will not shut off`,
+    where: `Floor 2, Room ${suffix.slice(-3)}`,
+  }));
 });
 
 test('it lands in the claimable pool of the matching trade, not the others', async ({ page }) => {
@@ -69,7 +44,7 @@ test('an out-of-trade technician is refused the claim outright', async ({ page }
   await login(page, USERS.technicianOtherTrade);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`${API}/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   // The pk is client-supplied, so scope is re-checked on the action itself and
@@ -81,7 +56,7 @@ test('the HOS is not offered a claim — supervisors assign, they do not take', 
   await login(page, USERS.hos);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`${API}/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(res.status(), 'only technicians may claim').toBe(403);
@@ -138,7 +113,7 @@ test('a second claim on the same ticket loses, with a 409', async ({ page }) => 
   await login(page, USERS.technician);
   const token = await bearer(page);
 
-  const res = await page.request.post(`http://localhost:8001/api/v1/tickets/${ticketId}/claim/`, {
+  const res = await page.request.post(`${API}/tickets/${ticketId}/claim/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(res.status(), 'an already-claimed ticket must be refused').toBe(409);

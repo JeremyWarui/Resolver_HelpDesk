@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS } from './helpers';
+import { login, USERS, apiGet } from './helpers';
 
 // The manager's dashboard is an overview: live work and the last seven days,
 // every figure the server's, and no ticket list. Read-only.
@@ -8,20 +8,15 @@ interface Dashboard {
   live: {
     open_now: number; waiting: number; with_technician: number; on_hold: number; overdue: number; at_hod: number;
   };
-  this_week: { total: number };
-  last_week: { total: number };
+  this_week: { total: number; settled: number };
+  last_week: { total: number; settled: number };
   open_work: { label: string; waiting: number; with_technician: number; on_hold: number }[];
   campus_table: { label: string; total: number; open_now: number; overdue: number; at_hod: number }[];
   facilities: { label: string; campus: string; total: number; trades: { label: string; total: number }[] }[];
 }
 
 async function dashboard(page: Page, query = ''): Promise<Dashboard> {
-  return page.evaluate(async (q) => {
-    const r = await fetch(`http://localhost:8001/api/v1/analytics/dashboard/${q}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  }, query);
+  return apiGet(page, `/analytics/dashboard/${query}`);
 }
 
 const bar = (c: Dashboard['open_work'][number]) =>
@@ -33,10 +28,13 @@ test('the manager dashboard shows the server’s figures and no ticket list', as
   const data = await dashboard(page);
 
   const card = (title: string) => page.locator('p', { hasText: new RegExp(`^${title}$`) }).locator('xpath=..');
-  await expect(card('Open now')).toContainText(String(data.live.open_now));
-  await expect(card('Open now')).toContainText(`${data.live.waiting} waiting · ${data.live.on_hold} held`);
-  await expect(card('Overdue now')).toContainText(`${data.live.at_hod} with the HOD`);
-  await expect(card('Raised this week')).toContainText(`${data.last_week.total} last week`);
+  await expect(card('Raised this week')).toContainText(`${data.this_week.total}${data.last_week.total} last week`);
+  await expect(card('Resolved this week')).toContainText(`${data.this_week.settled}${data.last_week.settled} last week`);
+  await expect(card('Overdue now')).toContainText(`${data.live.overdue}${data.live.at_hod} with the HOD`);
+  // No card by these names; "Open now" is still a column of the campus table.
+  for (const gone of ['Open now', 'Awaiting assignment']) {
+    await expect(card(gone)).toHaveCount(0);
+  }
 
   const campuses = page.getByLabel('Open work by campus', { exact: true });
   for (const c of data.open_work) {
@@ -69,7 +67,7 @@ test('the manager dashboard shows the server’s figures and no ticket list', as
 test('each chart reads its own period, and the cards stay on the week', async ({ page }) => {
   await login(page, USERS.manager);
   const before = await dashboard(page);
-  const openNow = page.locator('p', { hasText: /^Open now$/ }).locator('xpath=..');
+  const raised = page.locator('p', { hasText: /^Raised this week$/ }).locator('xpath=..');
 
   await page.getByRole('combobox', { name: 'Raised and resolved period' }).click();
   await page.getByRole('option', { name: 'This quarter' }).click();
@@ -82,7 +80,7 @@ test('each chart reads its own period, and the cards stay on the week', async ({
   for (const c of recent.open_work) {
     await expect(campuses.getByRole('img', { name: bar(c) })).toBeVisible();
   }
-  await expect(openNow).toContainText(String(before.live.open_now));
+  await expect(raised).toContainText(String(before.this_week.total));
 });
 
 test('Facility Health links through to Reports', async ({ page }) => {

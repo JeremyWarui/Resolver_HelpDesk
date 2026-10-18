@@ -30,8 +30,7 @@ export function useCatalog() {
 
 /** Every facility at a campus, in one call.
  *
- *  Small and stable, so fetching the lot and grouping by type in the client
- *  beats a request per type the requester clicks. It also lets the wizard offer
+ *  Small and stable, so the wizard groups it by type in the client and offers
  *  only the types the campus has something to pick from. */
 export function useCampusFacilities(campusId: number | null | undefined) {
   return useQuery<Facility[]>({
@@ -46,8 +45,7 @@ const TRADES_KEY = ['trades'] as const;
 
 /** Every trade with its service items, including trades nobody is assigned to.
  *
- *  Deriving the list from the technician roster would hide the thing worth
- *  seeing: a trade with no technicians at a campus still routes tickets there. */
+ *  A trade with no technicians at a campus still routes tickets there. */
 export function useTrades() {
   const queryClient = useQueryClient();
   const query = useQuery<Trade[]>({

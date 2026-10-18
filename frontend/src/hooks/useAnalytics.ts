@@ -1,7 +1,6 @@
 // The reporting envelope, and the one derived view built on top of it.
 //
-// `useFacilityHealth` joins the asset register to the analytics breakdown, so
-// it lives beside the hook it joins rather than in a directory of its own.
+// `useFacilityHealth` joins the asset register to the analytics breakdown.
 
 import { useMemo } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -88,9 +87,7 @@ export interface FacilityHealthRow {
 /**
  * The asset register joined to the work raised against it, cut by trade.
  *
- * The register is the spine. A breakdown alone can only draw buildings that
- * have tickets, so the silent ones — either well kept or unreachable — would be
- * missing from the one view that should show them.
+ * The register is the spine, so a building with no tickets still gets a row.
  *
  * Both the register page and the health table read this, so the summary cards
  * and the rows under them are the same numbers from the same request.

@@ -110,10 +110,9 @@ export const raisedByColumn = (header: string = "Raised By"): ColumnDef<Ticket> 
 export const statusColumn = (header: string = "Status"): ColumnDef<Ticket> => ({
   accessorKey: "status",
   header: sortableHeader(header),
-  // The escalation marker rides along with the status rather than taking a
-  // column: `status` is the one column no variant hides, so this is what makes
-  // an escalated job legible to the technician holding it and to the HOS on
-  // their ordinary Tickets list — neither of whom could see it before.
+  // The escalation marker rides in the status cell: `status` is the one column
+  // no variant hides, so the technician holding a job and the HOS on their
+  // Tickets list both see it.
   cell: ({ row }) => {
     const ticket = row.original;
     return (
@@ -206,11 +205,9 @@ export const pendingReasonColumn = (header: string = "Reason"): ColumnDef<Ticket
     const t = row.original;
     if (!t.pending_reason_display) return <div className="text-muted-foreground">—</div>;
     return (
-      // The width cap is what makes `truncate` mean anything: a table cell
-      // sizes to its content, so without one the note simply widened the
-      // column — pushing the Resume buttons, the whole point of the Pending
-      // Work page, off the right edge behind a horizontal scrollbar. Full text
-      // stays in the title attribute.
+      // The width cap is what makes `truncate` work: a table cell sizes to its
+      // content, so without it a long note pushes the Resume buttons off the right
+      // edge. The full text stays in the title attribute.
       <div className="min-w-0 max-w-[20rem]">
         <div className="font-medium">{t.pending_reason_display}</div>
         {t.pending_reason_note && (
@@ -227,10 +224,8 @@ export const pendingReasonColumn = (header: string = "Reason"): ColumnDef<Ticket
 /**
  * How long the job has been on hold.
  *
- * Derived in the browser from `paused_at`, which is already in the payload —
- * no extra field, no extra query. Colour escalates with age because age is the
- * actionable part, and it is paired with the number so colour never carries the
- * meaning on its own.
+ * Derived from `paused_at`. The colour deepens with age and always sits beside
+ * the number, so colour never carries the meaning alone.
  */
 export const pendingForColumn = (header: string = "Pending for"): ColumnDef<Ticket> => ({
   id: "pending_for",
@@ -255,10 +250,6 @@ export const pendingForColumn = (header: string = "Pending for"): ColumnDef<Tick
 
 /**
  * Resume, and change-reason, on the row itself.
- *
- * The whole point of this table is that the HOS chases the blocker and then
- * clears it. Making them open the ticket to do that is four clicks to undo one
- * fact they already know.
  */
 export function resumeActionColumn(options: {
   onResume: (ticket: Ticket) => void;
@@ -316,10 +307,8 @@ export function rateAndCloseColumn(options: {
     header: "Actions",
     cell: ({ row }) => {
       const ticket = row.original;
-      // `has_feedback`, not `feedback`: the list serializer sends the flag and
-      // only the detail one nests the object, so `ticket.feedback` is always
-      // undefined here — "Rate & close" never went away and "Rated" was
-      // unreachable. The requester dashboard reads the flag on these same rows.
+      // `has_feedback`, not `feedback`: list rows carry only the flag; the nested
+      // object is on the detail shape alone.
       if (ticket.status === "resolved" && !ticket.has_feedback) {
         return (
           <Button

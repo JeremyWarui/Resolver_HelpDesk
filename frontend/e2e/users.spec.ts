@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { loginAsAdmin, uniqueSuffix, USERS } from './helpers';
+import { apiGet, loginAsAdmin, uniqueSuffix, USERS } from './helpers';
 
-// The Users admin page: create, edit, delete, self-cleaning.
+// The Users admin page: create, search, edit, deactivate.
 //
 // The email is the whole identity — nothing here types a name or a username —
 // and the edit step proves that changing the address renames the account.
@@ -63,12 +63,9 @@ test('users: create, search, edit, deactivate', async ({ page }) => {
 test('Needs fixing lists the accounts the server flags, each with its fix', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/dashboard/users');
-  const users = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/users/?page_size=100', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return (await r.json()).results as { email: string; is_active: boolean; problems: { label: string }[] }[];
-  });
+  const { results: users } = await apiGet<{ results: { email: string; is_active: boolean; problems: { label: string }[] }[] }>(
+    page, '/users/?page_size=100',
+  );
   const flagged = users.filter((u) => u.is_active && u.problems.length);
 
   await page.getByRole('button', { name: /^Needs fixing/ }).click();

@@ -1,11 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS } from './helpers';
+import { login, USERS, API } from './helpers';
 
 // The Feedback page reads a period: its figures cover every rating in it, the
 // comments load a page at a time, and a star narrows them. Read-only; the
 // seeded demo data rates fixes every day.
 
-const API = 'http://localhost:8001/api/v1';
 const STAR_LABELS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
 
 interface Summary {

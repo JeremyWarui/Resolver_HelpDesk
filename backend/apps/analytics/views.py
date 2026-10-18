@@ -182,7 +182,7 @@ class DashboardView(ReportingView):
 
     def get(self, request):
         role, qs = scoped_for(request)
-        if role not in overview.OVERVIEW_ROLES:
+        if role not in dashboard.DASHBOARD_ROLES:
             raise PermissionDenied("This dashboard is not available to your role.")
         params = request.query_params
         # The dashboard reads the caller's whole scope; Reports is where a campus narrows.

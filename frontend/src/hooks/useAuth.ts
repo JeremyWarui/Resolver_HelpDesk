@@ -22,12 +22,7 @@ import type { User } from '@/types';
 /**
  * The three session mutations, and whether one is in flight.
  *
- * Deliberately does not re-expose `user` or `isAuthenticated`: those live in
- * `useAuthStore`, which hydrates synchronously and is what the rest of the app
- * subscribes to directly. Handing them back through here bought an indirection
- * and a per-component `isLoading` that only this component's own calls can
- * set — which is how a route guard came to render a spinner nothing could
- * ever trigger.
+ * The session itself is read from `useAuthStore`, which hydrates synchronously.
  */
 export const useAuth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -98,9 +93,8 @@ export const useUserData = () => {
         // owns expired-token handling.
       }
 
-      // Patch campus_id from the JWT payload if the stored value is null
-      // (sessions created before the flattenJWT campus_id fix) and re-persist
-      // through the store.
+      // A stored user with no primary_campus_id takes the JWT's campus_id, saved
+      // back through the store.
       if (!authUser.primary_campus_id && token) {
         const claims = decodeJwtPayload(token);
         if (typeof claims?.campus_id === 'number') {

@@ -6,15 +6,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { updateUser, createUser, createRoleAssignment, getRoleAssignments } from '@/lib/api/users';
-import { useCampuses } from '@/hooks/useOrganizations';
 import { handleDRFError } from '@/utils/handleDRFError';
 import { deriveIdentity } from '@/utils/identity';
 import type { User, UserRole, CreateUserPayload } from '@/types';
 import { ROLE_LABELS, ROLES_REQUIRING_CAMPUS } from '@/constants/roles';
 import { RoleScopeSelectFields } from './RoleScopeSelectFields';
+import { CampusSelect } from '@/components/shared/forms/CampusSelect';
 
 interface UserFormData {
   email: string;
@@ -56,7 +55,6 @@ export function UserFormDialog({
     home_campus_id: editing?.home_campus_id != null ? String(editing.home_campus_id) : preset ? String(preset.campusId) : '',
   }));
   const [saving, setSaving] = useState(false);
-  const { campuses } = useCampuses();
 
   const set = (key: keyof UserFormData, val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -121,7 +119,7 @@ export function UserFormDialog({
         userId = (await createUser(payload)).id;
       }
 
-      // Always re-posted rather than diffed: the role write also syncs the
+      // Always re-posted, never diffed: the role write also syncs the
       // technician's trade rows, and those change without the role doing so.
       try {
         const assignment = await createRoleAssignment(userId, {
@@ -129,10 +127,8 @@ export function UserFormDialog({
           campus_id: form.campus_id ? Number(form.campus_id) : null,
           trade_ids: form.role === 'technician' ? form.trade_ids : undefined,
         });
-        // A supervisor post holds one person, so filling it demoted whoever
-        // had it. Warned rather than confirmed: it is a second change the
-        // admin did not ask for, and the only other place it shows up is an
-        // empty dashboard belonging to somebody who has not been told.
+        // A supervisor post holds one person, so filling it demotes whoever had it.
+        // The admin is warned, since nothing else on screen would show it.
         if (assignment.displaced) {
           toast.warning(
             `${assignment.displaced.full_name} was removed from this post`,
@@ -182,15 +178,8 @@ export function UserFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Home Campus</Label>
-            <Select value={form.home_campus_id} onValueChange={v => set('home_campus_id', v)}>
-              <SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger>
-              <SelectContent>
-                {campuses.map(c => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="home-campus">Home Campus</Label>
+            <CampusSelect id="home-campus" value={form.home_campus_id} onValueChange={v => set('home_campus_id', v)} />
             <p className="text-xs text-muted-foreground">
               Where this person is based — it routes the tickets they raise themselves,
               independent of their role.

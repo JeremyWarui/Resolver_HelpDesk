@@ -138,7 +138,7 @@ def test_every_other_type_is_refused(
     name,
     mime,
 ):
-    """The allow-list is the five the spec names. Everything else, including
+    """The allow-list is those five. Everything else, including
     the other office and image formats, is a 400.
     """
     from django.core.files.uploadedfile import SimpleUploadedFile

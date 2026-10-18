@@ -11,6 +11,14 @@ import {
 import type { FilterOption } from '@/components/shared/data/DataTable/DataTable';
 import type { Ticket, TicketTableVariant, } from '@/types';
 
+export interface TablePagination {
+  total: number;
+  pageIndex: number;
+  pageSize: number;
+  onPageChange: (index: number) => void;
+  onPageSizeChange: (size: number) => void;
+}
+
 interface TicketTableProps {
   tickets: Ticket[];
   variant: TicketTableVariant;
@@ -20,13 +28,7 @@ interface TicketTableProps {
   /** 'pending' variant only — clear the hold, or re-code it without clearing it. */
   onResume?: (ticket: Ticket) => void;
   onChangeReason?: (ticket: Ticket) => void;
-  pagination?: {
-    total: number;
-    pageIndex: number;
-    pageSize: number;
-    onPageChange: (index: number) => void;
-    onPageSizeChange: (size: number) => void;
-  };
+  pagination?: TablePagination;
   selectedRowId?: number | null;
   rowClassName?: (ticket: Ticket) => string;
   emptyMessage?: string;
@@ -40,11 +42,8 @@ interface TicketTableProps {
   /**
    * Extra column ids to hide on top of the variant's own map.
    *
-   * A per-call override rather than a new variant: the technician's Pending
-   * Work is the `pending` view minus one column — their own name, repeated
-   * down the Assigned To column of a list that is theirs by definition — and
-   * "pending minus one column" is not a view purpose the way `queue` and
-   * `pending` are.
+   * The technician's Pending Work uses it to drop Assigned To, which would repeat
+   * their own name down a list that is theirs by definition.
    */
   hideColumns?: string[];
 }
@@ -83,8 +82,8 @@ export function TicketTable({
    * admin — gets it hidden but not removed, so the Columns menu turns it on,
    * and the ticket detail carries it either way.
    *
-   * A role rule rather than a variant one because the HOS and the admin read
-   * the same `admin` variant on the same Tickets page.
+   * It is a role rule: the HOS and the admin read the same `admin` variant on
+   * the same Tickets page.
    */
   const role = useRole();
   const showsPriority = role === 'hos' || role === 'technician';
@@ -98,16 +97,8 @@ export function TicketTable({
     [variant, showsPriority, hideColumns],
   );
 
-  // DataTable's search box filters a hidden `searchField` column. Callers pass
-  // plain Ticket objects, which have no such property, so the accessor read
-  // `undefined` and *any* non-empty query matched no row — the box emptied the
-  // table instead of searching it. `useTicketTable` builds this field for the
-  // tables that go through it, which is why the technician queue searched fine
-  // and My Tickets did not; only an e2e run comparing the two showed it, since
-  // `searchField` is an extra property and TypeScript never had an opinion.
-  //
-  // Derived here so every consumer of TicketTable gets a working search box
-  // rather than each one remembering to map it.
+  // DataTable's search box filters a hidden `searchField` column, which a plain
+  // Ticket lacks. It is built here so every TicketTable gets a working search box.
   const rows = useMemo(
     () =>
       tickets.map((ticket) => ({
@@ -131,13 +122,8 @@ export function TicketTable({
       loading={loading}
       onRowClick={onRowClick}
       selectedRowId={selectedRowId}
-      // Tinting is opt-in. On the Tickets page the HOS/HOD badge already says
-      // a ticket has escalated, and tinting most of the table red on top of it
-      // spends the strongest signal the list has on something the badge
-      // already carries — leaving nothing to distinguish the rows that need
-      // attention now. Pages where a tint earns its place pass their own:
-      // EscalatedWorkView tints on `is_breaching`, which is a different fact
-      // and a rarer one.
+      // Tinting is opt-in: the HOS/HOD badge already marks an escalated row. A page
+      // that needs a tint passes its own, as EscalatedWorkView does on `is_breaching`.
       rowClassName={rowClassName}
       emptyStateMessage={emptyMessage}
       emptyStateDescription={emptyDescription}

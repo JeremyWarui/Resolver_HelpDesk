@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { TechnicianRow } from '@/types';
-import { formatHours as hours, formatPct as pct } from '@/utils/format';
+import { belowTarget, formatHours as hours, formatPct as pct } from '@/utils/format';
 import { cn } from '@/lib/utils';
 
 interface TechnicianTableProps {
@@ -15,7 +15,6 @@ interface TechnicianTableProps {
 /** Who is carrying the work at a campus, and how it is going. */
 export default function TechnicianTable({ rows, target, variant }: TechnicianTableProps) {
   const week = variant === 'week';
-  const low = (v: number | null) => target != null && v != null && v < target;
   return (
     <Card aria-label="Technicians" className="h-full">
       <CardHeader className="pb-2">
@@ -49,8 +48,8 @@ export default function TechnicianTable({ rows, target, variant }: TechnicianTab
                       <th className="p-2 font-medium">Open now</th>
                     </>
                   )}
-                  <th className="p-2 font-medium">On time</th>
-                  {!week && <th className="p-2 font-medium">Avg fix</th>}
+                  <th className="p-2 font-medium">Resolved on time</th>
+                  {!week && <th className="p-2 font-medium">Time to resolve</th>}
                   <th className="p-2 font-medium">Rating</th>
                 </tr>
               </thead>
@@ -70,7 +69,7 @@ export default function TechnicianTable({ rows, target, variant }: TechnicianTab
                         <td className="p-2">{row.open_now}</td>
                       </>
                     )}
-                    <td className={cn('p-2 font-semibold', low(row.resolution_sla_pct) && 'text-red-700')}>
+                    <td className={cn('p-2 font-semibold', belowTarget(row.resolution_sla_pct, target) && 'text-red-700')}>
                       {pct(row.resolution_sla_pct)}
                     </td>
                     {!week && <td className="p-2">{hours(row.resolution_seconds_avg)}</td>}

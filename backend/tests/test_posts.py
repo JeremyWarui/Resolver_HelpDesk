@@ -9,7 +9,7 @@ import pytest
 
 from apps.accounts.identity import display_name
 from apps.accounts.models import SCOPE_FIELD_BY_ROLE, RoleAssignment, TechnicianTrade
-from apps.accounts.posts import add_trade, assign_role
+from apps.accounts.posts import assign_role
 from apps.accounts.scope import post_holder, visible_campuses
 from apps.tickets.scope import reporting_ticket_qs, scoped_ticket_qs
 from tests import factories
@@ -47,8 +47,8 @@ def test_granting_a_post_grants_its_scope(role, nrb, nrb_electrical_ticket):
 
 @pytest.mark.parametrize("role", SUPERVISOR_ROLES)
 def test_demotion_takes_the_scope_with_it(role, nrb, db):
-    """The failure this module was written for: losing the role but keeping the
-    access would leave a requester still reading a campus's tickets."""
+    """Losing the role but keeping the access would leave a requester still
+    reading a campus's tickets."""
     user = factories.make_user(f"{role}_holder", campus=nrb)
     assign_role(user, role, **_scope(role, nrb))
 
@@ -101,7 +101,7 @@ def test_changing_post_takes_every_trade_link_with_it(
     campus's pairs behind."""
     user = factories.make_user("tech", campus=nrb)
     assign_role(user, "technician", campus=nrb, trades=[electrical])
-    add_trade(user, msa, plumbing)
+    factories.link_technician(user, msa, plumbing)
 
     assign_role(user, "technician", campus=msa, trades=[plumbing])
 

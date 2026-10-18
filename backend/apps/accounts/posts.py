@@ -58,17 +58,6 @@ def assign_role(target, role, *, campus=None, trades=(), actor=None):
     return assignment, displaced
 
 
-def add_trade(user, campus, trade):
-    """One more (campus, trade) pair.
-
-    Not on the role row: its campus is a single FK and cannot hold two pairs.
-    """
-    link, _ = TechnicianTrade.objects.get_or_create(
-        user=user, campus=campus, trade=trade
-    )
-    return link
-
-
 class PostRefused(ValueError):
     """A role write that would empty a post rather than fill it."""
 

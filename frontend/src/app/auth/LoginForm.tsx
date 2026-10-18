@@ -7,7 +7,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { toast } from 'sonner';
 import { Mail, Lock, Shield } from 'lucide-react';
@@ -73,110 +72,91 @@ export function LoginForm() {
 
   return (
     <AuthShell
-      heading="Resolver"
-      blurb="A maintenance helpdesk for the Kenya School of Government — every request tracked, assigned and closed on time."
+      icon={Shield}
+      title="Welcome Back"
+      description="Sign in to Resolver"
     >
-      <Card className="w-full shadow-xl border-0">
-        <CardHeader className="space-y-4 pb-8">
-          <div className="flex justify-center">
-            <div className="w-14 h-14 bg-ksg-brown rounded-xl flex items-center justify-center shadow-lg">
-              <Shield className="w-7 h-7 text-white" />
-            </div>
+      <Form {...loginForm}>
+        <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-6">
+          <FormField
+            control={loginForm.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium text-gray-700">
+                  Email Address
+                </FormLabel>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" aria-hidden="true" />
+                  <FormControl>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@ksg.ac.ke"
+                      className="pl-10 h-11"
+                      {...field}
+                      disabled={isLoading}
+                    />
+                  </FormControl>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={loginForm.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium text-gray-700">
+                  Password
+                </FormLabel>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" aria-hidden="true" />
+                  <FormControl>
+                    <PasswordInput
+                      placeholder="Enter your password"
+                      className="pl-10 h-11"
+                      {...field}
+                      disabled={isLoading}
+                    />
+                  </FormControl>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Button
+            type="submit"
+            className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Signing in...' : 'Sign In'}
+          </Button>
+        </form>
+      </Form>
+
+      <div className="text-center">
+        <Link to="/forgot-password" className="text-sm font-semibold text-foreground underline-offset-4 hover:underline">
+          Forgot your password?
+        </Link>
+      </div>
+
+      <div className="pt-4">
+          <Separator className="mb-6" />
+          <div className="text-center pb-4">
+            <span className="text-sm text-gray-600">Don't have an account? </span>
+            <button
+              type="button"
+              onClick={() => navigate('/register')}
+              className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+            >
+              Create account
+            </button>
           </div>
-          <div className="text-center">
-            <CardTitle className="text-2xl font-bold text-gray-900">
-              Welcome Back
-            </CardTitle>
-            <CardDescription className="text-base text-gray-600 mt-2">
-              Sign in to Resolver
-            </CardDescription>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          <Form {...loginForm}>
-            <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-6">
-              <FormField
-                control={loginForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium text-gray-700">
-                      Email Address
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        <Input
-                          type="email"
-                          autoComplete="email"
-                          placeholder="you@ksg.ac.ke"
-                          className="pl-10 h-11"
-                          {...field}
-                          disabled={isLoading}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={loginForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium text-gray-700">
-                      Password
-                    </FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                        <PasswordInput
-                          placeholder="Enter your password"
-                          className="pl-10 h-11"
-                          {...field}
-                          disabled={isLoading}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Button
-                type="submit"
-                className="w-full h-11 bg-ksg-brown hover:bg-ksg-brown-deep text-white shadow-lg"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-          </Form>
-
-          <div className="text-center">
-            <Link to="/forgot-password" className="text-sm font-semibold text-foreground underline-offset-4 hover:underline">
-              Forgot your password?
-            </Link>
-          </div>
-
-          <div className="pt-4">
-              <Separator className="mb-6" />
-              <div className="text-center pb-4">
-                <span className="text-sm text-gray-600">Don't have an account? </span>
-                <button
-                  type="button"
-                  onClick={() => navigate('/register')}
-                  className="text-sm font-semibold text-foreground underline-offset-4 hover:underline"
-                >
-                  Create account
-                </button>
-              </div>
-            </div>
-        </CardContent>
-      </Card>
+        </div>
     </AuthShell>
   );
 }

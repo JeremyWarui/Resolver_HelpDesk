@@ -1,7 +1,7 @@
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MultiSelectCheckboxGroup } from '@/components/shared/forms/MultiSelectCheckboxGroup';
-import { useCampuses } from '@/hooks/useOrganizations';
+import { CampusSelect } from '@/components/shared/forms/CampusSelect';
 import { useTrades } from '@/hooks/useCatalogue';
 import type { UserRole } from '@/types';
 import { ROLE_LABELS, ROLES_REQUIRING_CAMPUS, type RoleScopeValue } from '@/constants/roles';
@@ -28,7 +28,6 @@ export function RoleScopeSelectFields({
   lockRole?: boolean;
 }) {
   const { role, campus_id, trade_ids } = value;
-  const { campuses } = useCampuses();
   const { trades } = useTrades();
 
   const needsCampus = ROLES_REQUIRING_CAMPUS.includes(role);
@@ -55,15 +54,8 @@ export function RoleScopeSelectFields({
 
       {needsCampus && (
         <div className="space-y-1.5">
-          <Label>Campus</Label>
-          <Select value={campus_id} onValueChange={v => onChange({ ...value, campus_id: v })}>
-            <SelectTrigger><SelectValue placeholder="Select campus" /></SelectTrigger>
-            <SelectContent>
-              {campuses.map(c => (
-                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="role-campus">Campus</Label>
+          <CampusSelect id="role-campus" value={campus_id} onValueChange={v => onChange({ ...value, campus_id: v })} />
           <p className="text-xs text-muted-foreground">
             The campus this role covers — not necessarily where the person is based.
           </p>

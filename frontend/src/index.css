@@ -2,13 +2,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Define your custom properties */
 :root {
   --radius: 0.5rem;
 
-  /* ── Status badge colours (exact Tailwind equivalents from main branch) ──────
+  /* ── Status badge colours ─────────────────────────────────────────────────────
      Each status has three tokens: -bg (light tint), -text (dark readable), -border.
-     These are used directly in StatusBadge, PriorityBadge, and FilterPills.        */
+     Badges, pills and the progress tracker read them by base name.               */
 
   /* open = FluentUI blue */
   --status-open-bg:     #eff6fc;   /* FluentUI blue tint40 */
@@ -25,7 +24,7 @@
   --status-progress-text:   #835a00;   /* FluentUI warning shade30 */
   --status-progress-border: #fde7a0;   /* FluentUI warning tint30 */
 
-  /* pending = FluentUI purple (awaiting parts/approval) */
+  /* pending (On Hold) = FluentUI purple */
   --status-pending-bg:     #f9f3ff;   /* FluentUI purple tint40 */
   --status-pending-text:   #3b1a6b;   /* FluentUI purple shade30 */
   --status-pending-border: #d9b8ff;   /* FluentUI purple tint30 */
@@ -35,7 +34,7 @@
   --status-resolved-text:   #054b05;   /* FluentUI success shade30 */
   --status-resolved-border: #a8e5a8;   /* FluentUI success tint30 */
 
-  /* escalated / rejected = FluentUI red */
+  /* escalated, overdue and missed = FluentUI red */
   --status-escalated-bg:     #fde7e9;   /* FluentUI danger tint40 */
   --status-escalated-text:   #a4000b;   /* FluentUI danger shade30 */
   --status-escalated-border: #f4b9bc;   /* FluentUI danger tint30 */
@@ -45,7 +44,7 @@
   --status-closed-text:   #374151;   /* gray-700 */
   --status-closed-border: #e5e7eb;   /* gray-200 */
 
-  /* pending_approval = amber  /  approved = emerald */
+  /* approval = amber (ratings, amber badges)  /  approved = emerald */
   --status-approval-bg:     #fef3c7;   /* amber-100   */
   --status-approval-text:   #92400e;   /* amber-800   */
   --status-approval-border: #fde68a;   /* amber-200   */
@@ -75,14 +74,14 @@
   --priority-low-text:   #334155;   /* slate-700 */
   --priority-low-border: #e2e8f0;   /* slate-200 */
 
-  /* ── OKLCH base tokens (kept for SLA countdown, charts, toast colours) ────── */
+  /* ── OKLCH base tokens (SLA countdown, charts, toast colours) ───────────── */
   --status-open:      oklch(0.52 0.19 261);   /* #0078d4 FluentUI blue */
   --status-assigned:  oklch(0.52 0.19 261);   /* #0078d4 FluentUI blue (same as open) */
   --status-progress:  oklch(0.52 0.19 40);    /* #ffaa44 FluentUI orange */
   --status-pending:   oklch(0.42 0.19 302);   /* #5c2d91 FluentUI purple */
   --status-resolved:  oklch(0.47 0.17 142);   /* #107c10 FluentUI green */
   --status-escalated: oklch(0.50 0.24 28);    /* #d13438 FluentUI red */
-  --status-closed:    oklch(0.42 0.02 264);   /* unchanged */
+  --status-closed:    oklch(0.42 0.02 264);   /* gray */
 
   --priority-critical: oklch(0.45 0.26 27);
   --priority-high:     oklch(0.50 0.20 33);
@@ -94,8 +93,7 @@
   --sla-warning: oklch(0.60 0.18 75);
   --sla-breach:  oklch(0.50 0.24 27);
 
-  /* ── Chart colours — unified FluentUI palette ────────────────────────────── */
-  /* Direct hex values for predictable, consistent chart rendering */
+  /* Chart colours: the palette in constants/colors.ts. */
   --chart-1: #0078d4;  /* Blue (Primary) */
   --chart-2: #107c10;  /* Green (Success) */
   --chart-3: #ffaa44;  /* Orange (Warning) */
@@ -136,11 +134,6 @@
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
   --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
   --sidebar-primary: oklch(0.623 0.214 259.815);
@@ -149,74 +142,6 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.623 0.214 259.815);
-
-  /* ── Categorical series palette (charts) ───────────────────────────────────
-     Fixed slot order, never cycled: a ninth series folds into "Other" rather
-     than inventing a hue. Validated with the dataviz palette checker against
-     this app's surfaces — lightness band, chroma floor, adjacent-pair CVD
-     separation (protan/deutan/tritan) and contrast — in BOTH modes.
-     The previous --chart-* set failed: #ffaa44 sat at 1.85:1 on white and
-     #5c2d91 fell below the lightness band, so two of five series were
-     unreadable for anyone and indistinguishable under CVD.
-     Three light steps sit under 3:1, which is permitted only because every
-     chart using them ships a legend and a data table carrying exact figures. */
-  --viz-1: #2a78d6;  /* blue */
-  --viz-2: #eb6834;  /* orange */
-  --viz-3: #1baf7a;  /* aqua */
-  --viz-4: #eda100;  /* yellow */
-  --viz-5: #e87ba4;  /* magenta */
-  --viz-6: #008300;  /* green */
-  --viz-7: #4a3aa7;  /* violet */
-  --viz-8: #e34948;  /* red */
-  --viz-other: #8a8a94;
-
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.379 0.146 265.522);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  /* Chart colours use same FluentUI palette in dark mode */
-  --chart-1: #0078d4;  /* Blue (Primary) */
-  --chart-2: #107c10;  /* Green (Success) */
-  --chart-3: #ffaa44;  /* Orange (Warning) */
-  --chart-4: #d13438;  /* Red (Danger) */
-  --chart-5: #5c2d91;  /* Purple (Secondary) */
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
-
-  /* Dark steps are re-selected against the dark surface and re-validated —
-     not an automatic lightening of the light set. */
-  --viz-1: #3987e5;
-  --viz-2: #d95926;
-  --viz-3: #199e70;
-  --viz-4: #c98500;
-  --viz-5: #d55181;
-  --viz-6: #008300;
-  --viz-7: #9085e9;
-  --viz-8: #e66767;
-  --viz-other: #7a7a84;
 
 }
 
@@ -281,25 +206,6 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-}
-
-
-
-/* Base styles using the new arbitrary value syntax */
-/* @layer base {
-  * {
-    @apply border-(--border);
-  }
-  body {
-    @apply bg-(--background) text-(--foreground);
-    font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  }
-} */
-
-/* Optional: Register a custom container utility if needed */
-@utility container {
-  margin-inline: auto;
-  padding-inline: 2rem;
 }
 
 @layer base {

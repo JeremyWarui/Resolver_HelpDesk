@@ -40,11 +40,12 @@ test('the HOS downloads both, scoped to their campus', async ({ page }) => {
   expect((await download(page, 'PDF')).name).toContain('nairobi-campus');
 });
 
-test('the admin is offered the workbook only', async ({ page }) => {
+test('the admin downloads the same two files as the manager', async ({ page }) => {
   await loginAsAdmin(page);
   await openReports(page);
-  await expect(page.getByRole('button', { name: 'Download Excel report' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Download PDF report' })).toHaveCount(0);
+
+  expect((await download(page, 'Excel')).name).toMatch(/^helpdesk-report-every-campus-.*\.xlsx$/);
+  expect((await download(page, 'PDF')).bytes.subarray(0, 4).toString()).toBe('%PDF');
 });
 
 test('a technician downloads their own report as Excel and as PDF', async ({ page }) => {

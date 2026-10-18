@@ -10,10 +10,8 @@ import type { TicketQuickStart } from '@/components/shared/ticket/TicketCreation
 // requester is never shown that word: they are picking a kind of work, and who
 // ends up doing it is the system's problem, not theirs.
 //
-// A card names the trade and nothing else. The faults under it are the wizard's
-// first step, and listing them here as well made the requester choose a service
-// twice: once from a card that showed four of the trade's five or six items
-// behind a "more" toggle, then again from the full list the wizard opens on.
+// A card names the trade and nothing else; the faults under it are the
+// wizard's first step.
 
 interface QuickActionsProps {
   /** The trade the requester picked. The wizard opens on that trade's fault

@@ -4,13 +4,7 @@ import { DialogFooter } from '@/components/ui/dialog';
 /**
  * Cancel and submit, at the foot of a dialog.
  *
- * Written out six times before this existed, and it had drifted three ways:
- * two spellings of "Saving", two forms that let you press Cancel while the
- * write was in flight, and two that restated `Button`'s own default styling.
- *
- * Not tied to a form library. Most of these dialogs hold their state in
- * `useState` rather than react-hook-form, so anything requiring a
- * `UseFormReturn` could only ever serve a couple of them.
+ * Takes plain callbacks, so it works inside a form or without one.
  */
 interface DialogActionsProps {
   onCancel: () => void;

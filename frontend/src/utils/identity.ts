@@ -7,7 +7,7 @@
  * after the account exists. Change one, change the other.
  */
 
-export interface DerivedIdentity {
+interface DerivedIdentity {
   /** The email's local part — what the account's username will be. */
   username: string;
   /** How the person will be displayed: "jeremy.mwangi" → "Jeremy Mwangi". */

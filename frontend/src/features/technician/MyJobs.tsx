@@ -15,7 +15,7 @@ import { ROLE_BASE } from '@/constants/roles';
 import { ESCALATED_LEVELS, HELD_STATUSES, WORKING_STATUSES } from '@/constants/tickets';
 import type { Ticket } from '@/types';
 
-export type MyJobsTab = 'active' | 'available' | 'pending' | 'escalated' | 'assigned';
+type MyJobsTab = 'active' | 'available' | 'pending' | 'escalated' | 'assigned';
 
 /** Each tab's address under the technician's base path. */
 const TAB_PATH: Record<MyJobsTab, string> = {

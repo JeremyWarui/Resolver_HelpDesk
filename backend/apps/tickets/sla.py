@@ -1,9 +1,8 @@
 """Whether a ticket is late, as a Q and as a check on one row.
 
 Every "is this late?" predicate comes from here, so a ticket's own badge cannot
-contradict the dashboard it appears on. It lives beside the Ticket rather than
-in `apps.sla` because every one of these filters a Ticket queryset; `apps.sla`
-holds the policy, which knows nothing about tickets.
+contradict the dashboard it appears on. Every one of these filters a Ticket
+queryset; `apps.sla` holds the policy and knows nothing about tickets.
 """
 
 from django.db.models import F, Q
@@ -32,7 +31,7 @@ def q_overdue(now=None):
 def is_overdue(ticket, now=None):
     """`q_overdue` for a single in-memory ticket, for the serializer's flag.
 
-    Kept beside the Q it mirrors so a reviewer changing one sees the other.
+    Change it together with the Q it mirrors.
     """
     if ticket.status not in RUNNING_STATUSES:
         return False

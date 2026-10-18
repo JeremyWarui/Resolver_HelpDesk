@@ -1,7 +1,7 @@
 """Login, refresh, and the single role each user carries.
 
-Role switching and multiple simultaneous roles are gone; these prove they stay
-gone, because a scope hole that comes back quietly fails nothing.
+Each user holds exactly one role, with no switching. These hold that in place,
+because a scope hole that comes back quietly fails nothing.
 """
 
 import pytest
@@ -86,8 +86,8 @@ def _register(api, email, campus, password="Str0ngPassphrase!"):
 
 
 def test_a_registered_user_can_sign_in_with_their_email(api, nrb, db):
-    """The whole point of the change: what you register with is what you log in
-    with, without ever being told a username."""
+    """What you register with is what you log in with, without ever being told
+    a username."""
     assert _register(api, "log.inagain@ksg.ac.ke", nrb).status_code in (200, 201)
     response = api.post(
         LOGIN,
@@ -173,7 +173,6 @@ def test_admin_can_promote_a_requester_to_hos(
     requester,
     nrb,
 ):
-    """The whole point of the endpoint."""
     api.force_authenticate(admin_user)
     response = _assign_role(
         api,

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, CARPENTRY, NRB_OFFICE_BLOCK, USERS, uniqueSuffix } from './helpers';
+import { login, CARPENTRY, USERS, raiseTicket, resolveFromSheet, uniqueSuffix, API, bearer } from './helpers';
 
 // A job in a trade the usual technician does not work, held part-way through.
 //
@@ -31,13 +31,6 @@ let ticketId = 0;
 
 const searchBox = (page: Page) => page.getByRole('textbox', { name: /search/i }).first();
 
-/** The access token this signed-in page holds, for the direct scope probes. */
-async function bearer(page: Page): Promise<string> {
-  const token = await page.evaluate(() => localStorage.getItem('authToken'));
-  expect(token, 'the signed-in page must hold an access token').toBeTruthy();
-  return token as string;
-}
-
 /** Open the ticket from whichever list page is showing, and wait for the sheet. */
 async function openTicket(page: Page): Promise<void> {
   await searchBox(page).fill(ticketNo);
@@ -49,30 +42,11 @@ async function openTicket(page: Page): Promise<void> {
 
 test('a requester raises a carpentry ticket, which routes on the item, not on them', async ({ page }) => {
   await login(page, USERS.requester);
-  await page.getByRole('button', { name: 'New Ticket' }).first().click();
-
-  const wizard = page.getByRole('dialog');
-  await wizard.getByRole('button', { name: CARPENTRY.trade }).click();
-  await wizard.getByRole('button', { name: CARPENTRY.item }).click();
-  await wizard.getByRole('button', { name: 'Next' }).click();
-
-  await wizard
-    .getByPlaceholder('Describe the fault — what is wrong, and since when…')
-    .fill(DESCRIPTION);
-  await wizard.getByRole('button', { name: 'Office' }).click();
-  await wizard.getByRole('combobox').last().click();
-  await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
-  await wizard.getByRole('button', { name: 'Next' }).click();
-
-  const created = page.waitForResponse(
-    (r) => /\/tickets\/$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok(),
-  );
-  await wizard.getByRole('button', { name: 'Submit request' }).click();
-  const body = await (await created).json();
-  ticketNo = body.ticket_no;
-  ticketId = body.id;
-  expect(ticketNo, 'the backend must allocate a ticket number').toBeTruthy();
+  ({ ticket_no: ticketNo, id: ticketId } = await raiseTicket(page, {
+    ...CARPENTRY,
+    description: DESCRIPTION,
+    where: `Floor 2, Room ${suffix.slice(-3)}`,
+  }));
 });
 
 test('the HOS is offered the carpenters and not the plumber, and assigns one', async ({ page }) => {
@@ -120,13 +94,13 @@ test('the plumber cannot see it, and is refused it by id', async ({ page }) => {
 
   // Then by id, because the pk is client-supplied and a list that omits a row
   // proves nothing about the endpoint that takes its number.
-  const read = await page.request.get(`http://localhost:8001/api/v1/tickets/${ticketId}/`, {
+  const read = await page.request.get(`${API}/tickets/${ticketId}/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(read.status(), 'a plumber must not read a carpentry ticket').toBe(403);
 
   const write = await page.request.post(
-    `http://localhost:8001/api/v1/tickets/${ticketId}/status/`,
+    `${API}/tickets/${ticketId}/status/`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: { status: 'in_progress', note: 'should never land' },
@@ -238,16 +212,7 @@ test('resuming it and resolving it settles the ticket', async ({ page }) => {
 
   await page.goto('/tech/assigned');
   await openTicket(page);
-  const sheet = page.getByRole('dialog').first();
-  await sheet.getByRole('button', { name: 'Update Status' }).click();
-
-  const modal = page.getByRole('dialog').filter({ hasText: 'Update ticket status' });
-  await modal.getByRole('button', { name: 'Resolved', exact: true }).click();
-  await modal
-    .getByPlaceholder('Describe what was done or what changed…')
-    .fill('New hinges fitted, frame packed out, door latches.');
-  await modal.getByRole('button', { name: 'Save update' }).click();
-  await expect(modal).toBeHidden();
+  await resolveFromSheet(page, 'New hinges fitted, frame packed out, door latches.');
 });
 
 test('the requester sees it resolved, and the plumber still cannot', async ({ page }) => {
@@ -262,7 +227,7 @@ test('the requester sees it resolved, and the plumber still cannot', async ({ pa
   // now against a ticket that has a resolution note worth leaking.
   await login(page, USERS.technician);
   const token = await bearer(page);
-  const read = await page.request.get(`http://localhost:8001/api/v1/tickets/${ticketId}/`, {
+  const read = await page.request.get(`${API}/tickets/${ticketId}/`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(read.status(), 'a resolved ticket is not a public one').toBe(403);

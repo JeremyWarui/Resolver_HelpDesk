@@ -19,11 +19,7 @@ export function RoleLayout({ title, currentUser, children }: RoleLayoutProps) {
     !!currentUser && !!role && DESK_ROLES.includes(role) && !isMyRequests
     && !phoneNoticeDismissedBy.includes(currentUser.id);
 
-  const displayName = currentUser
-    ? (currentUser.first_name
-        ? `${currentUser.first_name} ${currentUser.last_name ?? ''}`.trim()
-        : currentUser.username)
-    : null;
+  const displayName = currentUser?.full_name ?? null;
 
   return (
     <div className="flex h-dvh bg-gray-50">

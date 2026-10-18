@@ -69,6 +69,20 @@ def test_this_week_is_the_last_seven_kenyan_days_against_the_seven_before(
     assert (data["this_week"]["total"], data["last_week"]["total"]) == (1, 1)
 
 
+def test_resolved_this_week_counts_the_weeks_tickets_that_are_settled(
+    api, manager, requester, nrb, electrical, priorities
+):
+    done = _raised(factories.make_ticket(requester, nrb, electrical), days_ago=2)
+    Ticket.objects.filter(pk=done.pk).update(status="closed", resolved_at=timezone.now())
+    _raised(factories.make_ticket(requester, nrb, electrical), days_ago=3)
+    _raised(factories.make_ticket(requester, nrb, electrical), days_ago=9)
+
+    data = _get(api, manager)
+
+    assert (data["this_week"]["total"], data["this_week"]["settled"]) == (2, 1)
+    assert data["last_week"]["settled"] == 0
+
+
 def test_a_day_counts_what_was_resolved_in_it_whenever_it_was_raised(
     api, manager, requester, nrb, electrical, priorities
 ):

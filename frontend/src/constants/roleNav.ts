@@ -23,10 +23,8 @@ import {
   Hand,
 } from 'lucide-react';
 
-/** Live count shown beside a nav label, e.g. "Escalated (8)".
- *
- *  Only queues worth chasing carry one. A count on "Tickets" would be the
- *  section's whole backlog — a number nobody acts on, redrawn on every poll. */
+/** Live count shown beside a nav label, e.g. "Escalated (8)". Only queues
+ *  worth chasing carry one. */
 export type SidebarCount = 'escalated' | 'pending' | 'notifications' | 'systemFeedback';
 
 interface NavItem {
@@ -49,10 +47,23 @@ interface NavItem {
   desktopOnly?: true;
 }
 
-export interface RoleNav {
+interface RoleNav {
   items: NavItem[];
   subtitle?: string;
 }
+
+/** The HOS and the HOD read the same sections; scope is what differs, and the server decides it. */
+const SUPERVISOR_ITEMS: NavItem[] = [
+  { id: 'dashboard',   path: '',            label: 'Dashboard',    icon: LayoutDashboard },
+  { id: 'tickets',     path: 'tickets',     label: 'Tickets',      icon: ClipboardList },
+  { id: 'pending',     path: 'pending',     label: 'Pending Work', icon: PauseCircle, count: 'pending' },
+  { id: 'escalated',   path: 'escalated',   label: 'Escalated',    icon: ShieldAlert, count: 'escalated' },
+  { id: 'technicians', path: 'technicians', label: 'Technicians',  icon: Users },
+  { id: 'facilities',  path: 'facilities',  label: 'Facilities',   icon: Building },
+  { id: 'reports',     path: 'reports',     label: 'Reports',      icon: FileText },
+  { id: 'feedback',    path: 'feedback',    label: 'Feedback',     icon: MessageSquare },
+  { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
+];
 
 export const ROLE_NAV: Record<UserRole, RoleNav> = {
   user: {
@@ -77,31 +88,11 @@ export const ROLE_NAV: Record<UserRole, RoleNav> = {
     ],
   },
   hos: {
-    items: [
-      { id: 'dashboard',   path: '',            label: 'Dashboard',    icon: LayoutDashboard },
-      { id: 'tickets',     path: 'tickets',     label: 'Tickets',      icon: ClipboardList },
-      { id: 'pending',     path: 'pending',     label: 'Pending Work', icon: PauseCircle, count: 'pending' },
-      { id: 'escalated',   path: 'escalated',   label: 'Escalated',    icon: ShieldAlert, count: 'escalated' },
-      { id: 'technicians', path: 'technicians', label: 'Technicians',  icon: Users },
-      { id: 'facilities',  path: 'facilities',  label: 'Facilities',   icon: Building },
-      { id: 'reports',     path: 'reports',     label: 'Reports',      icon: FileText },
-      { id: 'feedback',    path: 'feedback',    label: 'Feedback',     icon: MessageSquare },
-      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
-    ],
+    items: SUPERVISOR_ITEMS,
     subtitle: 'Section Head Portal',
   },
   hod: {
-    items: [
-      { id: 'dashboard',   path: '',            label: 'Dashboard',    icon: LayoutDashboard },
-      { id: 'tickets',     path: 'tickets',     label: 'Tickets',      icon: ClipboardList },
-      { id: 'pending',     path: 'pending',     label: 'Pending Work', icon: PauseCircle, count: 'pending' },
-      { id: 'escalated',   path: 'escalated',   label: 'Escalated',    icon: ShieldAlert, count: 'escalated' },
-      { id: 'technicians', path: 'technicians', label: 'Technicians',  icon: Users },
-      { id: 'facilities',  path: 'facilities',  label: 'Facilities',   icon: Building },
-      { id: 'reports',     path: 'reports',     label: 'Reports',      icon: FileText },
-      { id: 'feedback',    path: 'feedback',    label: 'Feedback',     icon: MessageSquare },
-      { id: 'notifications', path: 'notifications', label: 'Notifications', icon: Bell, count: 'notifications' },
-    ],
+    items: SUPERVISOR_ITEMS,
     subtitle: 'Head of Department Portal',
   },
   // The admin's view of the organisation, read-only, without the configuration

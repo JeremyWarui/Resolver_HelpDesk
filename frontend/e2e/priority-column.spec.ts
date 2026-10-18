@@ -9,11 +9,9 @@ import { login, loginAsAdmin, USERS } from './helpers';
 // but not removed: the Columns menu turns it on, and the ticket detail carries
 // it for everyone regardless.
 //
-// This lives in a spec rather than a unit test because the rule is only true
-// once rendered. It is one line in `TicketTable` (`priority: showsPriority`,
-// spread after the variant's own map) and `tsc` has no opinion about whether a
-// column ends up on screen — which is exactly how the two column factories that
-// preceded it managed to disagree for so long.
+// Checked in a browser because the rule only shows once rendered: it is one
+// line in `TicketTable` (`priority: showsPriority`, spread after the variant's
+// own map), and `tsc` cannot see whether a column reaches the screen.
 
 const PRIORITY = 'Priority';
 

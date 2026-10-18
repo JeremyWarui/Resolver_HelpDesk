@@ -110,7 +110,7 @@ export function RoleDashboardLayout({ role, sections }: RoleDashboardLayoutProps
       <Suspense fallback={<PageLoading />}>
         {isMyRequests
           ? (
-            // Context switch (§1.2) — this account's own raised tickets, which
+            // Context switch: this account's own raised tickets, which
             // every role has, whatever else they can see.
             <MyTicketsPage onNavigate={handleNavigate} onTicketSelect={setSelectedTicketId} />
           )

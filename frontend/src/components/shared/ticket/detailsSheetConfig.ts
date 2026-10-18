@@ -5,7 +5,7 @@ export type DetailSheetFieldType =
   | 'facility-type'
   | 'readonly'
   /** The trades a technician works. View-only: a trade link is written with the
-   *  role assignment, and this endpoint never accepted one. */
+   *  role assignment. */
   | 'trades';
 
 export interface DetailSheetField {

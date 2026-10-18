@@ -29,11 +29,10 @@ from .metrics import REPORT_TZ, bottlenecks, group, measured, raised_in, totals,
 # KSG brand colours for the reports. White on KSG Brown is 5.70:1.
 KSG_BROWN = "7F622C"
 KSG_BROWN_DEEP = "3E2C12"
-KSG_GREEN_DARK = "6F7A00"
 
 # Who may download which format.
 XLSX_ROLES = ("admin", "manager", "hod", "hos", "technician")
-PDF_ROLES = ("manager", "hod", "hos", "technician")
+PDF_ROLES = ("admin", "manager", "hod", "hos", "technician")
 
 # "On hold", as the app says it, rather than the model's "Pending".
 STATUS_LABELS = {**dict(STATUSES), "pending": "On hold"}
@@ -45,10 +44,10 @@ BREAKDOWN_COLUMNS = [
     ("settled", "Settled"),
     ("open", "Open"),
     ("completion_pct", "Completion %"),
-    ("response_seconds_avg", "Avg response"),
-    ("resolution_seconds_avg", "Avg resolution"),
-    ("resolution_sla_pct", "Resolution SLA %"),
-    ("response_sla_pct", "Response SLA %"),
+    ("response_seconds_avg", "Time to respond"),
+    ("resolution_seconds_avg", "Time to resolve"),
+    ("resolution_sla_pct", "Resolved on time %"),
+    ("response_sla_pct", "Responded on time %"),
     ("missed", "Missed"),
     ("escalated", "Escalated"),
     ("rating_avg", "Rating"),
@@ -215,9 +214,9 @@ def summary_rows(data):
             ("Active now", t["open_backlog"], "count"),
             ("Overdue now", t["overdue"], "count"),
             ("Jobs finished", t["settled"], "count"),
-            ("On time", t["resolution_sla_pct"], "pct"),
+            ("Resolved on time", t["resolution_sla_pct"], "pct"),
             ("Missed deadlines", t["missed"], "count"),
-            ("Average time to fix", t["resolution_seconds_avg"], "duration"),
+            ("Time to resolve", t["resolution_seconds_avg"], "duration"),
             ("Assigned", s["assigned"], "count"),
             ("In progress", s["in_progress"], "count"),
             ("On hold", s["pending"], "count"),
@@ -239,10 +238,10 @@ def summary_rows(data):
         ("Completion rate", t["completion_pct"], "pct"),
         ("Open backlog (now)", t["open_backlog"], "count"),
         ("Overdue (now)", t["overdue"], "count"),
-        ("Average response time", t["response_seconds_avg"], "duration"),
-        ("Average resolution time", t["resolution_seconds_avg"], "duration"),
-        ("Resolution SLA", t["resolution_sla_pct"], "pct"),
-        ("Response SLA", t["response_sla_pct"], "pct"),
+        ("Time to respond", t["response_seconds_avg"], "duration"),
+        ("Time to resolve", t["resolution_seconds_avg"], "duration"),
+        ("Resolved on time", t["resolution_sla_pct"], "pct"),
+        ("Responded on time", t["response_sla_pct"], "pct"),
         ("Missed deadlines", t["missed"], "count"),
         ("Escalated, now with the HOS", t["escalated_hos"], "count"),
         ("Escalated, now with the HOD", t["escalated_hod"], "count"),
@@ -259,12 +258,13 @@ def report_headline(ov):
     """
     now, before = ov["current"], ov["previous"]
     return [
+        ("Raised", now["total"], before["total"], "count", "Tickets raised in the period"),
+        ("Resolved", now["settled"], before["settled"], "count", "Of the tickets raised in the period"),
+        ("On hold now", sum(row["total"] for row in ov["bottlenecks"]), None, "count", "Paused right now"),
         ("Resolved on time", now["resolution_sla_pct"], before["resolution_sla_pct"], "pct",
          "Settled work, by its deadline"),
-        ("Average time to fix", now["resolution_seconds_avg"], before["resolution_seconds_avg"], "duration",
+        ("Time to resolve", now["resolution_seconds_avg"], before["resolution_seconds_avg"], "duration",
          "Holds left out"),
-        ("Overdue now", now["overdue"], None, "count", f"{ov['at_hod_now']} live jobs sit with the HOD"),
-        ("Open right now", now["open_backlog"], None, "count", f"{ov['unassigned_now']} waiting for a technician"),
         ("Rating", now["rating_avg"], None, "number", f"{now['rating_count']} ratings"),
     ]
 
@@ -288,7 +288,7 @@ def facility_trades(row):
 
 
 def hours_minutes(seconds):
-    """28h 16m, as the Reports page writes a time to fix."""
+    """28h 16m, as the Reports page writes a time to resolve."""
     if seconds is None:
         return "—"
     hours, rest = divmod(int(seconds), 3600)
@@ -296,10 +296,10 @@ def hours_minutes(seconds):
 
 
 def facility_pattern(row):
-    """What keeps coming back at a building, or its average fix when nothing repeats."""
+    """What keeps coming back at a building, or its time to resolve when nothing repeats."""
     if row["repeats"]:
         return ", ".join(f"{r['label']} {r['total']}×" for r in row["repeats"])
-    return f"Avg fix {hours_minutes(row['resolution_seconds_avg'])}" if row["resolution_seconds_avg"] else "—"
+    return f"Time to resolve {hours_minutes(row['resolution_seconds_avg'])}" if row["resolution_seconds_avg"] else "—"
 
 
 def filename(data, extension):
@@ -396,12 +396,17 @@ def _cover(ws, data):
     _append(ws, [])
 
 
+def trades_text(row):
+    """A hold row's trades as one line: "Plumbing 2 · Electrical 1"."""
+    return " · ".join(f"{t['label']} {t['total']}" for t in row["trades"])
+
+
 def _holds_sheet(wb, holds):
     ws = wb.create_sheet("Holds")
-    _header(ws, ["Reason", "On hold now", "Oldest hold since"])
+    _header(ws, ["Reason", "On hold now", "By trade", "Oldest hold since"])
     for row in holds:
-        _append(ws, [row["label"], row["total"], local(row["since"])])
-        ws.cell(row=ws.max_row, column=3).number_format = DATE_FORMAT
+        _append(ws, [row["label"], row["total"], trades_text(row), local(row["since"])])
+        ws.cell(row=ws.max_row, column=4).number_format = DATE_FORMAT
     _widths(ws)
 
 
@@ -496,6 +501,13 @@ def _overview_workbook(data) -> bytes:
         _append(ws, ["Nothing is below target this period."])
     _widths(ws, maximum=90)
 
+    ws = wb.create_sheet("Tickets raised")
+    _header(ws, ["From", "Raised", "Settled"])
+    for point in ov["trend"]:
+        _append(ws, [local(point["bucket"]), point["total"], point["settled"]])
+        ws.cell(row=ws.max_row, column=1).number_format = "yyyy-mm-dd"
+    _widths(ws, minimum=12)
+
     ws = wb.create_sheet("Facility Health")
     _header(ws, ["Building", "Campus", "Type", "Faults", "By trade", "Keeps coming back", "Suggests", "Open now"])
     for row in ov["facilities"]:
@@ -505,7 +517,7 @@ def _overview_workbook(data) -> bytes:
 
     if "campuses" in ov:
         ws = wb.create_sheet("Campuses")
-        _header(ws, ["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+        _header(ws, ["Campus", "Raised", "Open now", "Overdue", "With HOD", "Resolved on time", "Time to resolve", "Rating",
                      "Technicians", "Jobs each"])
         for row in ov["campuses"]:
             _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
@@ -516,7 +528,7 @@ def _overview_workbook(data) -> bytes:
 
     if "technicians" in ov:
         ws = wb.create_sheet("Technicians")
-        _header(ws, ["Technician", "Jobs", "Open now", "On time", "Avg fix", "Rating"])
+        _header(ws, ["Technician", "Jobs", "Open now", "Resolved on time", "Time to resolve", "Rating"])
         for row in ov["technicians"]:
             _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["open_now"], "count"),
                       (row["resolution_sla_pct"], "pct"), (row["resolution_seconds_avg"], "duration"),
@@ -524,7 +536,7 @@ def _overview_workbook(data) -> bytes:
         _widths(ws)
 
     ws = wb.create_sheet("Trades")
-    _header(ws, ["Trade", "Raised", "On time", "Rating"])
+    _header(ws, ["Trade", "Raised", "Resolved on time", "Rating"])
     for row in ov["trades"]:
         _row(ws, [(row["label"], "text"), (row["total"], "count"), (row["resolution_sla_pct"], "pct"),
                   (row["rating_avg"], "number")])
@@ -540,13 +552,6 @@ def _overview_workbook(data) -> bytes:
         for cell in ws[ws.max_row]:
             cell.font = Font(bold=True)
         _widths(ws)
-
-    ws = wb.create_sheet("Tickets raised")
-    _header(ws, ["From", "Raised", "Settled"])
-    for point in ov["trend"]:
-        _append(ws, [local(point["bucket"]), point["total"], point["settled"]])
-        ws.cell(row=ws.max_row, column=1).number_format = "yyyy-mm-dd"
-    _widths(ws, minimum=12)
 
     _holds_sheet(wb, ov["bottlenecks"])
     _tickets_sheet(wb, data["tickets"])
@@ -596,7 +601,8 @@ def build_pdf(data) -> bytes:
     small = styles["BodyText"].clone("small", fontSize=8, leading=10, textColor=colors.grey)
     cell_style = styles["BodyText"].clone("cell", fontSize=8, leading=9.5)
     brown = colors.HexColor(f"#{KSG_BROWN}")
-    green_dark = colors.HexColor(f"#{KSG_GREEN_DARK}")
+    # The web chart's raised and settled colours.
+    raised_blue, settled_green = colors.HexColor("#0078D4"), colors.HexColor("#107C10")
     palette = [colors.HexColor(c) for c in (
         "#2563EB", "#16A34A", "#F59E0B", "#DC2626", "#7C3AED", "#0891B2", "#DB2777", "#65A30D",
     )]
@@ -655,6 +661,18 @@ def build_pdf(data) -> bytes:
     mine = data["role"] == "technician"
     finished = "Finished" if mine else "Settled"
 
+    def holds_block(holds):
+        rows = [
+            [row["label"], str(row["total"]), trades_text(row),
+             f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
+            for row in holds
+        ]
+        return KeepTogether([
+            Paragraph("On hold now, by reason", h2),
+            table(["Reason", "Tickets", "By trade", "Oldest hold since"], rows or [["Nothing is on hold", "", "", ""]],
+                  [page_width * w for w in (0.38, 0.12, 0.32, 0.18)], text_columns=(0, 2)),
+        ])
+
     def bars(points):
         # Room under the axis for the slanted date labels, inside the drawing.
         d = Drawing(page_width, 62 * mm)
@@ -664,8 +682,8 @@ def build_pdf(data) -> bytes:
         chart.x, chart.y = 25, 12 * mm
         chart.width, chart.height = page_width - 40, 40 * mm
         chart.data = [[p["total"] for p in points], [p["settled"] for p in points]]
-        chart.bars[0].fillColor = brown
-        chart.bars[1].fillColor = green_dark
+        chart.bars[0].fillColor = raised_blue
+        chart.bars[1].fillColor = settled_green
         chart.categoryAxis.categoryNames = [
             f"{timezone.localtime(p['bucket'], REPORT_TZ):%d %b}" for p in points
         ]
@@ -679,7 +697,7 @@ def build_pdf(data) -> bytes:
         legend = Legend()
         legend.x, legend.y = page_width - 70, 62 * mm
         legend.fontSize = 7
-        legend.colorNamePairs = [(brown, "Raised"), (green_dark, finished)]
+        legend.colorNamePairs = [(raised_blue, "Raised"), (settled_green, finished)]
         d.add(legend)
         return d
 
@@ -742,6 +760,8 @@ def build_pdf(data) -> bytes:
         else:
             story.append(Paragraph("Nothing is below target this period.", body))
 
+        story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"])])]
+
         health = [
             [f"{row['label']} ({row['campus']} · {row['type']})", str(row["total"]), facility_trades(row),
              facility_pattern(row), row["suggestion"], str(row["open_now"])]
@@ -766,7 +786,7 @@ def build_pdf(data) -> bytes:
             story += [Spacer(1, 4 * mm), KeepTogether([
                 Paragraph("Campuses", h2),
                 Paragraph(f"Target: {target}% on time.", small),
-                table(["Campus", "Raised", "Open now", "Overdue", "With HOD", "On time", "Avg fix", "Rating",
+                table(["Campus", "Raised", "Open now", "Overdue", "With HOD", "Resolved on time", "Time to resolve", "Rating",
                        "Technicians", "Jobs each"],
                       campuses or [["No tickets"] + [""] * 9],
                       [page_width * 0.13] + [page_width * 0.09] * 7 + [page_width * 0.12] * 2),
@@ -782,7 +802,7 @@ def build_pdf(data) -> bytes:
             story += [Spacer(1, 4 * mm), KeepTogether([
                 Paragraph("Technicians", h2),
                 Paragraph(f"Jobs raised this period and assigned to each. Target: {target}% on time.", small),
-                table(["Technician", "Jobs", "Open now", "On time", "Avg fix", "Rating"],
+                table(["Technician", "Jobs", "Open now", "Resolved on time", "Time to resolve", "Rating"],
                       people or [["No technicians", "", "", "", "", ""]],
                       [page_width * 0.35] + [page_width * 0.13] * 5),
             ])]
@@ -793,7 +813,7 @@ def build_pdf(data) -> bytes:
         ]
         story += [Spacer(1, 4 * mm), KeepTogether([
             Paragraph("Trades", h2),
-            table(["Trade", "Raised", "On time", "Rating"], trades or [["No tickets", "", "", ""]],
+            table(["Trade", "Raised", "Resolved on time", "Rating"], trades or [["No tickets", "", "", ""]],
                   [page_width * w for w in (0.4, 0.2, 0.2, 0.2)]),
         ])]
 
@@ -810,17 +830,8 @@ def build_pdf(data) -> bytes:
                       [page_width * 0.2] + [page_width * share] * (len(grid["trades"]) + 1)),
             ])]
 
-        story += [Spacer(1, 4 * mm), KeepTogether([Paragraph("Tickets raised", h2), bars(ov["trend"])])]
 
-        holds = [
-            [row["label"], str(row["total"]), f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
-            for row in ov["bottlenecks"]
-        ]
-        story.append(KeepTogether([
-            Paragraph("On hold now, by reason", h2),
-            table(["Reason", "Tickets", "Oldest hold since"], holds or [["Nothing is on hold", "", ""]],
-                  [page_width * 0.6, page_width * 0.15, page_width * 0.25]),
-        ]))
+        story.append(holds_block(ov["bottlenecks"]))
         return story
 
     def cover():
@@ -852,11 +863,11 @@ def build_pdf(data) -> bytes:
         story += [headline, Spacer(1, 2 * mm), Paragraph(
             (
                 "Counts are of your jobs raised in the period, except active and overdue, which "
-                "are as of now. Time to fix leaves out time on hold. On time is the share of "
+                "are as of now. Time to resolve leaves out time on hold. Resolved on time is the share of "
                 "finished jobs done by their deadline."
                 if mine else
                 "Counts are of tickets raised in the period, except backlog and overdue, which are "
-                "as of now. Resolution time leaves out time on hold. SLA is the share of settled "
+                "as of now. Time to resolve leaves out time on hold. Resolved on time is the share of settled "
                 "tickets finished by their deadline."
             ), small), Spacer(1, 4 * mm)]
         # A trade with no jobs in the period is no slice, so this counts trades worked, not held.
@@ -903,15 +914,7 @@ def build_pdf(data) -> bytes:
         if data["by_technician"] is not None:
             story.append(breakdown("Technician performance", data["by_technician"], "Technician"))
 
-        holds = [
-            [row["label"], str(row["total"]), f"{local(row['since']):%d %b %Y}" if row["since"] else "—"]
-            for row in data["holds"]
-        ]
-        story.append(KeepTogether([
-            Paragraph("On hold now, by reason", h2),
-            table(["Reason", "Tickets", "Oldest hold since"], holds or [["Nothing is on hold", "", ""]],
-                  [page_width * 0.6, page_width * 0.15, page_width * 0.25]),
-        ]))
+        story.append(holds_block(data["holds"]))
         return story
 
     story = overview_story() if "overview" in data else section_story()

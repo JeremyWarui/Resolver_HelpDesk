@@ -7,7 +7,6 @@ from django.utils import timezone
 from apps.accounts import health
 from apps.accounts.models import CustomUser, RoleAssignment, TechnicianTrade
 from apps.accounts.scope import post_holder
-from apps.tickets.escalation import run_escalation_for_ticket
 from apps.tickets.models import Ticket
 from tests import factories
 
@@ -128,7 +127,7 @@ def test_escalation_skips_a_deactivated_hos_to_the_hod(
     factories.age_ticket(nrb_electrical_ticket, minutes=nrb_electrical_ticket.priority.escalate_to_hos_minutes + 1)
     _deactivate(api, admin_user, nrb_hos)
 
-    assert run_escalation_for_ticket(nrb_electrical_ticket, timezone.now()) is True
+    assert factories.escalate(nrb_electrical_ticket, timezone.now()) is True
     assert nrb_electrical_ticket.current_level == "hod"
 
 

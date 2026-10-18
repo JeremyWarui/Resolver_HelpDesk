@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, loginAsAdmin, USERS } from './helpers';
+import { login, loginAsAdmin, USERS, apiGet } from './helpers';
 
 // Cover by trade on the Technicians page: who can work each trade at each
 // campus, read from /analytics/cover/, with the gaps in red.
@@ -13,12 +13,7 @@ interface Cover {
 }
 
 async function cover(page: Page): Promise<Cover> {
-  return page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/analytics/cover/', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  });
+  return apiGet(page, `/analytics/cover/`);
 }
 
 async function openCover(page: Page) {

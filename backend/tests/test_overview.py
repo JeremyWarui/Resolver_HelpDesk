@@ -37,8 +37,8 @@ def _get(api, user, **params):
     return response.json()
 
 
-@pytest.mark.parametrize("role", ["admin_user", "nrb_electrician", "requester"])
-def test_only_the_manager_hod_and_hos_read_the_overview(api, request, role):
+@pytest.mark.parametrize("role", ["nrb_electrician", "requester"])
+def test_only_the_admin_manager_hod_and_hos_read_the_overview(api, request, role):
     api.force_authenticate(request.getfixturevalue(role))
     assert api.get(reverse(URL)).status_code == 403
 
@@ -189,7 +189,6 @@ def test_a_campus_with_only_live_work_still_has_a_row_and_counts(
     mombasa = next(c for c in data["campuses"] if c["label"] == "Mombasa")
 
     assert (mombasa["total"], mombasa["open_now"], mombasa["at_hod"]) == (0, 1, 1)
-    assert data["at_hod_now"] == sum(c["at_hod"] for c in data["campuses"])
     assert any("Mombasa has 1 job with the HOD" in i["text"] for i in data["insights"])
 
 
@@ -262,7 +261,7 @@ def test_a_campus_narrows_live_figures_insights_and_staffing(
 
     data = _get(api, manager, days=30, campus=msa.pk)
 
-    assert (data["unassigned_now"], data["at_hod_now"]) == (0, 0)
+    assert [(c["open_now"], c["at_hod"]) for c in data["campuses"]] == [(1, 0)]
     assert [c["technicians"] for c in data["campuses"]] == [1]
     assert not any("Nairobi" in i["text"] for i in data["insights"])
 
@@ -288,7 +287,9 @@ def test_the_headline_reads_the_period_against_the_one_before(api, manager, requ
     data = _get(api, manager, days=30)
 
     assert (data["current"]["resolution_sla_pct"], data["previous"]["resolution_sla_pct"]) == (100.0, 0.0)
-    assert set(data["previous"]) == {"resolution_sla_pct", "resolution_seconds_avg"}
+    assert (data["current"]["total"], data["previous"]["total"]) == (1, 1)
+    assert (data["current"]["settled"], data["previous"]["settled"]) == (1, 1)
+    assert set(data["previous"]) == {"total", "settled", "resolution_sla_pct", "resolution_seconds_avg"}
     assert "change" not in data
 
 
@@ -401,3 +402,14 @@ def test_the_overview_lists_a_technician_with_no_work_this_period(
 
     assert set(rows) == {nrb_electrician.pk, idle.pk}
     assert (rows[idle.pk]["total"], rows[idle.pk]["open_now"]) == (0, 0)
+
+
+def test_the_admin_reads_the_managers_report_over_every_campus(api, admin_user, manager, requester, msa_requester, nrb, msa, electrical, priorities):
+    factories.make_ticket(requester, nrb, electrical)
+    factories.make_ticket(msa_requester, msa, electrical)
+
+    admin, managers = _get(api, admin_user, days=30), _get(api, manager, days=30)
+
+    assert admin["current"] == managers["current"]
+    assert [c["label"] for c in admin["campuses"]] == [c["label"] for c in managers["campuses"]]
+    assert "technicians" not in admin

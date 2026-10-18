@@ -1,9 +1,8 @@
 """
 Structure only: no row here points at a user.
 
-Campus is the whole tree. With one department and one section type, a
-Department, SectionType and Section row per campus would each carry a single
-value and encode nothing the campus does not.
+Campus is the whole tree: there is one department and one Maintenance section
+per campus, so neither has a table.
 """
 
 from django.db import models
@@ -28,9 +27,7 @@ class Campus(models.Model):
 class Trade(models.Model):
     """Carpentry, Masonry, Painting, Plumbing, Electrical.
 
-    Global, not per-campus: all five run everywhere, so a per-campus table
-    would hold the same five rows five times. Not a Section: the section is
-    Maintenance, and it has one HOS.
+    Global: all five run at every campus.
     """
 
     name = models.CharField(max_length=100, unique=True)

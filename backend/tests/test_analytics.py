@@ -17,6 +17,7 @@ from apps.analytics.metrics import bottlenecks, group, totals, trend
 from apps.analytics.role_config import resolve_group_by
 from apps.facilities.models import Facility
 from apps.tickets.lifecycle import claim_ticket, transition_status
+from apps.tickets.models import Ticket
 from apps.tickets.scope import scoped_ticket_qs
 from tests import factories
 
@@ -137,7 +138,7 @@ def test_a_role_cannot_widen_its_own_view_with_a_query_param(role, requested, ex
     assert resolve_group_by(role, requested) == expected
 
 
-# ─── Volume and status (§8) ─────────────────────────────────────────────────
+# ─── Volume and status ──────────────────────────────────────────────────────
 
 
 def test_the_reported_volume_agrees_with_the_ticket_list(
@@ -178,7 +179,7 @@ def test_a_bucket_is_one_row_however_the_tickets_in_it_differ(
     assert 10000 <= rows[0]["response_seconds_avg"] <= 11000
 
 
-# ─── Trade and facility (§8) ────────────────────────────────────────────────
+# ─── Trade and facility ─────────────────────────────────────────────────────
 
 
 def test_trade_breakdown_splits_by_craft(
@@ -218,7 +219,7 @@ def test_facility_health_is_one_row_per_facility_and_trade(
     }
 
 
-# ─── Response and resolution time (§8) ──────────────────────────────────────
+# ─── Response and resolution time ───────────────────────────────────────────
 
 
 def test_response_time_runs_from_raising_to_the_first_assignment(
@@ -305,7 +306,7 @@ def test_a_closed_ticket_still_counts_as_settled(
     assert _figures(nrb_hos, "hos", window)["settled"] == 2
 
 
-# ─── Overdue, missed and escalated (§7, §8) ─────────────────────────────────
+# ─── Overdue, missed and escalated ──────────────────────────────────────────
 
 
 def test_a_paused_ticket_is_never_counted_as_overdue(
@@ -373,7 +374,7 @@ def test_escalated_tickets_are_counted(
     assert _figures(nrb_hos, "hos", window)["escalated"] == 1
 
 
-# ─── Technician performance and ratings (§8) ────────────────────────────────
+# ─── Technician performance and ratings ─────────────────────────────────────
 
 
 def test_technician_rows_carry_workload_and_rating(
@@ -417,7 +418,7 @@ def test_ratings_are_scoped_like_the_tickets_they_belong_to(
     assert _figures(msa_hos, "hos", window)["rating_avg"] == 3.0
 
 
-# ─── Bottlenecks (§7 hold reasons) ──────────────────────────────────────────
+# ─── Bottlenecks: what is on hold ───────────────────────────────────────────
 
 
 def test_bottlenecks_report_what_is_on_hold_right_now(
@@ -438,6 +439,25 @@ def test_bottlenecks_report_what_is_on_hold_right_now(
     assert rows[0]["total"] == 1
     ticket.refresh_from_db()
     assert rows[0]["since"] == ticket.paused_at
+
+
+def test_a_hold_reason_says_which_trades_its_tickets_are_in(
+    nrb_hos, nrb, electrical, plumbing, requester, nrb_electrician, priorities
+):
+    plumber = factories.make_technician("plumber", nrb, [plumbing])
+    for trade, technician, count in ((plumbing, plumber, 2), (electrical, nrb_electrician, 1)):
+        for _ in range(count):
+            ticket = factories.make_ticket(requester, nrb, trade)
+            claim_ticket(ticket, technician)
+            transition_status(ticket, "pending", technician, pending_reason="material_not_in_store")
+
+    [row] = bottlenecks(scoped_ticket_qs(nrb_hos, "hos"))
+
+    assert row["total"] == 3
+    assert [(t["label"], t["code"], t["total"]) for t in row["trades"]] == [
+        (plumbing.name, plumbing.code, 2),
+        (electrical.name, electrical.code, 1),
+    ]
 
 
 def test_a_ticket_back_at_work_is_no_longer_a_bottleneck(

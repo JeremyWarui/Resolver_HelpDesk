@@ -22,7 +22,7 @@ export interface ReportParams extends AnalyticsParams {
 export type Dimension = 'trade' | 'facility' | 'campus' | 'technician' | 'status';
 
 /** The figures carried by the totals and by every breakdown row. */
-export interface Figures {
+interface Figures {
   total: number;
   open: number;
   settled: number;
@@ -64,6 +64,8 @@ export interface Bottleneck {
   label: string;
   total: number;
   since: string | null;
+  /** The trades the held tickets are in, most first. */
+  trades: { label: string; code: string | null; total: number }[];
 }
 
 export interface TrendPoint {
@@ -71,6 +73,9 @@ export interface TrendPoint {
   total: number;
   settled: number;
 }
+
+/** The figures a report sets beside the period before. */
+export type PeriodBefore = Pick<Totals, 'total' | 'settled' | 'resolution_sla_pct' | 'resolution_seconds_avg'>;
 
 export interface AnalyticsEnvelope {
   scope: { role: string | null; group_by: Dimension[] };
@@ -143,9 +148,7 @@ export interface OverviewEnvelope {
   campus: { id: number; name: string } | null;
   target_pct: number;
   current: Totals;
-  previous: Pick<Totals, 'resolution_sla_pct' | 'resolution_seconds_avg'>;
-  unassigned_now: number;
-  at_hod_now: number;
+  previous: PeriodBefore;
   insights: OverviewInsight[];
   facilities: OverviewFacility[];
   trades: { key: number; label: string; total: number; resolution_sla_pct: number | null; rating_avg: number | null }[];
@@ -165,7 +168,7 @@ export interface OverviewEnvelope {
 
 // The shape of GET /api/v1/analytics/dashboard/ — the manager's, HOD's and HOS's dashboard.
 
-type WeekFigures = Pick<Totals, 'total' | 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'rating_count'>;
+type WeekFigures = Pick<Totals, 'total' | 'settled' | 'resolution_sla_pct' | 'resolution_seconds_avg' | 'rating_avg' | 'rating_count'>;
 
 export interface DashboardEnvelope {
   /** The last seven Kenyan days, today included. */

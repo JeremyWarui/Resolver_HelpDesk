@@ -12,8 +12,8 @@ import type { Technician } from '@/types';
  * is no more an option for a Nairobi carpentry job than a Mombasa carpenter
  * is, and the server refuses the assignment either way.
  *
- * Includes idle technicians, unlike anything derived from tickets — a trade
- * with nobody in it still routes work, and that gap is worth seeing.
+ * Includes idle technicians: a trade with nobody in it still routes work, and
+ * that gap is worth seeing.
  */
 export function useTechnicians(
   params?: { campus?: number | null; trade?: number | null },

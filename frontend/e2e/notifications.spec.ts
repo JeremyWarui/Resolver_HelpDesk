@@ -1,32 +1,31 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { login, seedPassword, USERS } from './helpers';
+import { login, USERS, API, apiGet, authHeaders } from './helpers';
 
 // The Notifications page: every role has it in the sidebar with an unread
 // count, it filters server-side, and a row opens its ticket.
 
-const API = 'http://localhost:8001/api/v1';
-
-async function token(request: APIRequestContext, email: string): Promise<string> {
-  const res = await request.post(`${API}/auth/login/`, { data: { email, password: seedPassword() } });
-  expect(res.ok(), `login as ${email}`).toBeTruthy();
-  return (await res.json()).accessToken;
-}
-
-test('an assignment reaches the requester, unread, and opens its ticket', async ({ page, request }) => {
-  // Set up: the HOS assigns one of the requester's open tickets.
-  const requesterAuth = { Authorization: `Bearer ${await token(request, USERS.requester)}` };
-  const hosAuth = { Authorization: `Bearer ${await token(request, USERS.hos)}` };
-  const techAuth = { Authorization: `Bearer ${await token(request, USERS.technician)}` };
+/** One of the requester's open plumbing tickets, for the HOS to assign to the
+ *  plumber; skips the test when the seed left none. */
+async function plumbingTicketToAssign(request: APIRequestContext) {
+  const requesterAuth = await authHeaders(request, USERS.requester);
+  const hosAuth = await authHeaders(request, USERS.hos);
+  const techAuth = await authHeaders(request, USERS.technician);
 
   const open = await (await request.get(`${API}/tickets/`, {
     headers: requesterAuth, params: { mine: 1, status: 'open', page_size: 50 },
   })).json();
   const plumbing = open.results.find((t: { trade: { name: string } }) => t.trade.name === 'Plumbing');
   test.skip(!plumbing, 'the requester has no open plumbing ticket to assign');
+  const technician = await (await request.get(`${API}/auth/me/`, { headers: techAuth })).json();
+  return { requesterAuth, hosAuth, plumbing, technician };
+}
+
+test('an assignment reaches the requester, unread, and opens its ticket', async ({ page, request }) => {
+  // Set up: the HOS assigns one of the requester's open tickets.
+  const { requesterAuth, hosAuth, plumbing, technician } = await plumbingTicketToAssign(request);
 
   // Start from nothing unread, so the one assignment is all the page shows.
   await request.post(`${API}/notifications/read-all/`, { headers: requesterAuth });
-  const technician = await (await request.get(`${API}/auth/me/`, { headers: techAuth })).json();
   const assigned = await request.post(`${API}/tickets/${plumbing.id}/assign/`, {
     headers: hosAuth, data: { assigned_to: technician.id },
   });
@@ -59,12 +58,7 @@ test('an assignment reaches the requester, unread, and opens its ticket', async 
 
 test('the header names who is signed in, and the sidebar is the way to notifications', async ({ page }) => {
   await login(page, USERS.technician);
-  const me = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/auth/me/', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return r.json();
-  });
+  const me = await apiGet(page, `/auth/me/`);
   await expect(page.getByTestId('signed-in-as')).toHaveText(`${me.first_name} ${me.last_name}`.trim());
   await expect(page.locator('header').getByRole('button', { name: 'Notifications' })).toHaveCount(0);
 
@@ -73,12 +67,7 @@ test('the header names who is signed in, and the sidebar is the way to notificat
   await expect(page.locator('header h1')).toHaveText('Notifications');
 
   // On a phone the drawer hides the badge, so the menu button says what is unread.
-  const unread = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/notifications/?limit=1', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return (await r.json()).unread_count as number;
-  });
+  const unread = await (await apiGet(page, `/notifications/?limit=1`)).unread_count;
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('header').getByRole('button', { name: /^Open menu/ })).toHaveAccessibleName(
     unread > 0 ? `Open menu, ${unread} unread` : 'Open menu',
@@ -87,8 +76,8 @@ test('the header names who is signed in, and the sidebar is the way to notificat
 
 test('the Comments tab holds comments and nothing else', async ({ page, request }) => {
   // Set up: the HOS comments on a job the technician holds, so the tab has one.
-  const hosAuth = { Authorization: `Bearer ${await token(request, USERS.hos)}` };
-  const techAuth = { Authorization: `Bearer ${await token(request, USERS.technician)}` };
+  const hosAuth = await authHeaders(request, USERS.hos);
+  const techAuth = await authHeaders(request, USERS.technician);
   const technician = await (await request.get(`${API}/auth/me/`, { headers: techAuth })).json();
   const held = await (await request.get(`${API}/tickets/`, {
     headers: techAuth, params: { assigned_to: technician.id, status: 'in_progress', page_size: 1 },
@@ -118,7 +107,7 @@ test('the page shows about a screenful, and Load more adds the next one', async 
   const viewportHeight = page.viewportSize()!.height;
   const pageSize = Math.min(20, Math.max(6, Math.floor((viewportHeight - 240) / 80)));
 
-  const requesterAuth = { Authorization: `Bearer ${await token(request, USERS.requester)}` };
+  const requesterAuth = await authHeaders(request, USERS.requester);
   const feed = await (await request.get(`${API}/notifications/`, {
     headers: requesterAuth, params: { limit: pageSize + 1 },
   })).json();
@@ -135,18 +124,9 @@ test('the page shows about a screenful, and Load more adds the next one', async 
 });
 
 test('the HOS handover note reaches the technician as a message', async ({ page, request }) => {
-  const requesterAuth = { Authorization: `Bearer ${await token(request, USERS.requester)}` };
-  const hosAuth = { Authorization: `Bearer ${await token(request, USERS.hos)}` };
-  const techAuth = { Authorization: `Bearer ${await token(request, USERS.technician)}` };
-
-  const open = await (await request.get(`${API}/tickets/`, {
-    headers: requesterAuth, params: { mine: 1, status: 'open', page_size: 50 },
-  })).json();
-  const plumbing = open.results.find((t: { trade: { name: string } }) => t.trade.name === 'Plumbing');
-  test.skip(!plumbing, 'the requester has no open plumbing ticket to assign');
+  const { hosAuth, plumbing, technician } = await plumbingTicketToAssign(request);
 
   const handover = `Shut the mains valve first (${Date.now().toString(36)})`;
-  const technician = await (await request.get(`${API}/auth/me/`, { headers: techAuth })).json();
   const assigned = await request.post(`${API}/tickets/${plumbing.id}/assign/`, {
     headers: hosAuth, data: { assigned_to: technician.id, note: handover },
   });

@@ -1,8 +1,5 @@
 // What a requester picks from: the trade, and the kind of place the fault is.
 //
-// Both halves are the backend's to define and the frontend's only to draw, and
-// the ticket wizard walks them one after the other — so they sit together.
-//
 // Trades come from the seeded `Trade.code`; facility types from
 // `FACILITY_TYPES` in `apps/facilities/models.py`. Adding either is a backend
 // change first; an unknown trade code still renders here rather than waiting
@@ -13,13 +10,12 @@ import {
   Building2, BedDouble, Warehouse, Home, TreePine,
   type LucideIcon,
 } from 'lucide-react';
+import { CHART_COLORS } from '@/constants/colors';
 
 // ── Trades ────────────────────────────────────────────────────────────────────
 
-/** The icon each trade is drawn with, in the one place both pickers read — the
- *  requester's catalogue and the ticket wizard. They are the two screens that
- *  pick a trade, so a trade added to one and missed on the other is exactly the
- *  drift nobody notices: both fall back silently to a spanner. */
+/** The icon each trade is drawn with, read by both trade pickers: the
+ *  requester's catalogue and the ticket wizard. An unknown code gets a spanner. */
 export const TRADE_ICONS: Record<string, LucideIcon> = {
   CARP: Hammer,
   MAS: BrickWall,
@@ -28,14 +24,14 @@ export const TRADE_ICONS: Record<string, LucideIcon> = {
   ELEC: Zap,
 };
 
-/** Each trade's colour: an icon colour and the tint behind it. Keyed on the
- *  seeded code; an unknown code still renders, in grey. */
+/** Each trade's colour, from the chart palette, and the tint behind its icon.
+ *  Keyed on the seeded code; an unknown code still renders, in grey. */
 export const TRADE_THEMES: Record<string, { color: string; lightBg: string }> = {
-  CARP:  { color: '#854F0B', lightBg: 'bg-amber-100' },
-  MAS:   { color: '#5F5E5A', lightBg: 'bg-stone-200' },
-  PAINT: { color: '#534AB7', lightBg: 'bg-violet-100' },
-  PLUMB: { color: '#185FA5', lightBg: 'bg-blue-100' },
-  ELEC:  { color: '#A37A00', lightBg: 'bg-yellow-100' },
+  PLUMB: { color: CHART_COLORS[0], lightBg: 'bg-blue-100' },
+  CARP:  { color: CHART_COLORS[1], lightBg: 'bg-green-100' },
+  ELEC:  { color: CHART_COLORS[2], lightBg: 'bg-orange-100' },
+  PAINT: { color: CHART_COLORS[4], lightBg: 'bg-purple-100' },
+  MAS:   { color: CHART_COLORS[5], lightBg: 'bg-cyan-100' },
 };
 
 export const FALLBACK_TRADE_THEME = { color: '#6B7280', lightBg: 'bg-gray-100' };

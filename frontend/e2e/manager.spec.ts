@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, USERS } from './helpers';
+import { login, USERS, API } from './helpers';
 
 // The manager reads the whole organisation: the admin's sections, read-only,
 // without the configuration screens. The ticket table lists every campus;
@@ -38,12 +38,11 @@ test('the manager lists every campus’s tickets but cannot open one', async ({ 
   // tickets to it.
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
-  const api = 'http://localhost:8001/api/v1';
-  const campusList = await (await page.request.get(`${api}/campuses/`, { headers })).json();
+  const campusList = await (await page.request.get(`${API}/campuses/`, { headers })).json();
   const campuses: { id: number; code: string }[] = campusList.results ?? campusList;
   expect(campuses.length).toBe(5);
   for (const campus of campuses) {
-    const res = await page.request.get(`${api}/tickets/?campus=${campus.id}&page_size=1`, { headers });
+    const res = await page.request.get(`${API}/tickets/?campus=${campus.id}&page_size=1`, { headers });
     expect((await res.json()).count, `the manager lists ${campus.code} tickets`).toBeGreaterThan(0);
   }
 
@@ -67,8 +66,8 @@ test('the manager reports lead with the period against the one before, then camp
   await page.getByRole('link', { name: 'Reports', exact: true }).click();
   await expect(page.locator('header h1')).toHaveText('Reports');
 
-  await expect(page.getByText('Resolved on time', { exact: true })).toBeVisible();
-  await expect(page.getByText('Average time to fix', { exact: true })).toBeVisible();
+  await expect(page.getByText('Resolved on time', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Time to resolve', { exact: true }).first()).toBeVisible();
   for (const section of ['Needs your attention', 'Facility Health', 'Campuses', 'Trades', 'Trades by campus']) {
     await expect(page.getByLabel(section, { exact: true })).toBeVisible();
   }
@@ -79,12 +78,12 @@ test('the server refuses the manager a ticket that is not their own', async ({ p
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
 
-  const list = await page.request.get('http://localhost:8001/api/v1/tickets/', { headers });
+  const list = await page.request.get(`${API}/tickets/`, { headers });
   expect(list.status()).toBe(200);
   const first = (await list.json()).results[0];
   expect(first, 'the list is not empty').toBeTruthy();
 
-  const detail = await page.request.get(`http://localhost:8001/api/v1/tickets/${first.id}/`, {
+  const detail = await page.request.get(`${API}/tickets/${first.id}/`, {
     headers,
   });
   expect(detail.status()).toBe(403);

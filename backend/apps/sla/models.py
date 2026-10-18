@@ -26,8 +26,8 @@ class Priority(models.Model):
     catalogue. A ticket opens at the default (lowest rank) and the HOS sets the
     real priority when they assign it.
 
-    Escalation is technician to HOS to HOD and nothing else, which is why the
-    two thresholds are columns here rather than rows in a rule table.
+    Escalation is technician to HOS to HOD and nothing else, so the two
+    thresholds are columns here.
     """
 
     # Unique because the trail records a priority change by name
@@ -56,8 +56,8 @@ class Priority(models.Model):
         """Return (response_due_at, resolution_due_at) measured from `start`.
 
         Called at ticket creation, again on reopen, which restarts the clock,
-        and on a priority change, which re-measures from the original creation
-        time rather than handing back time already spent waiting.
+        and on a priority change, which measures from `clock_started_at` so time
+        already spent waiting is not handed back.
         """
         return (
             start + timedelta(minutes=self.response_minutes),
@@ -68,8 +68,7 @@ class Priority(models.Model):
     def default(cls):
         """The priority a ticket opens at — lowest rank, i.e. Low.
 
-        Raises if no priorities are seeded: a ticket cannot exist without one,
-        and failing loudly here beats a null FK surfacing later in SLA maths.
+        Raises if no priorities are seeded: a ticket cannot exist without one.
         """
         priority = cls.objects.order_by("rank").first()
         if priority is None:

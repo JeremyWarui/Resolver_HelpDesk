@@ -11,7 +11,7 @@ export function ProfilePage() {
   const user = useAuthStore((s) => s.user);
   if (!user) return null;
 
-  const fullName = `${user.first_name} ${user.last_name}`.trim() || user.username;
+  const fullName = user.full_name;
   const initials = (user.first_name?.[0] ?? '') + (user.last_name?.[0] ?? '') || user.username[0];
 
   const details: { label: string; value: string }[] = [

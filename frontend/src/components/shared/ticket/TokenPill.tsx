@@ -5,10 +5,7 @@ import { cn } from '@/lib/utils';
  * The rounded pill every ticket badge is drawn as.
  *
  * Colour comes from a CSS variable triplet — `<base>-bg`, `-text`, `-border`,
- * all defined in index.css — so a badge names a token rather than a palette.
- * Status, priority and escalation each rendered this same element with their
- * own copy of the class string, which is how they came to sit at three
- * slightly different sizes in the same table cell.
+ * all defined in index.css, so a badge names a token, not a palette.
  */
 export function TokenPill({
   token,

@@ -8,9 +8,8 @@ import type { Ticket } from '@/types';
 
 type TicketStatusValue = Ticket['status'];
 
-// Semantic colour name → CSS variable pair, for a badge that carries a named
-// colour rather than a ticket status.
-// Maps colour names to [background, text] CSS variable pairs.
+// Colour name → [background, text] CSS variables, for a badge that carries a
+// named colour, not a ticket status.
 const BADGE_COLOR_TOKEN: Record<string, [string, string]> = {
   blue:   ['--status-open-bg',      '--status-open-text'],
   green:  ['--status-resolved-bg',  '--status-resolved-text'],

@@ -41,7 +41,7 @@ export function timeAgo(dateString: string): string {
 /**
  * "12 minutes ago", then a date past a day old — the long form a table cell has
  * room for, beside `timeAgo`'s terse "12m ago" for a mobile row or a
- * notification. Two formatters on purpose; they were in two files by accident.
+ * notification.
  */
 export function relativeTime(dateString: string): string {
   const date = new Date(dateString);

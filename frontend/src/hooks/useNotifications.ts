@@ -17,8 +17,7 @@ const POLL_MS = 60_000;
 /**
  * The notification feed. Notifications are polled, not pushed.
  *
- * React Query holds the list. A store mirroring it would be a second container
- * for one list, and two things to keep in step.
+ * React Query holds the list.
  */
 export function useNotifications() {
   const queryClient = useQueryClient();
@@ -28,8 +27,7 @@ export function useNotifications() {
     queryFn: getNotifications,
     refetchInterval: POLL_MS,
     refetchOnWindowFocus: true,
-    // Keep polling while the tab is hidden but far less often — a background
-    // tab open all afternoon should not keep a connection busy.
+    // No polling while the tab is hidden; focusing it again refetches.
     refetchIntervalInBackground: false,
     staleTime: 30_000,
   });

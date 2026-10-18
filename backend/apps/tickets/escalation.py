@@ -1,9 +1,8 @@
 """Moving a ticket up a level when it has been open too long.
 
 Escalation is structural — technician to HOS to HOD — so the thresholds are
-two columns on the ticket's Priority, not a rule table. A vacant post is
-skipped and the ticket carries on upward rather than resting where nobody is
-watching.
+two columns on the ticket's Priority. A vacant post is skipped and the ticket
+carries on upward.
 
 The check runs on a schedule (`process_auto_escalations`, every
 `ESCALATION_INTERVAL_MINUTES`) and on the admin's word; each pass is an
@@ -55,19 +54,11 @@ def active_elapsed(ticket, now):
     return (end - ticket.clock_started_at) - ticket.accumulated_pause
 
 
-def run_escalation_for_ticket(ticket, now):
-    """Escalate one ticket as a run would, if it is past its next threshold. Returns whether it moved."""
-    moved = [reached for _, _, reached in _escalate_candidates([(ticket.pk, ticket.current_level)], now)]
-    if moved:
-        ticket.current_level = moved[0]
-    return bool(moved)
-
-
 def next_step(ticket, now):
     """Where the ticket climbs to now, as (level, holder), or None. Reads, never writes.
 
-    A vacant post is skipped rather than escalated to, so the ticket keeps
-    climbing until it reaches someone who can act on it.
+    A vacant post is skipped, so the ticket keeps climbing until it reaches
+    someone who can act on it.
     """
     if ticket.status in TERMINAL_STATUSES:
         return None

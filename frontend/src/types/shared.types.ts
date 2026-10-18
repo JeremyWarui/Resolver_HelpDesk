@@ -5,8 +5,7 @@
  * What a role may do to a ticket it can already see. Guards the buttons on the
  * ticket detail; the API is the authoritative layer.
  *
- * Actions only. Which *sections* a role reaches is `ROLE_NAV`; stating it here
- * too would be a second copy nothing checks against the first.
+ * Actions only. Which *sections* a role reaches is `ROLE_NAV`.
  */
 export interface PermissionMap {
   canAssignTicket: boolean;
@@ -17,9 +16,9 @@ export interface PermissionMap {
 }
 
 export type TicketTableVariant =
-  | 'queue'       // HOS/HOD/Technician — full columns, bulk actions, filter bar
-  | 'admin'       // Admin view — all columns including internal fields
-  | 'my-tickets'  // User's own ticket history — mid-density
+  | 'queue'       // Escalated work — HOS, HOD and technician
+  | 'admin'       // The Tickets page — every ticket in the caller's scope
+  | 'my-tickets'  // A requester's own tickets
   | 'pending'     // Work on hold — why, for how long, and who to ask
   | 'my-jobs'     // A technician's own jobs — when each is due, never who has it
   | 'section';    // A technician's trades at their campus — who has each, and when it is due
@@ -44,7 +43,6 @@ export interface SystemFeedbackEntry {
   reviewed: boolean;
   created_at: string;
   author_name: string;
-  author_email: string | null;
   author_role: string;
   author_campus: string | null;
 }

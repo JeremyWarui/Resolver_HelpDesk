@@ -2,24 +2,22 @@ import { useState, useMemo, useCallback } from 'react';
 import { useTickets } from './useTickets';
 import { useTicketFilterOptions } from '@/hooks/tickets/useTickets';
 import type { Ticket, TicketsParams } from '@/types';
+import type { TablePagination } from '@/components/shared/ticket/TicketTable';
 import { ALL_TICKET_STATUSES } from '@/constants/tickets';
 
-export interface UseTicketTableConfig {
+interface UseTicketTableConfig {
   currentUserId?: number;
   defaultStatusFilter?: string;
   defaultPageSize?: number;
   skipUntilUserId?: boolean;
   /** Server params pinned for the page's purpose (e.g. assigned_to on the
-   *  Assigned Tickets page) — applied last, not clearable via filter UI. */
+   *  All My Jobs tab) — applied last, not clearable via filter UI. */
   fixedParams?: Partial<TicketsParams>;
 }
 
 export interface UseTicketTableResult {
-  // Pagination
-  pageIndex: number;
-  pageSize: number;
+  /** Back to the first page, for a caller whose own filter just changed. */
   setPageIndex: (index: number) => void;
-  setPageSize: (size: number) => void;
 
   // Filter State
   statusFilter: string;
@@ -32,13 +30,11 @@ export interface UseTicketTableResult {
   setUserFilter: (user: number | null) => void;
   setOverdueFilter: (overdue: boolean) => void;
 
-  /** Which row is highlighted, and the handler that sets it. */
+  /** Which row is highlighted. */
   selectedTicket: Ticket | null;
-  setSelectedTicket: (ticket: Ticket | null) => void;
 
   // Data
   tickets: Ticket[];
-  totalTickets: number;
   /** Trades in the caller's scope — the ticket-table filter's options. */
   trades: Array<{ id: number; name: string }>;
 
@@ -46,6 +42,8 @@ export interface UseTicketTableResult {
 
   // Actions
   handleViewTicket: (ticket: Ticket) => void;
+
+  pagination: TablePagination;
 
   // Constants
   allStatuses: string[];
@@ -64,8 +62,7 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
   const [pageSize, setPageSizeRaw] = useState(defaultPageSize);
 
   // 0-based page index (react-table convention); sent to the API as page = pageIndex + 1.
-  // /tickets/ uses DRF PageNumberPagination (TicketFeedPagination) — the feed is ordered
-  // -updated_at, a mutable sort key, which rules out cursor pagination by design.
+  // /tickets/ is page-number paged: its order, -updated_at, changes under the reader.
   const [pageIndex, setPageIndexRaw] = useState(0);
 
   // Filter state. These are server params — they narrow an already
@@ -118,9 +115,8 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     ...(tradeFilter ? { trade: tradeFilter } : {}),
     ...(technicianFilter ? { assigned_to: technicianFilter } : {}),
     ...(userFilter ? { raised_by: userFilter } : {}),
-    // Server-side, like every other filter here: the table is paginated, so
-    // narrowing the page the client holds would filter 20 rows and call it
-    // the answer.
+    // Server-side, like every other filter here: the table is paginated, so a
+    // client-side filter would only see the page it holds.
     ...(overdueFilter ? { overdue: '1' as const } : {}),
     ...(fixedParams ?? {}),
   }), [pageIndex, pageSize, statusFilter, tradeFilter, technicianFilter, userFilter, overdueFilter, fixedParams]);
@@ -152,10 +148,7 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
 
   // ==================== RETURN ====================
   return {
-    pageIndex,
-    pageSize,
     setPageIndex,
-    setPageSize,
 
     statusFilter,
     tradeFilter,
@@ -168,14 +161,21 @@ export const useTicketTable = (config: UseTicketTableConfig): UseTicketTableResu
     setOverdueFilter,
 
     selectedTicket,
-    setSelectedTicket,
 
     tickets,
-    totalTickets,
     trades,
     loading,
 
     handleViewTicket,
+
+    /** What `TicketTable` takes as its `pagination` prop. */
+    pagination: {
+      total: totalTickets,
+      pageIndex,
+      pageSize,
+      onPageChange: setPageIndex,
+      onPageSizeChange: setPageSize,
+    },
 
     allStatuses: ALL_TICKET_STATUSES,
   };

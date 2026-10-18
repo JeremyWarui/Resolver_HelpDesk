@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card } from '@/components/ui/card';
-import { getPriorities, updatePriority } from '@/lib/api/sla';
+import { usePriorities, useUpdatePriority } from '@/hooks/usePriorities';
 import { formatMinutes } from '@/utils/date';
 import type { Priority } from '@/types';
 import EscalationCheck from './EscalationCheck';
@@ -13,8 +13,7 @@ import EscalationCheck from './EscalationCheck';
 /** The four editable durations, in the order they fire.
  *
  *  `measures` says what the number is counted between. All four run from when
- *  the ticket was raised, which is the thing a reader most often gets wrong —
- *  the escalation thresholds are not measured from the assignment. */
+ *  the ticket was raised (or last reopened), never from the assignment. */
 const FIELDS = [
   { key: 'response_minutes', label: 'Response', measures: 'Raised → first assignment', group: 'Targets' },
   { key: 'resolution_minutes', label: 'Resolution', measures: 'Raised → resolved', group: 'Targets' },
@@ -155,20 +154,16 @@ const CLOCK_RULES = [
 /** Admin page: whether the escalation check is running, and the SLA targets and
  *  escalation thresholds each priority carries. */
 export default function SLARulesPage() {
-  const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { priorities, loading, error } = usePriorities();
+  const update = useUpdatePriority();
 
   useEffect(() => {
-    getPriorities()
-      .then(setPriorities)
-      .catch(() => toast.error('Failed to load SLA rules'))
-      .finally(() => setLoading(false));
-  }, []);
+    if (error) toast.error('Failed to load SLA rules');
+  }, [error]);
 
   const save = async (priority: Priority, field: Field, minutes: number) => {
     try {
-      const updated = await updatePriority(priority.id, { [field]: minutes });
-      setPriorities((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      await update.mutateAsync({ id: priority.id, changes: { [field]: minutes } });
       toast.success('Target updated');
     } catch (err: unknown) {
       // The serializer rejects an out-of-order pair by field name; show what it said.

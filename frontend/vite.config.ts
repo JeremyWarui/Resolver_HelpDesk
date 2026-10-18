@@ -92,7 +92,7 @@ export default defineConfig({
         }
       }
     },
-    // Increase chunk size warning limit to 1000kb (current is 500kb)
+    // Chunk size warning limit in kB; Vite's default is 500.
     chunkSizeWarningLimit: 1000
   }
 })

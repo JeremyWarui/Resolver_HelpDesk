@@ -1,9 +1,8 @@
 """The ticket row itself: its number, its location, and its rating.
 
-All three are columns on Ticket rather than side tables, so these are the
-tests that the collapse kept the behaviour: the number is still allocated and
-still stable, the location still comes back nested, and a rating is still
-one-per-ticket and still bounded.
+All three are columns on Ticket: the number is allocated once and stays
+stable, the location comes back nested, and a rating is one per ticket and
+bounded.
 """
 
 import re
@@ -25,7 +24,7 @@ def test_the_ticket_number_names_the_campus_and_is_unique(
     requester, msa_requester, nrb, msa, electrical, priorities
 ):
     """The number is allocated from the pk the insert hands back, so it is
-    unique by construction rather than by a counter table anyone can race."""
+    unique by construction."""
     nairobi = factories.make_ticket(requester, nrb, electrical)
     mombasa = factories.make_ticket(msa_requester, msa, electrical)
 

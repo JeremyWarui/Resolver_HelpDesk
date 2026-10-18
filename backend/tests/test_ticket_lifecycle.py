@@ -167,8 +167,6 @@ def test_reopen_drops_the_ticket_back_to_the_technician_level(
 ):
     """A reopened ticket starts over; one that had reached the HOD must not sit
     on the HOD's escalated list from the moment it reopens."""
-    from apps.tickets.escalation import run_escalation_for_ticket
-
     path = ("in_progress", "resolved") + (("closed",) if settled == "closed" else ())
     advance(assigned_ticket, *path, actor=nrb_electrician)
     Ticket.objects.filter(pk=assigned_ticket.pk).update(current_level="hod")
@@ -178,7 +176,7 @@ def test_reopen_drops_the_ticket_back_to_the_technician_level(
     assigned_ticket.refresh_from_db()
 
     assert assigned_ticket.current_level == "technician"
-    assert run_escalation_for_ticket(assigned_ticket, timezone.now()) is False
+    assert factories.escalate(assigned_ticket, timezone.now()) is False
 
 
 def test_a_reopened_ticket_escalates_on_its_new_clock_not_its_first(
@@ -186,8 +184,6 @@ def test_a_reopened_ticket_escalates_on_its_new_clock_not_its_first(
 ):
     """Raised a week ago and reopened now: the escalation timer starts at the
     reopen, the same moment the SLA deadlines restart from."""
-    from apps.tickets.escalation import run_escalation_for_ticket
-
     advance(assigned_ticket, "in_progress", "resolved", actor=nrb_electrician)
     factories.age_ticket(assigned_ticket, days=7)
 
@@ -195,11 +191,11 @@ def test_a_reopened_ticket_escalates_on_its_new_clock_not_its_first(
     assigned_ticket.refresh_from_db()
 
     assert timezone.now() - assigned_ticket.clock_started_at < timedelta(minutes=1)
-    assert run_escalation_for_ticket(assigned_ticket, timezone.now()) is False
+    assert factories.escalate(assigned_ticket, timezone.now()) is False
 
     hos_minutes = assigned_ticket.priority.escalate_to_hos_minutes
     later = timezone.now() + timedelta(minutes=hos_minutes + 1)
-    assert run_escalation_for_ticket(assigned_ticket, later) is True
+    assert factories.escalate(assigned_ticket, later) is True
     assert assigned_ticket.current_level == "hos"
 
 

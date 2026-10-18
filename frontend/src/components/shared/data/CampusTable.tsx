@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { OverviewCampus } from '@/types';
-import { formatHours as hours, formatPct as pct } from '@/utils/format';
+import { belowTarget, formatHours as hours, formatPct as pct } from '@/utils/format';
 import { cn } from '@/lib/utils';
 
 interface CampusTableProps {
@@ -35,8 +35,8 @@ export default function CampusTable({ rows, target, description, onPick }: Campu
                   <th className="p-2 font-medium">Open now</th>
                   <th className="p-2 font-medium">Overdue</th>
                   <th className="p-2 font-medium">With HOD</th>
-                  <th className="p-2 font-medium">On time</th>
-                  <th className="p-2 font-medium">Avg fix</th>
+                  <th className="p-2 font-medium">Resolved on time</th>
+                  <th className="p-2 font-medium">Time to resolve</th>
                   <th className="p-2 font-medium">Rating</th>
                   <th className="p-2 font-medium">Technicians</th>
                   <th className="p-2 font-medium">Jobs each</th>
@@ -58,7 +58,7 @@ export default function CampusTable({ rows, target, description, onPick }: Campu
                     <td className="p-2">{row.open_now}</td>
                     <td className="p-2">{row.overdue}</td>
                     <td className="p-2">{row.at_hod}</td>
-                    <td className={cn('p-2 font-semibold', target != null && row.resolution_sla_pct != null && row.resolution_sla_pct < target && 'text-red-700')}>
+                    <td className={cn('p-2 font-semibold', belowTarget(row.resolution_sla_pct, target) && 'text-red-700')}>
                       {pct(row.resolution_sla_pct)}
                     </td>
                     <td className="p-2">{hours(row.resolution_seconds_avg)}</td>

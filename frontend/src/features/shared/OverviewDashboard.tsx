@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, Hourglass, Inbox, Star } from 'lucide-react';
+import { AlertTriangle, CheckCheck, CheckCircle2, FileText, Hourglass, Star } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import CampusTable from '@/components/shared/data/CampusTable';
 import FacilityHealthSummary from '@/components/shared/data/FacilityHealthSummary';
@@ -44,13 +44,13 @@ export default function OverviewDashboard({ role, onNavigate, onTicketSelect }: 
   return (
     <div className="flex-1 overflow-y-auto bg-muted/30 p-3 sm:p-4 space-y-4">
       <p className="text-sm text-muted-foreground">
-        {SCOPE_SUBTITLE[role]}. Open and overdue are right now; the rest is the last seven days, against the seven before.
+        {SCOPE_SUBTITLE[role]}. Overdue is right now; the rest is the last seven days, against the seven before.
       </p>
       {error ? (
         <Card className="p-6 text-center text-sm text-destructive">The dashboard could not be loaded.</Card>
       ) : (
         <>
-          <MetricCardRow stats={cards(data)} loading={loading} />
+          <MetricCardRow stats={cards(data)} loading={loading} wrapDescriptions />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <TicketVolumeChart
               title={trend?.bucket === 'week' ? 'Raised and resolved, week by week' : 'Raised and resolved, day by day'}
@@ -114,9 +114,14 @@ function cards(data: DashboardEnvelope | null): StatConfig[] {
   const before = data?.last_week;
   return [
     {
-      id: 'open', title: 'Open now', value: live?.open_now ?? 0,
-      description: `${live?.waiting ?? 0} waiting · ${live?.on_hold ?? 0} held`,
-      icon: <Inbox className="h-5 w-5 text-blue-600" />, iconBgColor: 'bg-blue-100',
+      id: 'raised', title: 'Raised this week', value: now?.total ?? 0,
+      description: `${before?.total ?? 0} last week`,
+      icon: <FileText className="h-5 w-5 text-blue-600" />, iconBgColor: 'bg-blue-100',
+    },
+    {
+      id: 'resolved', title: 'Resolved this week', value: now?.settled ?? 0,
+      description: `${before?.settled ?? 0} last week`,
+      icon: <CheckCheck className="h-5 w-5 text-emerald-700" />, iconBgColor: 'bg-emerald-100',
     },
     {
       id: 'overdue', title: 'Overdue now', value: live?.overdue ?? 0,
@@ -124,17 +129,12 @@ function cards(data: DashboardEnvelope | null): StatConfig[] {
       icon: <AlertTriangle className="h-5 w-5 text-red-700" />, iconBgColor: 'bg-red-100',
     },
     {
-      id: 'raised', title: 'Raised this week', value: now?.total ?? 0,
-      description: `${before?.total ?? 0} last week`,
-      icon: <FileText className="h-5 w-5 text-blue-600" />, iconBgColor: 'bg-blue-100',
-    },
-    {
       id: 'on-time', title: 'Resolved on time', value: pct(now?.resolution_sla_pct),
       description: `${pct(before?.resolution_sla_pct)} last week`,
       icon: <CheckCircle2 className="h-5 w-5 text-emerald-700" />, iconBgColor: 'bg-emerald-100',
     },
     {
-      id: 'fix', title: 'Time to fix', value: formatSeconds(now?.resolution_seconds_avg ?? null),
+      id: 'fix', title: 'Time to resolve', value: formatSeconds(now?.resolution_seconds_avg ?? null),
       description: `${formatSeconds(before?.resolution_seconds_avg ?? null)} last week`,
       icon: <Hourglass className="h-5 w-5 text-violet-600" />, iconBgColor: 'bg-violet-100',
     },

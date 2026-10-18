@@ -2,8 +2,7 @@
 // tables.
 //
 // Not a hook: it returns a component and is called from plain column
-// factories, outside any render. Naming it `use…` would promise rules it does
-// not follow.
+// factories, outside any render.
 
 import type React from 'react';
 import { ChevronDown } from 'lucide-react';

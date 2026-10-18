@@ -13,9 +13,6 @@ interface ProtectedRouteProps {
  *
  * No loading state: `useAuthStore` hydrates from localStorage synchronously at
  * module load, so whether there is a session is known on the first render.
- * There is nothing to wait for, and the spinner that used to sit here read an
- * `isLoading` that only a component's own login/logout call can set — which
- * this component never makes.
  */
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,

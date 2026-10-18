@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, loginAsAdmin, USERS, PLUMBING, NRB_OFFICE_BLOCK } from './helpers';
+import { login, loginAsAdmin, raiseTicket, USERS, PLUMBING, apiGet } from './helpers';
 
 // On a phone the menu opens what each role acts on out and about, and no page
 // is wider than the screen. The registers a requester or technician reads at a
@@ -61,30 +61,16 @@ for (const [role, menu] of Object.entries(MENU)) {
 
 test('a requester raises a ticket on a phone, and the wizard fits the screen', async ({ page }) => {
   await login(page, USERS.requester);
-  await page.getByRole('button', { name: 'New Ticket' }).first().click();
-  const wizard = page.getByRole('dialog');
-
-  await wizard.getByRole('button', { name: PLUMBING.trade }).click();
-  await wizard.getByRole('button', { name: PLUMBING.item }).click();
-  await wizard.getByRole('button', { name: 'Next' }).click();
-  await wizard
-    .getByPlaceholder('Describe the fault — what is wrong, and since when…')
-    .fill('E2E phone — basin tap loose');
-  await wizard.getByRole('button', { name: 'Office' }).click();
-  await wizard.getByRole('combobox').last().click();
-  await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByLabel('Where in it').fill('Ground floor washroom');
-
-  const box = await wizard.boundingBox();
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
-
-  await wizard.getByRole('button', { name: 'Next' }).click();
-  const created = page.waitForResponse(
-    (r) => /\/tickets\/$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok(),
-  );
-  await wizard.getByRole('button', { name: 'Submit request' }).click();
-  expect((await (await created).json()).ticket_no).toBeTruthy();
+  await raiseTicket(page, {
+    ...PLUMBING,
+    description: 'E2E phone — basin tap loose',
+    where: 'Ground floor washroom',
+    beforeReview: async (wizard) => {
+      const box = await wizard.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    },
+  });
 });
 
 test('every My Jobs tab fits a phone screen', async ({ page }) => {
@@ -157,12 +143,7 @@ test('the note leaves My Requests alone, and a technician or requester never see
 
 test('a requester pages through every active request on the dashboard', async ({ page }) => {
   await signIn(page, 'requester');
-  const total = await page.evaluate(async () => {
-    const r = await fetch('http://localhost:8001/api/v1/tickets/?mine=1&status=active&page_size=1', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
-    });
-    return (await r.json()).count as number;
-  });
+  const total = await (await apiGet(page, `/tickets/?mine=1&status=active&page_size=1`)).count;
   const section = page.locator('main section[aria-labelledby="active-heading"]');
   const cards = section.locator('button[aria-label*="TKT-"]');
   const more = section.getByRole('button', { name: /^Show \d+ more/ });

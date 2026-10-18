@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, USERS } from './helpers';
+import { login, USERS, API } from './helpers';
 
 // A technician's report and feedback cover the jobs assigned to them, not
 // their whole trade.
@@ -16,8 +16,8 @@ test('My Reports covers the technician’s own jobs', async ({ page }) => {
   await expect(page.locator('header h1')).toHaveText('My Reports');
   await expect(page.getByText('Jobs assigned to you')).toBeVisible();
   // Figures about their own work.
-  for (const card of ['Jobs assigned', 'Active now', 'Jobs finished', 'Average time to fix', 'On time', 'My rating']) {
-    await expect(page.getByText(card, { exact: true })).toBeVisible();
+  for (const card of ['Jobs assigned', 'Active now', 'Jobs finished', 'Time to resolve', 'Resolved on time', 'My rating']) {
+    await expect(page.getByText(card, { exact: true }).first()).toBeVisible();
   }
   // Not about assigning work, which is the HOS's, and no comparison of colleagues.
   for (const absent of ['Avg Response', 'Response SLA', 'Awaiting assignment', 'Technician Performance']) {
@@ -44,9 +44,9 @@ test('My Feedback lists only ratings on jobs assigned to the technician', async 
   await login(page, USERS.technicianOtherTrade);
   const token = await page.evaluate(() => localStorage.getItem('authToken'));
   const headers = { Authorization: `Bearer ${token}` };
-  const me = await (await page.request.get('http://localhost:8001/api/v1/auth/me/', { headers })).json();
+  const me = await (await page.request.get(`${API}/auth/me/`, { headers })).json();
 
-  const feed = await page.request.get('http://localhost:8001/api/v1/tickets/feedback/', { headers });
+  const feed = await page.request.get(`${API}/tickets/feedback/`, { headers });
   expect(feed.status()).toBe(200);
   const rows = (await feed.json()).results as { assigned_to: { id: number } | null }[];
   expect(rows.length, 'the seed rated some of this technician’s jobs').toBeGreaterThan(0);

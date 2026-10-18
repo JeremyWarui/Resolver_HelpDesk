@@ -142,8 +142,8 @@ def test_hod_can_assign_a_ticket_in_their_own_campus(
     nrb_electrician,
     target,
 ):
-    """§4 grants the HOD assignment as well as the HOS. Every other assign test
-    drives it as an HOS, so this is the one that proves the second half."""
+    """The HOD may assign as well as the HOS. Every other assign test drives
+    it as an HOS, so this is the one that proves the second half."""
     api.force_authenticate(nrb_hod)
     response = api.post(
         reverse("ticket-assign", args=[target.pk]),

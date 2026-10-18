@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { seedPassword, USERS } from './helpers';
+import { USERS, API, authHeaders } from './helpers';
 
 // The production build is an installable app: Chrome reports no installability
 // errors, the service worker takes control, and the installed app starts at `/`.
 // Runs against `vite preview` (port 4174), which serves the built bundle.
 
 const PREVIEW = 'http://localhost:4174';
-const API = 'http://localhost:8001/api/v1';
-
 test('the built app is installable', async ({ page }) => {
   await page.goto(`${PREVIEW}/login`);
   await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
@@ -28,10 +26,7 @@ test('the built app is installable', async ({ page }) => {
 
 /** The URL of one seeded ticket attachment, read as the admin. */
 async function anAttachmentUrl(request: import('@playwright/test').APIRequestContext) {
-  const login = await request.post(`${API}/auth/login/`, {
-    data: { email: USERS.admin, password: seedPassword() },
-  });
-  const headers = { Authorization: `Bearer ${(await login.json()).accessToken}` };
+  const headers = await authHeaders(request, USERS.admin);
   for (let id = 1; id <= 60; id++) {
     const r = await request.get(`${API}/tickets/${id}/attachments/`, { headers });
     if (!r.ok()) continue;

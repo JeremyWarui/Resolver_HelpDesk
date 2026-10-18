@@ -52,8 +52,7 @@ test('searching a service name shown in the table finds its row', async ({ page 
   expect(serviceName.length, 'need a service name to search for').toBeGreaterThan(0);
 
   // Same selector as assignment.spec.ts and claim.spec.ts: the box's own
-  // placeholder ends in an ellipsis, not three dots, and matching it
-  // literally is how this spec came to wait for an element that never existed.
+  // placeholder ends in an ellipsis, not three dots.
   await page.getByPlaceholder(/Search/i).first().fill(serviceName);
 
   const matches = page.locator('tbody tr');
@@ -78,7 +77,7 @@ test('the rail filters the list, it never restructures the card', async ({ page 
   await expect(page.getByRole('listitem').first()).toBeVisible();
   expect((await row('Standby Generator')).trim()).toBe(facilityAtAll);
 
-  // The same rule on the page this one was modelled on. Daniel works three
+  // The same rule on the Technicians page. Daniel works three
   // trades at Embu; filtered to Embu, his row still reads as it does under All.
   await page.goto('/dashboard/technicians');
   // The open-jobs badge arrives with its own request; read the row once it has.

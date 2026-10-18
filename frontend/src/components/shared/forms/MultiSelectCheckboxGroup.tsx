@@ -2,7 +2,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-export interface MultiSelectOption {
+interface MultiSelectOption {
   value: number;
   label: string;
 }

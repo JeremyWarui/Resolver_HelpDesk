@@ -199,11 +199,8 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
     ticket.assigned_to == null &&
     !viewsAsRequester;
 
-  // "Start work" — the assignee leaving `assigned`. Its own button rather than
-  // a trip through the status modal, because the modal insists on a progress
-  // note and there is nothing to say yet beyond "I have begun". The dwell in
-  // `assigned` is what the response-time SLA measures, so it stays a real
-  // resting state — this just makes leaving it one tap.
+  // "Start work": the assignee leaves `assigned` in one tap, with no progress
+  // note. Time spent in `assigned` is what the response-time SLA measures.
   const showStartWork =
     ticket != null &&
     ticket.status === 'assigned' &&
@@ -492,7 +489,7 @@ export function TicketDetailPage({ ticketId, open, onClose }: TicketDetailPagePr
                   {ticket.resolution_due_at && !['resolved', 'closed'].includes(ticket.status) && (
                     <Card>
                       <CardContent className="p-4">
-                        <SectionLabel>Time to fix</SectionLabel>
+                        <SectionLabel>Time to resolve</SectionLabel>
                         <SLACountdown
                           dueDate={ticket.resolution_due_at}
                           createdAt={ticket.created_at}

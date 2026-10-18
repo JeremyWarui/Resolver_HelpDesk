@@ -23,7 +23,7 @@ const INACTIVE = 'inactive';
 /** What the fix button on a Needs fixing row says; it opens the edit form either way. */
 const FIX_LABEL = { no_home_campus: 'Set home campus', technician_without_trade: 'Set trades' } as const;
 
-const fullName = (u: User) => `${u.first_name} ${u.last_name}`.trim() || u.username;
+const fullName = (u: User) => u.full_name;
 const isActive = (u: User) => u.is_active !== false;
 
 function formatJoined(iso?: string): string {

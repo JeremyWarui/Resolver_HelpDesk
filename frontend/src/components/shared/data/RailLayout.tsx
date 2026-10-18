@@ -11,9 +11,6 @@ import { Skeleton } from '@/components/ui/skeleton';
  * The rail only ever filters. The rows stay grouped the same way and the row
  * card stays the same, so what a reader learns on "All" is what they read on
  * every tab.
- *
- * The technician roster and the facilities register were this layout written
- * twice, down to a private `RailItem` and `EmptyState` in each file.
  */
 
 interface RailEntry {

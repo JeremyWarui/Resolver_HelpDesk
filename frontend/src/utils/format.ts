@@ -1,6 +1,6 @@
 /** A file size in the units a person reads. Shared by the uploader, which
  *  sizes what is being staged, and the ticket detail, which sizes what was
- *  stored — the two had a copy each. */
+ *  stored. */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -12,7 +12,12 @@ export function formatPct(value: number | null | undefined): string {
   return value == null ? '—' : `${value}%`;
 }
 
-/** Seconds as decimal hours, as the reports print a time to fix: 34.6h. */
+/** Whether a resolved-on-time share falls short of the target, and so is shown in red. */
+export function belowTarget(value: number | null | undefined, target: number | null | undefined): boolean {
+  return target != null && value != null && value < target;
+}
+
+/** Seconds as decimal hours, as the reports print a time to resolve: 34.6h. */
 export function formatHours(seconds: number | null | undefined): string {
   return seconds == null ? '—' : `${(seconds / 3600).toFixed(1)}h`;
 }

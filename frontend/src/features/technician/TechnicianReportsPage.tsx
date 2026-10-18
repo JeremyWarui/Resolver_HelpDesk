@@ -60,7 +60,7 @@ export default function TechnicianReportsPage() {
     },
     {
       id: 'time',
-      title: 'Average time to fix',
+      title: 'Time to resolve',
       value: formatSeconds(t?.resolution_seconds_avg ?? null),
       description: 'Holds left out',
       icon: <Hourglass className="h-5 w-5 text-violet-600" />,
@@ -68,7 +68,7 @@ export default function TechnicianReportsPage() {
     },
     {
       id: 'on-time',
-      title: 'On time',
+      title: 'Resolved on time',
       value: t?.resolution_sla_pct == null ? '—' : `${t.resolution_sla_pct}%`,
       description: t ? `${t.missed} missed a deadline` : 'Finished by the deadline',
       icon: <ShieldCheck className="h-5 w-5 text-emerald-700" />,

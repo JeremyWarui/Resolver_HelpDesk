@@ -70,9 +70,6 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 
     campus_id = serializers.IntegerField(read_only=True)
     campus_name = serializers.CharField(source="campus.name", read_only=True)
-    assigned_by_username = serializers.CharField(
-        source="assigned_by.username", read_only=True
-    )
     trade_ids = serializers.SerializerMethodField()
 
     class Meta:
@@ -83,8 +80,6 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
             "campus_id",
             "campus_name",
             "trade_ids",
-            "assigned_by_username",
-            "assigned_at",
         ]
         read_only_fields = fields
 

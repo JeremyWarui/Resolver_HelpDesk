@@ -1,10 +1,8 @@
 /**
  * How far a ticket has climbed, marked beside its status.
  *
- * It sits in the status cell rather than a column of its own: escalation is a
- * fact about where a ticket stands, and `status` is the one column no variant
- * hides. Renders nothing at `technician` — the default is no badge, not a
- * badge reading "normal".
+ * It sits in the status cell, the one column no variant hides. Renders nothing
+ * at `technician`.
  */
 import { ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,9 +15,7 @@ interface EscalationBadgeProps {
   className?: string;
 }
 
-/** Abbreviated because the badge shares a cell with the status pill: spelled
- *  out it is wider than the status it annotates. Its presence carries "this
- *  escalated"; its text only says how far, and the tooltip spells it out. */
+/** Abbreviated to fit beside the status pill; the tooltip spells the level out. */
 export function EscalationBadge({ level, className }: EscalationBadgeProps) {
   if (!level || level === 'technician') return null;
 

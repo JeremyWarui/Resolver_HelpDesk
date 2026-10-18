@@ -1,9 +1,6 @@
 /**
  * Live counts for the supervisors' sidebar: "Escalated (8)", "Pending Work (3)".
  *
- * Both are one-line answers to "is there anything here worth opening?", which
- * is otherwise only answerable by opening the page.
- *
  * `page_size: 1` on purpose: only `count` is read. The queries are role-scoped
  * server-side like every other ticket read, so a HOS's badge counts their
  * section. A technician's sidebar has no counted item: their counts are the

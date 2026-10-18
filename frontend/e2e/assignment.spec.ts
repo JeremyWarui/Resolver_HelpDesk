@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, PLUMBING, NRB_OFFICE_BLOCK, USERS, uniqueSuffix } from './helpers';
+import { login, PLUMBING, USERS, raiseTicket, resolveFromSheet, uniqueSuffix } from './helpers';
 
 // Assignment is where routing stops being automatic: the HOS reads the ticket,
 // picks who does it, and grades its urgency in the same action — a requester
@@ -13,27 +13,11 @@ test.describe.configure({ mode: 'serial' });
 
 test('a requester raises an unassigned ticket', async ({ page }) => {
   await login(page, USERS.requester);
-  await page.getByRole('button', { name: 'New Ticket' }).first().click();
-
-  const wizard = page.getByRole('dialog');
-  await wizard.getByRole('button', { name: PLUMBING.trade }).click();
-  await wizard.getByRole('button', { name: PLUMBING.item }).click();
-  await wizard.getByRole('button', { name: 'Next' }).click();
-  await wizard
-    .getByPlaceholder('Describe the fault — what is wrong, and since when…')
-    .fill(`ASSIGN ${suffix} — cistern running continuously`);
-  await wizard.getByRole('button', { name: 'Office' }).click();
-  await wizard.getByRole('combobox').last().click();
-  await page.getByRole('option', { name: NRB_OFFICE_BLOCK }).click();
-  await wizard.getByLabel('Where in it').fill(`Floor 2, Room ${suffix.slice(-3)}`);
-  await wizard.getByRole('button', { name: 'Next' }).click();
-
-  const created = page.waitForResponse(
-    (r) => /\/tickets\/$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok(),
-  );
-  await wizard.getByRole('button', { name: 'Submit request' }).click();
-  ticketNo = (await (await created).json()).ticket_no;
-  expect(ticketNo).toBeTruthy();
+  ({ ticket_no: ticketNo } = await raiseTicket(page, {
+    ...PLUMBING,
+    description: `ASSIGN ${suffix} — cistern running continuously`,
+    where: `Floor 2, Room ${suffix.slice(-3)}`,
+  }));
 });
 
 test('the HOS assigns it to a technician and sets the priority', async ({ page }) => {
@@ -90,9 +74,8 @@ test('the trail records who assigned it, to whom', async ({ page }) => {
 });
 
 test('the assignee starts the work the HOS handed them', async ({ page }) => {
-  // Assigned is not started. The button that moves it is Start work rather
-  // than the status modal, because a technician opening a job they have been
-  // given should not have to pick `in_progress` out of a list to begin it.
+  // Assigned is not started. Start work moves it on, with no status to pick
+  // from a list.
   await login(page, USERS.technician);
   await page.goto('/tech/assigned');
   await page.getByPlaceholder(/Search/i).first().fill(ticketNo);
@@ -110,26 +93,15 @@ test('the assignee starts the work the HOS handed them', async ({ page }) => {
 });
 
 test('the assignee resolves it, and the requester closes it', async ({ page }) => {
-  // The half `assignment.spec.ts` stopped short of: handing a ticket over is
-  // only worth testing if the ticket then gets finished by the person it was
-  // handed to. Claiming reaches resolved in ticket-lifecycle.spec.ts; this is
-  // the same ending reached down the assigned path, where the status modal
-  // offers in_progress -> resolved rather than a claim.
+  // A handed-over ticket gets finished by the person it was handed to. Claiming
+  // reaches resolved in ticket-lifecycle.spec.ts; this reaches it down the
+  // assigned path, where the status modal offers in_progress -> resolved.
   await login(page, USERS.technician);
   await page.goto('/tech/assigned');
   await page.getByPlaceholder(/Search/i).first().fill(ticketNo);
   await page.getByText(ticketNo, { exact: false }).first().click();
 
-  const sheet = page.getByRole('dialog').first();
-  await sheet.getByRole('button', { name: 'Update Status' }).click();
-
-  const modal = page.getByRole('dialog').filter({ hasText: 'Update ticket status' });
-  await modal.getByRole('button', { name: 'Resolved', exact: true }).click();
-  await modal
-    .getByPlaceholder('Describe what was done or what changed…')
-    .fill('Replaced the cistern inlet valve and tested the flush.');
-  await modal.getByRole('button', { name: 'Save update' }).click();
-  await expect(modal).toBeHidden();
+  await resolveFromSheet(page, 'Replaced the cistern inlet valve and tested the flush.');
 
   // Closing is the requester's, not the technician's. Read the row rather than
   // opening the ticket: a resolved job raises the rating prompt over the list.

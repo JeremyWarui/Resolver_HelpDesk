@@ -1,9 +1,8 @@
 import type { FilterOption } from "../DataTable";
 import type { TicketFilterOption } from "@/lib/api/tickets";
 
-// Every list here comes from `/tickets/filter-options/` as {id, name} —
-// `TicketFilterOption`. The factories used to accept `string[]` as well and
-// branch on it at every call; nothing has ever passed one.
+// Every list here comes from `/tickets/filter-options/` as {id, name}:
+// `TicketFilterOption`.
 
 export const createStatusFilter = (
   statusFilter: string,
@@ -13,7 +12,7 @@ export const createStatusFilter = (
 ): FilterOption => ({
   label: "Filter by status",
   defaultValue: statusFilter,
-  value: statusFilter, // Add value for controlled component
+  value: statusFilter,
   options: [
     { label: "All Statuses", value: "all" },
     { label: "Active", value: "active" },

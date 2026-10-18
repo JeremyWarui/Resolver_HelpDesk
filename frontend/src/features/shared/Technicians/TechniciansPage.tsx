@@ -54,8 +54,7 @@ export default function TechniciansPage({ manage = true }: TechniciansPageProps 
     return map;
   }, [load]);
 
-  const displayName = (t: Technician) =>
-    `${t.first_name ?? ''} ${t.last_name ?? ''}`.trim() || t.username;
+  const displayName = (t: Technician) => t.full_name;
 
   // Search filters the roster, and the rail counts follow it — so typing a name
   // shows you which trade they are in rather than making you hunt for them.
@@ -241,9 +240,8 @@ function TechnicianRow({
   const initials = name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const trades = tech.trade_names ?? [];
 
-  // Fixed widths, not space-between: the point of one row is that the columns
-  // line up down the list, and name lengths vary. Narrow screens drop the
-  // rightmost columns rather than letting them wrap.
+  // Fixed widths, so the columns line up down the list whatever the name
+  // lengths. Narrow screens drop the rightmost columns.
   return (
     <li className="flex items-center gap-3 p-3 bg-white border rounded-lg hover:border-gray-300 transition-colors">
       <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">

@@ -9,7 +9,7 @@ const STAGES = [
   { key: 'on_hold', label: 'On hold', color: '#8b6bb8' },
 ] as const;
 
-export interface OpenWorkRow {
+interface OpenWorkRow {
   key: number;
   label: string;
   open_now: number;

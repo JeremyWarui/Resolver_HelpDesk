@@ -59,12 +59,9 @@ export interface RoleAssignment {
   campus_name: string | null;
   /** Technician only — the trades they work at that campus. */
   trade_ids: number[];
-  assigned_by_username: string | null;
-  assigned_at: string;
   /** Present only on the POST response, and only when this assignment took a
    *  supervisor post off someone. One person holds a post, so filling it
-   *  demotes the incumbent to requester, which is more than the admin asked
-   *  for and is not visible on a screen that stops naming them. */
+   *  demotes the incumbent to requester; the dialog warns the admin. */
   displaced?: {
     id: number;
     full_name: string;
@@ -84,13 +81,6 @@ export interface CreateRoleAssignmentPayload {
   role: UserRole;
   campus_id?: number | null;
   trade_ids?: number[];
-}
-
-export interface UsersResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: User[];
 }
 
 /** A technician as `/technicians/` serves them: the user row plus the trades
